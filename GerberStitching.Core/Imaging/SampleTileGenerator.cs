@@ -59,6 +59,8 @@ namespace GerberViewer.Stitching.Imaging
                 Directory.CreateDirectory(tilesDir);
                 var total = run.TilesByOrder.Count;
                 var nccMetadata = new System.Collections.Generic.Dictionary<int, NccModelMetadata>();
+                // [Claude] [Change time: 2026-08-07] [Purpose: Chỉ sinh .ncm/.shm khi người dùng chọn Pregenerate; OnTheFly giữ nguyên hành vi cũ (matcher tự tạo model trong bộ nhớ).]
+                var pregenerateModels = run.ConfigSnapshot.ModelGeneration == SampleModelGenerationMode.Pregenerate;
                 foreach (var tile in run.TilesByOrder)
                 {
                     token.ThrowIfCancellationRequested();
@@ -81,19 +83,25 @@ namespace GerberViewer.Stitching.Imaging
                     var shapeModelPath = Path.Combine(tilesDir, baseName + ".shm");
                     using (var cropped = Crop(run.ProcessedImage, tile))
                     {
-                        //var metadata = AnalyzeContent(cropped);
-                        //if (metadata.Metrics.ContentClass == SampleTileContentClass.Matchable)
-                        //{
-                        //    var model = WriteNccModel(cropped, modelPath);
-                        //    metadata.X = model.X; metadata.Y = model.Y; metadata.Width = model.Width; metadata.Height = model.Height; metadata.HasModel = true;
-                        //    WriteShapeModel(cropped, shapeModelPath, metadata.X, metadata.Y, metadata.Width, metadata.Height); metadata.HasShapeModel = true;
-                        //}
-                        //nccMetadata[tile.OrderIndex] = metadata;
+                        if (pregenerateModels)
+                        {
+                            var metadata = AnalyzeContent(cropped);
+                            if (metadata.Metrics.ContentClass == SampleTileContentClass.Matchable)
+                            {
+                                var model = WriteNccModel(cropped, modelPath);
+                                metadata.X = model.X; metadata.Y = model.Y; metadata.Width = model.Width; metadata.Height = model.Height; metadata.HasModel = true;
+                                WriteShapeModel(cropped, shapeModelPath, metadata.X, metadata.Y, metadata.Width, metadata.Height); metadata.HasShapeModel = true;
+                            }
+                            nccMetadata[tile.OrderIndex] = metadata;
+                        }
                         HOperatorSet.WriteImage(cropped, HalconFormatFor(run.ConfigSnapshot.OutputFormat), 0, path);
                     }
                     VerifyImageReadable(path);
-                    //if (nccMetadata[tile.OrderIndex].HasModel) VerifyNccModelReadable(modelPath);
-                    //if (nccMetadata[tile.OrderIndex].HasShapeModel) VerifyShapeModelReadable(shapeModelPath);
+                    if (pregenerateModels)
+                    {
+                        if (nccMetadata[tile.OrderIndex].HasModel) VerifyNccModelReadable(modelPath);
+                        if (nccMetadata[tile.OrderIndex].HasShapeModel) VerifyShapeModelReadable(shapeModelPath);
+                    }
                     progress?.Report(new SampleCropProgress 
                     { 
                         Completed = tile.OrderIndex + 1, 
@@ -182,27 +190,37 @@ namespace GerberViewer.Stitching.Imaging
                 PreprocessMode = run.PreprocessMetadata == null ? null : run.PreprocessMetadata.Mode.ToString(),
                 ProcessedChannelCount = CountChannels(run.ProcessedImage),
                 ProcessedBitDepth = BitDepth(run.ProcessedImage),
+                // [Claude] [Change time: 2026-08-07] [Purpose: Ghi chế độ sinh model vào manifest để Worker biết có .ncm/.shm kèm theo hay không.]
+                ModelGeneration = run.ConfigSnapshot.ModelGeneration.ToString(),
                 Tiles = run.TilesByOrder.Select(t =>
                 {
                     var baseName = FormatName(run.ConfigSnapshot.TileNamePattern, t.Row, t.Column, t.OrderIndex);
-                    //var metadata = nccMetadata[t.OrderIndex];
+                    // [Claude] [Change time: 2026-08-07] [Purpose: Chế độ OnTheFly không có metadata; tra cứu phải null-safe, không index trực tiếp.]
+                    NccModelMetadata metadata;
+                    if (nccMetadata == null || !nccMetadata.TryGetValue(t.OrderIndex, out metadata))
+                        metadata = null;
+                    var hasModel = metadata != null && metadata.HasModel;
+                    var hasShapeModel = metadata != null && metadata.HasShapeModel;
                     return new SampleTileInfo
                     {
                         OrderIndex = t.OrderIndex,
                         Row = t.Row,
                         Column = t.Column,
                         ExpectedPath = Path.Combine(finalRoot, "tiles", baseName + ExtensionFor(run.ConfigSnapshot.OutputFormat)),
-                        //NccModelPath = metadata.HasModel ? Path.Combine(finalRoot, "tiles", baseName + ".ncm") : null,
-                        //NccModelRoiX = metadata.HasModel ? (int?)metadata.X : null, NccModelRoiY = metadata.HasModel ? (int?)metadata.Y : null,
-                        //NccModelRoiWidth = metadata.HasModel ? (int?)metadata.Width : null, NccModelRoiHeight = metadata.HasModel ? (int?)metadata.Height : null,
-                        //NccReferenceOriginRow = metadata.HasModel ? (double?)0.0 : null, NccReferenceOriginColumn = metadata.HasModel ? (double?)0.0 : null,
-                        //NccModelSchemaVersion = metadata.HasModel ? 1 : 0,
-                        //ShapeModelPath = metadata.HasShapeModel ? Path.Combine(finalRoot, "tiles", baseName + ".shm") : null,
-                        //ShapeModelRoiX = metadata.HasShapeModel ? (int?)metadata.X : null, ShapeModelRoiY = metadata.HasShapeModel ? (int?)metadata.Y : null, ShapeModelRoiWidth = metadata.HasShapeModel ? (int?)metadata.Width : null, ShapeModelRoiHeight = metadata.HasShapeModel ? (int?)metadata.Height : null,
-                        //ShapeReferenceOriginRow = metadata.HasShapeModel ? (double?)0 : null, ShapeReferenceOriginColumn = metadata.HasShapeModel ? (double?)0 : null, ShapeModelSchemaVersion = metadata.HasShapeModel ? 1 : 0,
-                        //SampleContentClass = metadata.Metrics.ContentClass.ToString(), SampleMinGray = metadata.Metrics.MinGray,
-                        //SampleMaxGray = metadata.Metrics.MaxGray, SampleMeanGray = metadata.Metrics.MeanGray, SampleStdDevGray = metadata.Metrics.StdDevGray,
-                        //SampleNonZeroPixelRatio = metadata.Metrics.NonZeroPixelRatio,
+                        NccModelPath = hasModel ? Path.Combine(finalRoot, "tiles", baseName + ".ncm") : null,
+                        NccModelRoiX = hasModel ? (int?)metadata.X : null, NccModelRoiY = hasModel ? (int?)metadata.Y : null,
+                        NccModelRoiWidth = hasModel ? (int?)metadata.Width : null, NccModelRoiHeight = hasModel ? (int?)metadata.Height : null,
+                        NccReferenceOriginRow = hasModel ? (double?)0.0 : null, NccReferenceOriginColumn = hasModel ? (double?)0.0 : null,
+                        NccModelSchemaVersion = hasModel ? 1 : 0,
+                        ShapeModelPath = hasShapeModel ? Path.Combine(finalRoot, "tiles", baseName + ".shm") : null,
+                        ShapeModelRoiX = hasShapeModel ? (int?)metadata.X : null, ShapeModelRoiY = hasShapeModel ? (int?)metadata.Y : null, ShapeModelRoiWidth = hasShapeModel ? (int?)metadata.Width : null, ShapeModelRoiHeight = hasShapeModel ? (int?)metadata.Height : null,
+                        ShapeReferenceOriginRow = hasShapeModel ? (double?)0 : null, ShapeReferenceOriginColumn = hasShapeModel ? (double?)0 : null, ShapeModelSchemaVersion = hasShapeModel ? 1 : 0,
+                        SampleContentClass = metadata == null ? null : metadata.Metrics.ContentClass.ToString(),
+                        SampleMinGray = metadata == null ? 0d : metadata.Metrics.MinGray,
+                        SampleMaxGray = metadata == null ? 0d : metadata.Metrics.MaxGray,
+                        SampleMeanGray = metadata == null ? 0d : metadata.Metrics.MeanGray,
+                        SampleStdDevGray = metadata == null ? 0d : metadata.Metrics.StdDevGray,
+                        SampleNonZeroPixelRatio = metadata == null ? 0d : metadata.Metrics.NonZeroPixelRatio,
                         ExpectedX = t.Rectangle.X,
                         ExpectedY = t.Rectangle.Y,
                         Width = t.Rectangle.Width,

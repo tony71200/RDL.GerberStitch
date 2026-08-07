@@ -1,229 +1,482 @@
 # Phase 1 — Task 1.2: Façade API tối thiểu
 
+**Ngày:** 2026-08-07
 **Phase:** 1 — Đóng gói Core thành thư viện dùng chung
-**PD ước lượng:** 1.5
-**Phụ thuộc:** Task 1.1 (project `RDL.GerberStitch` đã build)
+**PD ước lượng:** 2 *(tăng từ 1.5 — phát sinh quyết định model pre-gen ở §2)*
+**Phụ thuộc:** Task 1.1 (façade đã `public`, DTO đã đổi tên)
+**Platform:** C# 7.3, .NET Framework 4.8, **x64**
+
+**Bắt buộc đọc trước khi sửa:**
+1. `docs/Phase0_Closeout.md` §4.2 (blank tile), §6.1 (open item đếm tile)
+2. `AGENTS.md` §3.1 (ranh giới façade — không đổi hành vi pipeline Core khi chưa hỏi)
+3. File task này, đặc biệt **§2 — quyết định chặn đường**
+
+**Ràng buộc:** Không thêm NuGet package. Không thêm project test. Không tự chạy test.
 
 ---
 
-## Mục tiêu
+## 0. Vấn đề
 
-Viết 2 hàm façade chính trong `RDL.GerberStitch.Facade.GerberStitchFacade`:
+Bản trước của doc này mô tả API dựa trên **suy đoán**, tự nó ghi chú *"Bảng trên dựa trên cấu trúc branch `2026-08-04_Ver4_implement_claude`"*. Đối chiếu source thật: **4/5 đường dẫn sai**, và signature được tự nghĩ ra.
 
-1. **`GenerateSampleManifest`** — Master gọi khi Prepare (S002)
-2. **`RunAlignStitch`** — Worker gọi khi nhận lô
+| Bản cũ ghi | Đường dẫn thật |
+|---|---|
+| `Core/SampleTile/SampleTileGenerator.cs` | `Core/Imaging/SampleTileGenerator.cs` |
+| `Core/Alignment/Halcon/` | `Core/Matching/Halcon/` |
+| `Core/Workflow/AlignStitchWorkflowService.cs` | `Core/Alignment/AlignStitchWorkflowService.cs` |
+| `Core/PoseGraph/GlobalPoseGraphOptimizer.cs` | `Core/Alignment/Graph/GlobalPoseGraphOptimizer.cs` |
+| `Core/Stitching/WorkflowStitchingService.cs` | ✅ đúng |
 
-Cả 2 hàm bọc logic nội bộ của `GerberStitching.Core`, Master/Worker không cần biết pipeline bên trong.
-
----
-
-## Nơi tạo file
-
-```
-RDL.GerberStitch/
-└── Facade/
-    ├── GerberStitchFacade.cs        ← file chính task này
-    ├── Models/
-    │   ├── GridConfig.cs            ← DTO grid config
-    │   ├── CapturedImageInfo.cs     ← DTO ảnh + toạ độ
-    │   └── StitchResult.cs          ← DTO kết quả
-    └── AlignStitchConfig.cs         ← (Task 1.4)
-```
+Sai lệch nghiêm trọng hơn nằm ở **mô hình dữ liệu** — xem §1.
 
 ---
 
-## API Signature
+## 1. Đính chính mô hình dữ liệu: `ExpectedX/Y` không nằm trên ảnh chụp
 
-### 1. `GenerateSampleManifest` — dùng ở Master
+Bản cũ định nghĩa DTO `CapturedImageInfo { ImagePath, ExpectedX, ExpectedY, Row, Col }`, khớp với cách roadmap mô tả *"Master gửi ảnh đã mapping vị trí + ExpectedX/Y"*.
+
+**Thực tế trong Core:**
 
 ```csharp
+// Models/WorkflowModels.cs:160 — KHÔNG có ExpectedX/ExpectedY
+public sealed class CapturedImageInfo
+{
+    public string FilePath { get; set; }
+    public int Row { get; set; }
+    public int Column { get; set; }
+    public int OrderIndex { get; set; }
+    public int Width { get; set; }
+    public int Height { get; set; }
+    public string NaturalSortKey { get; set; }
+    public string SourceMetadata { get; set; }
+    public double RobotX { get; set; }
+    public double RobotY { get; set; }
+    public DateTime CapturedUtc { get; set; }
+    public OrderNodeState State { get; set; } = OrderNodeState.Pending;
+}
+```
+
+Toạ độ kỳ vọng nằm trong **manifest**, không phải trên ảnh:
+
+```csharp
+// Models/SampleManifest.cs:35 — ExpectedX/Y là int, thuộc SampleTileInfo
+public sealed class SampleTileInfo
+{
+    public int OrderIndex { get; set; }
+    public int Row { get; set; }
+    public int Column { get; set; }
+    public string ExpectedPath { get; set; }
+    public int ExpectedX { get; set; }
+    public int ExpectedY { get; set; }
+    // ... NccModelPath, ShapeModelPath, ROI, origin, SampleContentClass, thống kê gray
+}
+```
+
+Và hai bên được ghép **chỉ bằng `OrderIndex`**:
+
+```csharp
+// Mapping/WorkflowImageMap.cs:34-44
+var tileByOrder    = manifest.Tiles.ToDictionary(t => t.OrderIndex);
+var capturedByOrder = captured.ToDictionary(c => c.OrderIndex);
+// duplicate OrderIndex  -> InvalidOperationException
+// thiếu captured cho tile -> InvalidOperationException
+```
+
+### 1.1. Hệ quả cho hợp đồng Master→Worker
+
+Hợp đồng **đơn giản hơn** roadmap mô tả:
+
+| | Roadmap mô tả | Thực tế cần |
+|---|---|---|
+| Master gửi | manifest + ảnh **đã kèm ExpectedX/Y** | manifest (đã chứa ExpectedX/Y) + ảnh **chỉ cần gắn `OrderIndex`** |
+| Worker dựng | `CapturedImageInfo` với toạ độ | `CapturedImageInfo` với `OrderIndex` khớp manifest |
+
+> ⚠ **Ảnh hưởng Phase 3.2 và Phase 5.2:** DTO `TaskInfo` Master→Worker **không cần** mang toạ độ per-ảnh. Chỉ cần *manifest path* + danh sách `(OrderIndex, đường dẫn ảnh)`. Ghi lại để dùng khi viết doc Phase 3/5.
+>
+> **Rủi ro cần chặn:** `OrderIndex` lệch giữa Master và Worker sẽ khiến ảnh bị gán sai vị trí **mà không báo lỗi** (chỉ báo lỗi khi thiếu hoặc trùng). Façade phải validate `captured.Count == manifest.Tiles.Count` và tập `OrderIndex` khớp nhau **trước** khi gọi Core.
+
+---
+
+## 2. ✅ Model HALCON: đã chốt — thêm cờ cho người dùng chọn
+
+> **Trạng thái: ĐÃ TRIỂN KHAI (2026-08-07).** Phần dưới giữ lại phân tích để hiểu vì sao, và ghi cách dùng.
+
+### 2.0. Quyết định và những gì đã sửa
+
+Thay vì chọn cứng một trong hai phương án, **thêm một cờ cấu hình để người dùng quyết định từng lần chạy**, và **ghi lựa chọn đó vào `sample_manifest.json`** để Worker biết manifest có kèm model hay không.
+
+**Ba file Core đã sửa:**
+
+| File | Thay đổi |
+|---|---|
+| `Configuration/GerberSampleConfig.cs` | + `enum SampleModelGenerationMode { OnTheFly = 0, Pregenerate = 1 }`<br>+ `[DataMember] public SampleModelGenerationMode ModelGeneration` — default `OnTheFly` |
+| `Models/SampleManifest.cs` | + `[DataMember(Order = 17, EmitDefaultValue = false)] public string ModelGeneration` |
+| `Imaging/SampleTileGenerator.cs` | Bỏ comment khối sinh model, đặt sau cờ `pregenerateModels`; `BuildManifest` tra `nccMetadata` **null-safe** và ghi `ModelGeneration` vào manifest |
+
+```csharp
+// Configuration/GerberSampleConfig.cs
+public enum SampleModelGenerationMode
+{
+    /// Không ghi .ncm/.shm. Provider tự CreateModel trong bộ nhớ lúc chạy.
+    /// Mặc định — khớp các run đã kiểm chứng ở Phase 0.
+    OnTheFly = 0,
+
+    /// Phân tích nội dung tile; tile Matchable thì ghi .ncm + .shm và điền
+    /// đường dẫn/ROI/origin vào manifest để Worker ReadModel thay vì CreateModel.
+    Pregenerate = 1
+}
+```
+
+**Ba điểm cần biết khi dùng:**
+
+1. **Default là `OnTheFly`** — hành vi hiện hành không đổi. Manifest sinh ra vẫn để trống `NccModelPath`/`ShapeModelPath`, các trường thống kê gray = 0, `SampleContentClass` = null. Không có hồi quy với các run Phase 0.
+2. **`Pregenerate` chỉ ghi model cho tile `Matchable`.** Tile `ExactZero` / `UniformNonZero` / `LowTexture` không có model — đúng ý đồ, vì tạo shape model trên vùng không có nội dung là vô nghĩa. Manifest của những tile đó vẫn để trống đường dẫn, và provider sẽ tự xử lý.
+3. **Manifest cũ không có trường `ModelGeneration`** → deserialize ra `null`, hiểu là `OnTheFly`. Tương thích ngược.
+
+**Vì sao đáng làm:** `Direct Alignment` chiếm **90% tổng thời gian** (222/247 s — `Phase0_Closeout.md` §1.1), và chi phí `CreateShapeModel` cho từng tile nằm trong đó, **lặp lại ở mọi lô**. Với `Pregenerate`, chi phí này trả một lần ở Master lúc Prepare thay vì mọi lô ở Worker.
+
+> ⚠ **Chưa có số đo cho `Pregenerate`.** Mức tiết kiệm thật phải đo bằng harness Task 1.5 — chạy cùng dataset ở cả 2 chế độ rồi so `Direct Alignment`. Đừng giả định trước là sẽ nhanh hơn: `ReadShapeModel` từ đĩa cũng tốn thời gian, và lợi ích phụ thuộc tỉ lệ tile `Matchable` (dataset tham chiếu chỉ 54/80).
+
+### 2.1. Hiện trạng trước khi sửa *(bối cảnh)*
+
+Roadmap task 2.2 và 2.4 giả định Master sinh `.shm`/`.ncm` per tile rồi ghi ra ổ chia sẻ cho Worker đọc. Thực tế:
+
+1. **Code sinh model trong Core đang bị comment.** `Imaging/SampleTileGenerator.cs:84-91` — cả khối `AnalyzeContent` / `WriteNccModel` / `WriteShapeModel` bị vô hiệu hoá. Hàm `WriteNccModel` (`:216`) và `WriteShapeModel` (`:260`) vẫn còn nhưng **không ai gọi**. Do đó `nccMetadata` luôn rỗng → `BuildManifest` sinh manifest **không có** `NccModelPath`/`ShapeModelPath`.
+2. **Không có file model nào tồn tại.** Quét `result_20260807\` và `GerberViewer\`: **0** file `.shm`, **0** file `.ncm`.
+3. **Pipeline vẫn chạy đúng.** Provider tự tạo model khi không có file:
+
+```csharp
+// Matching/Halcon/HalconShapeModelProvider.cs:95-109 (rút gọn)
+if (!string.IsNullOrWhiteSpace(request.ReferenceShapeModelPath)
+    && File.Exists(request.ReferenceShapeModelPath))
+    HOperatorSet.ReadShapeModel(request.ReferenceShapeModelPath, out modelId);
+else
+    HOperatorSet.CreateShapeModel(/* ... tạo tại chỗ từ ảnh sample ... */);
+```
+
+**Kết luận:** run tham chiếu `110300` dùng `HalconShapeModelMatcher` cho 54 tile bằng model **tạo trong bộ nhớ lúc chạy**, không đọc file.
+
+### 2.2. Vì sao điều này quan trọng
+
+`Direct Alignment` chiếm **90% tổng thời gian** (222/247 s — `Phase0_Closeout.md` §1.1). Chi phí `CreateShapeModel` cho từng tile nằm trong đó và **lặp lại ở mọi lô**. Sinh model sẵn một lần ở Master chính là ý đồ tối ưu của roadmap.
+
+### 2.3. Hai chế độ — so sánh
+
+| | **`OnTheFly`** *(default)* | **`Pregenerate`** |
+|---|---|---|
+| Master sinh | Tile ảnh + manifest | Thêm `.ncm` + `.shm` cho tile Matchable |
+| Worker mỗi lô | `CreateShapeModel` tại chỗ | `ReadShapeModel` từ đĩa |
+| Ổ chia sẻ | Chỉ manifest + ảnh tile | Thêm ~2 file/tile Matchable |
+| Manifest | Đường dẫn model = null, thống kê gray = 0 | Có đường dẫn + ROI + origin + thống kê gray |
+| Trạng thái kiểm chứng | ✅ 6 run Phase 0 | ⚠ Chưa đo — xem cảnh báo §2.0 |
+
+`GenerateSampleManifest` (§3.1) **không đổi signature** giữa 2 chế độ. Chế độ đọc từ `RdlGridConfig.ModelGeneration` và truyền xuống `GerberSampleConfig.ModelGeneration`.
+
+---
+
+## 3. API façade
+
+Toàn bộ đặt trong `RDL.GerberStitch.Facade.GerberStitchFacade` (đã `public sealed` từ Task 1.1).
+
+### 3.1. `GenerateSampleManifest` — Master gọi khi Prepare (S002)
+
+```csharp
+// [Claude] [Change time: 2026-08-07] [Purpose: Master sinh sample tile + manifest từ Gerber tại Prepare, không cần biết pipeline Core.]
 /// <summary>
-/// Sinh SampleManifest + HALCON models (.shm/.ncm) từ file Gerber.
-/// Master gọi hàm này tại Prepare (S002).
+/// Render file Gerber, cắt thành lưới sample tile, ghi manifest.
 /// </summary>
-/// <param name="gerberFilePath">Đường dẫn file Gerber (.gbr/.ger)</param>
-/// <param name="gridCfg">Cấu hình grid: rows, cols, overlap, px/mm</param>
-/// <param name="outputDir">Folder output ghi manifest + model files</param>
-/// <returns>Đường dẫn file manifest JSON đã ghi</returns>
+/// <returns>Đường dẫn file manifest JSON đã ghi.</returns>
 public string GenerateSampleManifest(
     string gerberFilePath,
-    GridConfig gridCfg,
-    string outputDir)
+    RdlGridConfig grid,
+    string outputRoot,
+    CancellationToken cancellationToken = default(CancellationToken))
 ```
 
-**Bên trong bọc:**
-- `SampleTileGenerator` (từ Core) → sinh sample tiles từ Gerber
-- Tạo HALCON NCC/Shape model per tile → ghi `.shm` / `.ncm` vào `outputDir`
-- Serialize `SampleManifest` ra JSON → ghi vào `outputDir`
-- Return đường dẫn manifest JSON
+**Chuỗi gọi bên trong** — 5 bước, tất cả đều là API đã tồn tại:
 
-**Đầu vào:**
-
-| Param | Mô tả | Ví dụ |
+| # | Gọi | File Core / GerberEngine |
 |---|---|---|
-| `gerberFilePath` | File Gerber gốc | `Z:\Recipe\BoardA\design.gbr` |
-| `gridCfg` | Grid config | `{ Rows=8, Cols=10, OverlapPx=50, PxPerMm=25.4 }` |
-| `outputDir` | Folder output trên ổ chia sẻ | `Z:\GerberStitch\BatchXXX\manifest\` |
+| 1 | `GerberEngineFacade.LoadLayer(gerberFilePath)` | `GerberEngine/GerberEngine.cs:66` |
+| 2 | `GerberEngineFacade.RenderCombined(RenderOptions)` → `Bitmap` | `GerberEngine/GerberEngine.cs:123` |
+| 3 | `Bitmap` → `HObject` | `Core/Imaging/ImageInterop/ImageInteropService.cs` |
+| 4 | `SamplePreparationService.Prepare(hObject, GerberSampleConfig, ct)` → `PreparedSampleRun` | `Core/Imaging/PreparedSampleRun.cs:64` |
+| 5 | `SampleTileGenerator.GenerateAsync(run, outputRoot, ct, progress)` → `SampleCropResult` | `Core/Imaging/SampleTileGenerator.cs:23` |
 
-**Đầu ra:**
-
-| Item | Vị trí |
-|---|---|
-| File manifest JSON | `<outputDir>\SampleManifest.json` |
-| HALCON model files | `<outputDir>\tile_R0C0.shm`, `tile_R0C1.ncm`, ... |
-| Return value | Đường dẫn đầy đủ tới `SampleManifest.json` |
-
----
-
-### 2. `RunAlignStitch` — dùng ở Worker
+Signature thật của bước 5 — **dùng đúng, không tự chế**:
 
 ```csharp
-/// <summary>
-/// Chạy trọn Align → PoseGraph → Stitch cho cả lô.
-/// Worker gọi hàm này khi nhận batch dispatch.
-/// Bọc AlignStitchWorkflowService.RunAsync từ Core.
-/// </summary>
-/// <param name="manifestPath">Đường dẫn manifest JSON (từ Master)</param>
-/// <param name="capturedImages">Danh sách ảnh đã chụp + toạ độ ExpectedX/Y</param>
-/// <param name="config">Config align/stitch (HALCON engine)</param>
-/// <param name="outputDir">Folder ghi Stitched.tiff</param>
-/// <param name="progress">Optional: callback progress</param>
-/// <param name="cancellationToken">Optional: cancellation</param>
-/// <returns>StitchResult chứa đường dẫn ảnh output + metadata</returns>
-public async Task<StitchResult> RunAlignStitch(
+public Task<SampleCropResult> GenerateAsync(
+    PreparedSampleRun preparedRun,
+    string outputRoot,
+    CancellationToken cancellationToken,
+    IProgress<SampleCropProgress> progress)
+
+// SampleCropResult { string OutputDirectory; string ManifestPath; bool Completed; }
+```
+
+`GenerateSampleManifest` trả về `SampleCropResult.ManifestPath`.
+
+> **`PreparedSampleRun` là `IDisposable`** và giữ 2 `HObject` (`SourceImage`, `ProcessedImage`). Bọc trong `using`, nếu không sẽ rò native memory HALCON qua từng lần Prepare.
+
+**Ánh xạ `RdlGridConfig` → `GerberSampleConfig` của Core:**
+
+> ⚠ Có **hai** class tên `GerberSampleConfig`. Cái đúng là bản trong **`Configuration/`** — đó là kiểu mà `SamplePreparationService.Prepare` nhận (`Imaging/PreparedSampleRun.cs` có `using GerberViewer.Stitching.Configuration;`). Bản trong `Models/WorkflowModels.cs:64` nghèo trường hơn và **không** dùng ở đường này.
+
+```csharp
+// Configuration/GerberSampleConfig.cs — bản ĐÚNG, kèm default thật
+public sealed class GerberSampleConfig
+{
+    public string SourceRasterPath { get; set; }
+    public string OutputDirectory { get; set; }
+    public int Rows { get; set; } = 8;
+    public int Columns { get; set; } = 10;                       // "Columns", không phải "Cols"
+    public OrderMode CropOrder { get; set; } = OrderMode.Zigzag;
+    public StartOrder StartOrder { get; set; } = StartOrder.TopLeftDown;
+    public bool InvertImage { get; set; } = false;
+    public double OverlapValue { get; set; } = 70;
+    public OverlapUnit OverlapUnit { get; set; } = OverlapUnit.Pixel;   // Pixel | Percent
+    public SamplePreprocessMode PreprocessMode { get; set; } = SamplePreprocessMode.None;
+    public bool KeepAspectRatio { get; set; } = true;
+    public SampleOutputFormat OutputFormat { get; set; } = SampleOutputFormat.Tiff;
+    public SampleModelGenerationMode ModelGeneration { get; set; }      // ← thêm ở §2
+    public string TileNamePattern { get; set; } = "Sample_R{row:00}_C{col:00}_O{order:000}";
+    public int ProcessedWidth { get; set; } = 4096;
+    public int ProcessedHeight { get; set; } = 4096;
+}
+```
+
+**Default `Rows=8, Columns=10` = 80 tile — đúng bằng dataset tham chiếu Phase 0.** Overlap là `OverlapValue` + `OverlapUnit` (70 px), **không** phải `PxPerMm` như DTO cũ bịa ra.
+
+### 3.1.1. Thứ tự tile — rắn bò theo cột
+
+`StartOrder.TopLeftDown` + `CropOrder.Zigzag` (cả hai đều là default) tạo ra đường đi **rắn bò từ trên xuống theo từng cột, đảo chiều ở cột lẻ**:
+
+```csharp
+// Imaging/SampleGridGeometry.cs:97-102
+bool vertical = c.StartOrder == StartOrder.TopLeftDown || c.StartOrder == StartOrder.BottomRightUp;
+// vertical: duyệt cột ngoài, hàng trong
+for (int cc = 0; cc < c.Columns; cc++) {
+    var rows = Enumerable.Range(0, c.Rows)...;
+    if (c.CropOrder == OrderMode.Zigzag && cc % 2 == 1) rows.Reverse();   // ← đảo chiều cột lẻ
+    foreach (var row in rows) yield return Tuple.Create(row, col);
+}
+```
+
+`OrderIndex` được gán theo đúng thứ tự duyệt này, và `ExpectedX/Y` = **toạ độ góc tile khi cắt khỏi ảnh sample** (`BuildManifest`: `ExpectedX = t.Rectangle.X`). Sau khi Direct Alignment → Neighbor Alignment → Pose Graph xong, khâu stitch dựng lại vị trí toàn cục dựa trên `ExpectedX/Y` cộng với pose đã hiệu chỉnh.
+
+> 🔴 **Hệ quả cho harness và cho Worker:** thứ tự ảnh chụp phải khớp đường rắn bò này, **không** phải thứ tự quét hàng ngang thông thường. Sắp xếp nhầm sang row-major sẽ gán sai toàn bộ `OrderIndex` mà không có lỗi nào báo ra. Xem Task 1.5 §2.1.
+
+### 3.2. `RunAlignStitch` — Worker gọi khi nhận lô
+
+```csharp
+// [Claude] [Change time: 2026-08-07] [Purpose: Worker chạy trọn Align→PoseGraph→Stitch cho cả lô qua một lời gọi.]
+public async Task<RdlStitchResult> RunAlignStitch(
     string manifestPath,
-    IList<CapturedImageInfo> capturedImages,
-    AlignStitchConfig config,
-    string outputDir,
-    IProgress<WorkflowProgress> progress = null,
-    CancellationToken cancellationToken = default)
+    IList<RdlCapturedTile> capturedTiles,
+    RdlAlignStitchOptions options,
+    string outputPath,
+    IProgress<RdlStitchProgress> progress = null,
+    CancellationToken cancellationToken = default(CancellationToken))
 ```
 
-**Bên trong bọc:**
-1. Deserialize manifest từ `manifestPath`
-2. Load HALCON models (`HalconShapeModelProvider` / `HalconNccModelProvider`) từ folder manifest
-3. Build input cho `AlignStitchWorkflowService.RunAsync`:
-   - Map `CapturedImageInfo` → internal `CapturedImageInfo` của Core
-   - Set config (engine = HALCON, method = NCC/ShapeModel)
-4. Gọi `AlignStitchWorkflowService.RunAsync` (Align per-tile → `GlobalPoseGraphOptimizer` → `WorkflowStitchingService.Stitch`)
-5. Output `Stitched.tiff` → ghi vào `outputDir`
-6. Return `StitchResult`
+**Bên trong:**
 
-**Đầu vào:**
+1. Deserialize `SampleManifest` từ `manifestPath`.
+2. **Validate** `capturedTiles` ↔ `manifest.Tiles` theo `OrderIndex` (xem §1.1) — sai thì trả `RdlStitchResult` lỗi, **không** để Core ném exception.
+3. Map `RdlCapturedTile` → `CapturedImageInfo` (gán `FilePath`, `OrderIndex`, `Row`, `Column`).
+4. Map `RdlAlignStitchOptions` → `AlignStitchConfig` của Core — **chi tiết ở Task 1.4**.
+5. Gọi:
 
-| Param | Mô tả | Ví dụ |
-|---|---|---|
-| `manifestPath` | Manifest JSON từ Master | `Z:\GerberStitch\BatchXXX\manifest\SampleManifest.json` |
-| `capturedImages` | List ảnh + toạ độ đã map | `[{Path="Z:\img\R0C0.bmp", ExpectedX=0, ExpectedY=0}, ...]` |
-| `config` | Config engine | `{ AlignmentMethod=HalconNcc, StitchingEngine=HalconProjectiveMosaicRebased }` |
-| `outputDir` | Folder ghi kết quả | `Z:\GerberStitch\BatchXXX\output\` |
+```csharp
+// Alignment/AlignStitchWorkflowService.cs:58 — signature thật
+public Task<AlignStitchWorkflowResult> RunAsync(
+    AlignStitchConfig config,
+    SampleManifest manifest,
+    IList<CapturedImageInfo> captured,
+    IProgress<WorkflowProgress> progress,
+    CancellationToken cancellationToken)
+```
 
-**Đầu ra:**
+6. Map `AlignStitchWorkflowResult` → `RdlStitchResult`.
 
-| Item | Vị trí |
-|---|---|
-| `Stitched.tiff` | `<outputDir>\Stitched.tiff` |
-| Return `StitchResult` | `{ TiffPath, SeamResidualPx, ElapsedMs, TileCount, FailedTiles[] }` |
+> `RunAsync` **không** nhận `outputPath` riêng — đường dẫn output nằm trong `config.OutputPath` / `config.Output.OutputPath`. Façade nhận `outputPath` rồi gán vào config, giữ chữ ký façade dễ dùng cho Worker.
+>
+> Core có sẵn `AlignStitchConfigMapper.CloneForRun(source, outputPath)` (`Configuration/AlignStitchConfigMapper.cs:187`) làm đúng việc này — **dùng lại, không tự viết**.
 
 ---
 
-## DTO Definitions
+## 4. DTO façade
 
-### `GridConfig`
+Quy ước tiền tố `Rdl` (lý do ở Task 1.1 §2 — tránh trùng type public của Core).
 
-```csharp
-public class GridConfig
-{
-    public int Rows { get; set; }
-    public int Cols { get; set; }
-    public int OverlapPx { get; set; }
-    public double PxPerMm { get; set; }
-}
+```
+RDL.GerberStitch/Facade/
+├── GerberStitchFacade.cs          ← 2 hàm ở §3
+├── RdlAlignStitchOptions.cs       ← Task 1.4
+└── Models/
+    ├── RdlGridConfig.cs
+    ├── RdlCapturedTile.cs
+    ├── RdlStitchResult.cs
+    └── RdlStitchProgress.cs
 ```
 
-### `CapturedImageInfo`
-
 ```csharp
-public class CapturedImageInfo
+// [Claude] [Change time: 2026-08-07] [Purpose: DTO grid cho Master; ánh xạ 1-1 sang Configuration.GerberSampleConfig của Core.]
+public sealed class RdlGridConfig
 {
-    /// <summary>Đường dẫn ảnh tile đã chụp (bmp/tiff)</summary>
-    public string ImagePath { get; set; }
+    public int Rows { get; set; } = 8;
+    public int Columns { get; set; } = 10;
+    /// <summary>Độ chồng lấn. Đơn vị theo OverlapUnit.</summary>
+    public double OverlapValue { get; set; } = 70;
+    /// <summary>"Pixel" | "Percent".</summary>
+    public string OverlapUnit { get; set; } = "Pixel";
+    /// <summary>Kích thước tile sau xử lý (px).</summary>
+    public int ProcessedWidth { get; set; } = 4096;
+    public int ProcessedHeight { get; set; } = 4096;
+    /// <summary>Thứ tự quét. "TopLeftDown" + Zigzag = rắn bò theo cột (§3.1.1).</summary>
+    public string StartOrder { get; set; } = "TopLeftDown";
+    /// <summary>"Zigzag" | "Raster".</summary>
+    public string CropOrder { get; set; } = "Zigzag";
+    /// <summary>"OnTheFly" (default) | "Pregenerate" — xem §2.</summary>
+    public string ModelGeneration { get; set; } = "OnTheFly";
+}
 
-    /// <summary>Toạ độ X kỳ vọng (pixel, đã map từ die coordinate)</summary>
-    public double ExpectedX { get; set; }
-
-    /// <summary>Toạ độ Y kỳ vọng (pixel, đã map từ die coordinate)</summary>
-    public double ExpectedY { get; set; }
-
-    /// <summary>Row index trong grid (0-based)</summary>
+// [Claude] [Change time: 2026-08-07] [Purpose: Ảnh chụp gắn OrderIndex — toạ độ kỳ vọng lấy từ manifest, không truyền kèm.]
+public sealed class RdlCapturedTile
+{
+    public string FilePath { get; set; }
+    /// <summary>Khoá ghép với SampleTileInfo.OrderIndex. Bắt buộc đúng.</summary>
+    public int OrderIndex { get; set; }
     public int Row { get; set; }
+    public int Column { get; set; }
+}
 
-    /// <summary>Column index trong grid (0-based)</summary>
-    public int Col { get; set; }
+public sealed class RdlStitchProgress
+{
+    public int Current { get; set; }
+    public int Total { get; set; }
+    public string Stage { get; set; }
 }
 ```
 
-### `StitchResult`
+### 4.1. `RdlStitchResult` — chú ý cách đếm tile
 
 ```csharp
-public class StitchResult
+public sealed class RdlStitchResult
 {
     public bool Success { get; set; }
-
-    /// <summary>Đường dẫn đầy đủ tới Stitched.tiff</summary>
     public string TiffPath { get; set; }
-
-    /// <summary>Seam residual trung bình (pixel)</summary>
-    public double SeamResidualPx { get; set; }
-
-    /// <summary>Thời gian xử lý (ms)</summary>
     public long ElapsedMs { get; set; }
 
-    /// <summary>Tổng số tile đã xử lý</summary>
+    /// <summary>Tổng tile theo manifest. KHÔNG lấy từ TileReports.Count — xem ghi chú.</summary>
     public int TileCount { get; set; }
 
-    /// <summary>Danh sách tile align thất bại (nếu có)</summary>
-    public List<FailedTileInfo> FailedTiles { get; set; }
+    /// <summary>Tile khớp bằng ảnh (PoseSource.SampleAlignment / NeighborAlignment).</summary>
+    public int AlignedTileCount { get; set; }
 
-    /// <summary>Mã lỗi RDL nếu fail toàn bộ (-300 = stitch fail)</summary>
+    /// <summary>Tile sample rỗng, đặt theo grid pose danh định. KHÔNG phải lỗi.</summary>
+    public int BlankTileCount { get; set; }
+
+    /// <summary>Tile thất bại thật sự.</summary>
+    public IList<RdlFailedTile> FailedTiles { get; set; } = new List<RdlFailedTile>();
+
+    /// <summary>Mã lỗi RDL. 0 = OK, -300 = stitch fail.</summary>
     public int ErrorCode { get; set; }
+
+    public IList<string> Warnings { get; set; } = new List<string>();
 }
 
-public class FailedTileInfo
+public sealed class RdlFailedTile
 {
+    public int OrderIndex { get; set; }
     public int Row { get; set; }
-    public int Col { get; set; }
-    public string Reason { get; set; }  // map từ MatchFailureReason
+    public int Column { get; set; }
+    public string Reason { get; set; }
 }
 ```
 
+**Hai quy tắc bắt buộc khi map kết quả:**
+
+1. **`TileCount` lấy từ `manifest.Tiles.Count`**, không lấy `report.TileReports.Count`. Lý do: run tham chiếu có `TileReports` = **85** trong khi thực tế **80** tile (`Phase0_Closeout.md` §6.1 — chênh 5 chưa lý giải được). Dùng nhầm sẽ báo sai số về Master.
+
+2. **Blank tile không phải lỗi.** Phân loại theo `PoseSource`, không theo `runStatus`:
+
+```csharp
+// [Claude] [Change time: 2026-08-07] [Purpose: Tách blank hợp lệ khỏi fail thật; mọi run đều CompletedWithFallback nên không dùng runStatus để kết luận.]
+foreach (var pose in report.Poses)
+{
+    if (pose.Source == PoseSource.SampleAlignment || pose.Source == PoseSource.NeighborAlignment)
+        result.AlignedTileCount++;
+    else if (pose.Source == PoseSource.BlankSampleExpectedPose)
+        result.BlankTileCount++;   // hợp lệ — board có vùng trống
+    else
+        result.FailedTiles.Add(/* ... */);
+}
+```
+
+> 🔴 Nếu coi `runStatus == CompletedWithFallback` là lỗi thì **mọi lô đều báo fail** — cả 6 run Phase 0 đều trả trạng thái này (`Phase0_Closeout.md` §4.2).
+
 ---
 
-## Nơi lấy code bọc (mapping Core → Façade)
+## 5. Xử lý lỗi
 
-| Façade method | Core class cần bọc | File trong Core |
-|---|---|---|
-| `GenerateSampleManifest` | `SampleTileGenerator` | `GerberStitching.Core/SampleTile/SampleTileGenerator.cs` |
-| `GenerateSampleManifest` | `HalconNccModelProvider` / `HalconShapeModelProvider` | `GerberStitching.Core/Alignment/Halcon/` |
-| `RunAlignStitch` | `AlignStitchWorkflowService.RunAsync` | `GerberStitching.Core/Workflow/AlignStitchWorkflowService.cs` |
-| `RunAlignStitch` | `GlobalPoseGraphOptimizer` | `GerberStitching.Core/PoseGraph/GlobalPoseGraphOptimizer.cs` |
-| `RunAlignStitch` | `WorkflowStitchingService.Stitch` | `GerberStitching.Core/Stitching/WorkflowStitchingService.cs` |
-
-> **Lưu ý:** Kiểm tra lại tên file/namespace chính xác trong repo clone Phase 0. Bảng trên dựa trên cấu trúc branch `2026-08-04_Ver4_implement_claude`.
+- `GenerateSampleManifest`: lỗi parse Gerber / prepare / crop → ném `GerberStitchException` (exception mới, đặt trong `Facade/`). Master bắt để trả `S002-999`.
+- `RunAlignStitch`: **không ném** ra ngoài. Mọi lỗi gói trong `RdlStitchResult` (`Success=false`, `ErrorCode=-300`, `FailedTiles`). Worker chạy nền, exception thoát ra sẽ khó truy vết.
+- `OperationCanceledException` do `CancellationToken`: cho phép ném ra — đây là hành vi mong đợi khi `StopAsk`, không phải lỗi.
 
 ---
 
-## Error handling
+## 6. Danh sách file thay đổi
 
-- `GenerateSampleManifest`: nếu Gerber parse lỗi / model generation fail → throw `GerberStitchException` (custom exception, message rõ ràng) — Master bắt để trả `S002-999`
-- `RunAlignStitch`: nếu align fail 1 vài tile → ghi vào `FailedTiles[]`, vẫn stitch phần còn lại (partial success). Nếu fail quá ngưỡng hoặc stitch fail toàn bộ → `Success=false`, `ErrorCode=-300`
-- Không throw unhandled — tất cả lỗi gói trong `StitchResult` hoặc `GerberStitchException`
+| File | Thay đổi |
+|---|---|
+| `RDL.GerberStitch/Facade/GerberStitchFacade.cs` | + `GenerateSampleManifest`, + `RunAlignStitch` |
+| `RDL.GerberStitch/Facade/GerberStitchException.cs` | **mới** |
+| `RDL.GerberStitch/Facade/Models/RdlGridConfig.cs` | **mới** |
+| `RDL.GerberStitch/Facade/Models/RdlCapturedTile.cs` | **mới** |
+| `RDL.GerberStitch/Facade/Models/RdlStitchResult.cs` | **mới** (+ `RdlFailedTile`) |
+| `RDL.GerberStitch/Facade/Models/RdlStitchProgress.cs` | **mới** |
+| `RDL.GerberStitch/Internal/CoreResultMapper.cs` | **mới** — map `AlignStitchWorkflowResult` → `RdlStitchResult` (§4.1) |
+| `RDL.GerberStitch/RDL.GerberStitch.csproj` | + `<Compile Include>` cho các file trên |
+
+**Đã sửa trong `GerberStitching.Core` theo quyết định §2 (2026-08-07):**
+
+| File | Thay đổi |
+|---|---|
+| `Configuration/GerberSampleConfig.cs` | + `enum SampleModelGenerationMode`; + property `ModelGeneration` (default `OnTheFly`) |
+| `Models/SampleManifest.cs` | + `ModelGeneration` (Order 17, `EmitDefaultValue = false`) |
+| `Imaging/SampleTileGenerator.cs` | Kích hoạt sinh model sau cờ `pregenerateModels`; `BuildManifest` tra metadata null-safe + ghi `ModelGeneration` |
+
+**Không đụng:** `GerberEngine`, và mọi file Core khác.
 
 ---
 
-## Exit gate
+## 7. Tiêu chí nghiệm thu
 
-- [ ] `GenerateSampleManifest` gọi được từ console test, output manifest JSON + model files vào folder chỉ định
-- [ ] `RunAlignStitch` gọi được từ harness Phase 0.3 (thay thế call trực tiếp vào Core) — output `Stitched.tiff` giống kết quả Phase 0
-- [ ] Cả 2 hàm có XML doc comment đầy đủ
-- [ ] DTO `GridConfig`, `CapturedImageInfo`, `StitchResult` compile sạch, serializable (cho Phase 5 dùng JSON)
+1. Build sạch `Debug|x64` và `Release|x64`.
+2. Từ console project: gọi được cả 2 hàm façade, **không** cần `using GerberViewer.Stitching.*`.
+3. `GenerateSampleManifest` với 1 file Gerber thật → ra thư mục tile + `SampleManifest.json` đọc được, `manifest.Tiles.Count == Rows * Columns`.
+4. `RunAlignStitch` với manifest + 80 ảnh của dataset Phase 0 → `Stitched.tiff` **giống kết quả run `110300`** (so kích thước file và `maxMatrixResidual`).
+5. `RdlStitchResult` của run đó cho: `TileCount = 80`, `BlankTileCount = 26`, `AlignedTileCount = 59`, `FailedTiles.Count = 0`, `Success = true`, `ErrorCode = 0`.
+6. Truyền `capturedTiles` thiếu 1 `OrderIndex` → trả `Success=false` kèm message rõ, **không** ném exception.
+7. Truyền `capturedTiles` trùng `OrderIndex` → tương tự mục 6.
+8. Chạy 2 lần liên tiếp trong cùng process → RAM không tăng tích luỹ (chứng minh `PreparedSampleRun`/`HObject` được dispose).
+9. **Chế độ model (§2):**
+   - `ModelGeneration = "OnTheFly"` → thư mục tiles **không** có `.ncm`/`.shm`; manifest có `"modelGeneration": "OnTheFly"`, mọi `nccModelPath`/`shapeModelPath` = null. Kết quả stitch **giống hệt** run `110300`.
+   - `ModelGeneration = "Pregenerate"` → tile `Matchable` có đủ `.ncm` + `.shm`; manifest điền đường dẫn + ROI + `sampleContentClass`. Số file model = số tile Matchable (dataset tham chiếu: **54**, không phải 80).
+   - Manifest cũ (không có trường `modelGeneration`) vẫn đọc được, hiểu là `OnTheFly`.
+10. So `Direct Alignment` giữa 2 chế độ trên **cùng** dataset — ghi lại con số. Đây là dữ liệu chưa ai có (§2.0).
+
+---
+
+## 8. Rủi ro
+
+| Rủi ro | Giảm thiểu |
+|---|---|
+| **§2 chưa quyết** → không code được phần model của `GenerateSampleManifest` | Làm theo phương án A trước; signature không đổi khi chuyển B |
+| `OrderIndex` lệch → ảnh gán sai vị trí, **không có lỗi báo ra** | Validate ở façade (§3.2 bước 2), không phó mặc Core |
+| Dùng `TileReports.Count` làm `TileCount` → sai số báo về Master | §4.1 quy tắc 1; nghiệm thu mục 5 chốt con số |
+| Coi mọi fallback pose là lỗi → mọi lô báo fail | §4.1 quy tắc 2; phân loại theo `PoseSource` |
+| Rò native memory HALCON qua `PreparedSampleRun` | `using`; nghiệm thu mục 8 |
+| `RdlGridConfig` đặt sai trường → phải bịa công thức quy đổi | §3.1 — bám đúng `GerberSampleConfig`; chờ blocker 4 để có giá trị thật |

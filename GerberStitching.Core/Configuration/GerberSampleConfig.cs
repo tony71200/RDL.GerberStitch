@@ -30,6 +30,24 @@ namespace GerberViewer.Stitching.Configuration
         Jpeg = 4,
     }
 
+    // [Claude] [Change time: 2026-08-07] [Purpose: Cho người dùng chọn sinh sẵn model HALCON ra đĩa hay để matcher tạo tại chỗ lúc chạy; ghi lại lựa chọn vào sample_manifest.json để Worker biết nguồn model.]
+    [DataContract]
+    public enum SampleModelGenerationMode
+    {
+        /// <summary>
+        /// Không ghi .ncm/.shm. Manifest để trống đường dẫn model;
+        /// HalconNccModelProvider/HalconShapeModelProvider tự CreateModel trong bộ nhớ lúc chạy.
+        /// Đây là hành vi mặc định, khớp với các run đã kiểm chứng ở Phase 0.
+        /// </summary>
+        OnTheFly = 0,
+
+        /// <summary>
+        /// Phân tích nội dung từng tile; tile Matchable thì ghi .ncm + .shm cạnh ảnh tile
+        /// và điền đường dẫn/ROI/origin vào manifest để Worker ReadModel thay vì CreateModel.
+        /// </summary>
+        Pregenerate = 1
+    }
+
     [DataContract]
     public sealed class GerberSampleConfig
     {
@@ -57,6 +75,9 @@ namespace GerberViewer.Stitching.Configuration
         public bool KeepAspectRatio { get; set; } = true;
         [DataMember]
         public SampleOutputFormat OutputFormat { get; set; } = SampleOutputFormat.Tiff;
+        // [Claude] [Change time: 2026-08-07] [Purpose: Người dùng chọn chế độ sinh model HALCON; default OnTheFly giữ nguyên hành vi hiện hành.]
+        [DataMember]
+        public SampleModelGenerationMode ModelGeneration { get; set; } = SampleModelGenerationMode.OnTheFly;
         [DataMember]
         public string TileNamePattern { get; set; } = "Sample_R{row:00}_C{col:00}_O{order:000}";
         [DataMember]
