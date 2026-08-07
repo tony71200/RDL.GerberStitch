@@ -30,20 +30,20 @@ namespace GerberViewer.Stitching.Configuration
         Jpeg = 4,
     }
 
-    // [Claude] [Change time: 2026-08-07] [Purpose: Cho người dùng chọn sinh sẵn model HALCON ra đĩa hay để matcher tạo tại chỗ lúc chạy; ghi lại lựa chọn vào sample_manifest.json để Worker biết nguồn model.]
+    // [Claude] [Change time: 2026-08-07] [Purpose: Let users either pre-generate HALCON models on disk or let the matcher create them at runtime; persist the choice in sample_manifest.json so Worker knows the model source.]
     [DataContract]
     public enum SampleModelGenerationMode
     {
         /// <summary>
-        /// Không ghi .ncm/.shm. Manifest để trống đường dẫn model;
-        /// HalconNccModelProvider/HalconShapeModelProvider tự CreateModel trong bộ nhớ lúc chạy.
-        /// Đây là hành vi mặc định, khớp với các run đã kiểm chứng ở Phase 0.
+        /// Does not write .ncm/.shm files. Model paths remain empty in the manifest;
+        /// HalconNccModelProvider/HalconShapeModelProvider create models in memory at runtime.
+        /// This is the default behavior and matches the verified Phase 0 runs.
         /// </summary>
         OnTheFly = 0,
 
         /// <summary>
-        /// Phân tích nội dung từng tile; tile Matchable thì ghi .ncm + .shm cạnh ảnh tile
-        /// và điền đường dẫn/ROI/origin vào manifest để Worker ReadModel thay vì CreateModel.
+        /// Analyzes each tile; for Matchable tiles, writes .ncm and .shm beside the tile image
+        /// and records paths, ROI, and origin in the manifest so Worker calls ReadModel instead of CreateModel.
         /// </summary>
         Pregenerate = 1
     }
@@ -75,7 +75,7 @@ namespace GerberViewer.Stitching.Configuration
         public bool KeepAspectRatio { get; set; } = true;
         [DataMember]
         public SampleOutputFormat OutputFormat { get; set; } = SampleOutputFormat.Tiff;
-        // [Claude] [Change time: 2026-08-07] [Purpose: Người dùng chọn chế độ sinh model HALCON; default OnTheFly giữ nguyên hành vi hiện hành.]
+        // [Claude] [Change time: 2026-08-07] [Purpose: Let users select HALCON model generation mode; OnTheFly remains the default to preserve existing behavior.]
         [DataMember]
         public SampleModelGenerationMode ModelGeneration { get; set; } = SampleModelGenerationMode.OnTheFly;
         [DataMember]

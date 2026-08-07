@@ -14,8 +14,8 @@ namespace GerberEngine
 {
     public sealed class MacroShape
     {
-        public GraphicsPath Path;     // mm, cuc bo, Y len
-        public bool ExposureOn;       // false = khoet (erase)
+        public GraphicsPath Path;     // mm, local coordinates, Y up
+        public bool ExposureOn;       // false = cut out (erase)
     }
 
     public static class ApertureMacroProcessor
@@ -58,16 +58,16 @@ namespace GerberEngine
                         case 21: shapes.Add(CenterLine(m, unitScale)); break;
 
                         case 6: // Moire - decline: outer circle
-                            warnings.Add("Macro '" + macro.Name + "': primitive 6 (moire) suy giam ve circle");
+                            warnings.Add("Macro '" + macro.Name + "': primitive 6 (moire) approximated as a circle");
                             shapes.Add(ApproxCircle(m[0], m[1], m[2], unitScale, true));
                             break;
                         case 7: // Thermal - deterioration: dry rim (outer on, inner off)
-                            warnings.Add("Macro '" + macro.Name + "': primitive 7 (thermal) suy giam ve vanh khan");
+                            warnings.Add("Macro '" + macro.Name + "': primitive 7 (thermal) approximated as an annulus");
                             shapes.Add(ApproxCircle(m[0], m[1], m[2], unitScale, true));
                             shapes.Add(ApproxCircle(m[0], m[1], m[3], unitScale, false));
                             break;
                         default:
-                            warnings.Add("Macro '" + macro.Name + "': primitive " + code + " chua ho tro - bo qua");
+                            warnings.Add("Macro '" + macro.Name + "': primitive " + code + " is unsupported; skipping");
                             break;
                     }
                 }
@@ -94,7 +94,7 @@ namespace GerberEngine
 
         private static MacroShape Outline(double[] m, double s)
         {
-            // exposure, n, x0,y0, x1,y1 ... xn,yn, rot  (n+1 cap toa do, diem cuoi trung diem dau)
+            // exposure, n, x0,y0, x1,y1 ... xn,yn, rot  (n+1 coordinate pairs; the last point repeats the first)
             bool on = m[0] > 0.5;
             int n = (int)m[1];
             var pts = new PointF[n + 1];
@@ -126,13 +126,13 @@ namespace GerberEngine
 
         private static MacroShape VectorLine(double[] m, double s)
         {
-            // exposure, width, x1,y1, x2,y2, rot -> hinh chu nhat theo huong vector
+            // exposure, width, x1, y1, x2, y2, rotation -> rectangle aligned with the vector
             bool on = m[0] > 0.5;
             double w = m[1] * s / 2;
             double x1 = m[2] * s, y1 = m[3] * s, x2 = m[4] * s, y2 = m[5] * s;
             double dx = x2 - x1, dy = y2 - y1, len = Math.Sqrt(dx * dx + dy * dy);
             if (len < 1e-9) { dx = 1; dy = 0; len = 1; }
-            double nx = -dy / len * w, ny = dx / len * w; // phap tuyen
+            double nx = -dy / len * w, ny = dx / len * w; // normal vector
             var pts = new[]
             {
                 new PointF((float)(x1 + nx), (float)(y1 + ny)),
@@ -176,7 +176,7 @@ namespace GerberEngine
             }
         }
 
-        // ---------- Macro expression evaluation tool: so, $n, + - x X / and parentheses ----------
+        // ---------- Macro expression evaluation tool: numbers, $n, + - x X / and parentheses ----------
 
         private static double Eval(string expr, Dictionary<int, double> vars)
         {
@@ -232,7 +232,7 @@ namespace GerberEngine
                 while (p < e.Length && char.IsDigit(e[p])) p++;
                 int id = int.Parse(e.Substring(start, p - start), CultureInfo.InvariantCulture);
                 double v;
-                return vars.TryGetValue(id, out v) ? v : 0; // bien chua gan = 0 theo chuan
+                return vars.TryGetValue(id, out v) ? v : 0; // unassigned variables are zero per the specification
             }
             int s0 = p;
             while (p < e.Length && (char.IsDigit(e[p]) || e[p] == '.')) p++;

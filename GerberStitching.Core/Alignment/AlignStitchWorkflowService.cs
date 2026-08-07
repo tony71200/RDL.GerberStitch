@@ -82,14 +82,14 @@ namespace GerberViewer.Stitching.Alignment
                 progress, cancellationToken, true), cancellationToken);
         }
 
-        // [Claude] [Change time: 2026-08-06] [Purpose: Ánh xạ trạng thái tile đã chốt sang OrderNodeState để canvas tô màu đúng ngay trong lúc chạy.]
+        // [Claude] [Change time: 2026-08-06] [Purpose: Map the finalized tile state to OrderNodeState so the canvas uses the correct color during execution.]
         private static OrderNodeState MapToNodeState(TileWorkflowState state)
         {
             if (state == null) return OrderNodeState.Failed;
             return OrderNodeStateMapper.FromPoseSource(state.Source);
         }
 
-        // [Claude] [Change time: 2026-08-06] [Purpose: Ghi thời gian một giai đoạn vào ProcessingReport.StageTimings cho tab Execute Time.]
+        // [Claude] [Change time: 2026-08-06] [Purpose: Record a stage duration in ProcessingReport.StageTimings for the Execute Time tab.]
         private static void Mark(ProcessingReport report, string stage, long elapsedMilliseconds, string detail)
         {
             report.StageTimings.Add(new StageTimingReport
@@ -111,7 +111,7 @@ namespace GerberViewer.Stitching.Alignment
             AlignStitchConfigMapper.EnsureComposite(config);
             AlignStitchConfigMapper.SyncLegacy(config);
             // [Codex] [Change time: 2026-07-26] [Purpose: Make the stage call graph explicit: Validate/Map -> Direct -> Neighbor -> Graph -> Stitch -> Report -> Publish.]
-            // [Claude] [Change time: 2026-08-06] [Purpose: Đo thời gian từng giai đoạn của workflow để hiển thị trên tab Execute Time.]
+            // [Claude] [Change time: 2026-08-06] [Purpose: Measure every workflow stage for display on the Execute Time tab.]
             var swMapping = System.Diagnostics.Stopwatch.StartNew();
             var swDirect = new System.Diagnostics.Stopwatch();
             var swRecover = new System.Diagnostics.Stopwatch();
@@ -139,7 +139,7 @@ namespace GerberViewer.Stitching.Alignment
                 {
                     ct.ThrowIfCancellationRequested();
                     var cap = ordered[i];
-                    // [Claude] [Change time: 2026-08-06] [Purpose: Báo trạng thái "Processing" cho tile hiện tại để canvas tô xanh dương ngay khi bắt đầu align.]
+                    // [Claude] [Change time: 2026-08-06] [Purpose: Report Processing for the current tile so the canvas turns blue as alignment begins.]
                     progress?.Report(new WorkflowProgress(i, ordered.Count, cap, "Direct camera-to-sample alignment", OrderNodeState.Processing));
                     var tile = tileByOrder[cap.OrderIndex];
                     swDirect.Start();
@@ -174,7 +174,7 @@ namespace GerberViewer.Stitching.Alignment
                     state.DirectAlignmentTransform = directAlignmentTransform;
 #endif
                     solved[cap.OrderIndex] = state;
-                    // [Claude] [Change time: 2026-08-06] [Purpose: Báo trạng thái cuối cùng của tile (sau Direct/Recovery/Fallback) để canvas giữ đúng màu, không tính từ SolveDirect trước khi recovery chạy.]
+                    // [Claude] [Change time: 2026-08-06] [Purpose: Report the final tile state after Direct/Recovery/Fallback so the canvas retains the correct color instead of using the pre-recovery SolveDirect result.]
                     progress?.Report(new WorkflowProgress(i, ordered.Count, cap, "Direct camera-to-sample alignment", MapToNodeState(state)));
                 }
                 foreach (var cap in simpleWorkflow ? Enumerable.Empty<CapturedImageInfo>() : ordered)
@@ -192,11 +192,11 @@ namespace GerberViewer.Stitching.Alignment
 #endif
                         solved[cap.OrderIndex] = recovered;
                         ReportMatcherResults(progress, cap, solved[cap.OrderIndex].Alignment, "Neighbor Recovery (second pass)");
-                        // [Claude] [Change time: 2026-08-06] [Purpose: Cập nhật màu canvas sau pass Recovery thứ hai.]
+                        // [Claude] [Change time: 2026-08-06] [Purpose: Update canvas colors after the second Recovery pass.]
                         progress?.Report(new WorkflowProgress(cap.OrderIndex, ordered.Count, cap, "Neighbor Recovery (second pass)", MapToNodeState(solved[cap.OrderIndex])));
                     }
                 }
-                // [Claude] [Change time: 2026-08-06] [Purpose: Ghi nhận thời gian Direct Alignment / Failure Recovery sau khi cả 2 pass đã xong.]
+                // [Claude] [Change time: 2026-08-06] [Purpose: Record Direct Alignment and Failure Recovery timing after both passes finish.]
                 Mark(report, "Direct Alignment", swDirect.ElapsedMilliseconds, "tiles=" + ordered.Count);
                 Mark(report, "Failure Recovery", swRecover.ElapsedMilliseconds, config.Recovery.RecoverFailedTiles ? ("recovered=" + recoveredCount) : "skipped (RecoverFailedTiles=false)");
                 // [Codex] [Change time: 2026-08-04] [Purpose: The pose-graph optimizer needs the full neighbor-edge graph; auto-enable measurement if the user left it off.]
@@ -260,7 +260,7 @@ namespace GerberViewer.Stitching.Alignment
                 var outputFileName = simpleWorkflow ? "Aligned_Stitched_Simple.tiff" : "Stitched.tiff";
                 progress?.Report(new WorkflowProgress(ordered.Count, ordered.Count, null, "Stitching: composing " + outputFileName));
                 var outputStates = solved.Values.OrderBy(v => v.OrderIndex).ToList();
-                // [Claude] [Change time: 2026-08-06] [Purpose: Đo thời gian Pose Graph Optimizer / DirectPoseOutlierCorrector cho tab Execute Time.]
+                // [Claude] [Change time: 2026-08-06] [Purpose: Measure Pose Graph Optimizer / DirectPoseOutlierCorrector time for the Execute Time tab.]
                 var swPoseGraph = System.Diagnostics.Stopwatch.StartNew();
                 // [Codex] [Change time: 2026-08-04] [Purpose: Solve all tile poses jointly from neighbor evidence instead of single-path propagation.]
                 if (config.PoseGraph.Enabled)
@@ -306,7 +306,7 @@ namespace GerberViewer.Stitching.Alignment
                 // Capture the finalized poses at the exact boundary before the stitching engine consumes them.
                 DebugHtmlReportWriter.Write(config.OutputPath, manifest, outputStates, report.RecoveryEdges, report.DirectPoseCorrection, report.PoseGraph);
 #endif
-                // [Claude] [Change time: 2026-08-06] [Purpose: Đo thời gian Stitching (trừ phần Save Image, tách riêng từ StitchingExecutionReport.SaveElapsedMilliseconds) cho tab Execute Time.]
+                // [Claude] [Change time: 2026-08-06] [Purpose: Measure Stitching time excluding Save Image, which is reported separately by StitchingExecutionReport.SaveElapsedMilliseconds.]
                 var swStitch = System.Diagnostics.Stopwatch.StartNew();
                 report.FinalOutputPath = _stitchingService.Stitch(config, ordered, outputStates, outputFileName, ct);
                 swStitch.Stop();
@@ -337,7 +337,7 @@ namespace GerberViewer.Stitching.Alignment
             }
             else
             {
-                // [Claude] [Change time: 2026-08-06] [Purpose: Không có OutputPath thì Pose Graph/Stitching/Save Image không chạy; Validate vẫn có giá trị vì ValidateGlobalPoses (phần 1) chạy vô điều kiện ở trên. Giữ đúng thứ tự pipeline: PoseGraph -> Validate -> Stitching -> SaveImage.]
+                // [Claude] [Change time: 2026-08-06] [Purpose: Without OutputPath, Pose Graph, Stitching, and Save Image do not run. Validation remains meaningful because the first ValidateGlobalPoses phase always runs above. Preserve the pipeline order: PoseGraph -> Validate -> Stitching -> SaveImage.]
                 Mark(report, "Pose Graph Optimizer", 0, "not executed (no OutputPath)");
                 Mark(report, "Validate", swValidate.ElapsedMilliseconds, "partial (no stitching; only ValidateGlobalPoses ran)");
                 Mark(report, "Stitching", 0, "not executed (no OutputPath)");

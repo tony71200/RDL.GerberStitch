@@ -29,7 +29,7 @@ namespace GerberViewer.Stitching.Imaging
             return GenerateAsync(preparedRun, outputRoot, null, cancellationToken, progress);
         }
 
-        // [Claude] [Change time: 2026-08-06] [Purpose: Cho phép Tab 2 đặt tên folder sample thay vì luôn dùng GerberSample_<runId>.]
+        // [Claude] [Change time: 2026-08-06] [Purpose: Allow Tab 2 to name the sample folder instead of always using GerberSample_<runId>.]
         public Task<SampleCropResult> GenerateAsync(
             PreparedSampleRun preparedRun,
             string outputRoot,
@@ -59,7 +59,7 @@ namespace GerberViewer.Stitching.Imaging
                 Directory.CreateDirectory(tilesDir);
                 var total = run.TilesByOrder.Count;
                 var nccMetadata = new System.Collections.Generic.Dictionary<int, NccModelMetadata>();
-                // [Claude] [Change time: 2026-08-07] [Purpose: Chỉ sinh .ncm/.shm khi người dùng chọn Pregenerate; OnTheFly giữ nguyên hành vi cũ (matcher tự tạo model trong bộ nhớ).]
+                // [Claude] [Change time: 2026-08-07] [Purpose: Generate .ncm/.shm only when Pregenerate is selected; OnTheFly preserves the prior behavior of creating models in memory.]
                 var pregenerateModels = run.ConfigSnapshot.ModelGeneration == SampleModelGenerationMode.Pregenerate;
                 foreach (var tile in run.TilesByOrder)
                 {
@@ -190,12 +190,12 @@ namespace GerberViewer.Stitching.Imaging
                 PreprocessMode = run.PreprocessMetadata == null ? null : run.PreprocessMetadata.Mode.ToString(),
                 ProcessedChannelCount = CountChannels(run.ProcessedImage),
                 ProcessedBitDepth = BitDepth(run.ProcessedImage),
-                // [Claude] [Change time: 2026-08-07] [Purpose: Ghi chế độ sinh model vào manifest để Worker biết có .ncm/.shm kèm theo hay không.]
+                // [Claude] [Change time: 2026-08-07] [Purpose: Record model generation mode in the manifest so Worker knows whether .ncm/.shm files are included.]
                 ModelGeneration = run.ConfigSnapshot.ModelGeneration.ToString(),
                 Tiles = run.TilesByOrder.Select(t =>
                 {
                     var baseName = FormatName(run.ConfigSnapshot.TileNamePattern, t.Row, t.Column, t.OrderIndex);
-                    // [Claude] [Change time: 2026-08-07] [Purpose: Chế độ OnTheFly không có metadata; tra cứu phải null-safe, không index trực tiếp.]
+                    // [Claude] [Change time: 2026-08-07] [Purpose: OnTheFly has no metadata; use null-safe lookup instead of direct indexing.]
                     NccModelMetadata metadata;
                     if (nccMetadata == null || !nccMetadata.TryGetValue(t.OrderIndex, out metadata))
                         metadata = null;

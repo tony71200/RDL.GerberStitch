@@ -8,7 +8,7 @@ namespace GerberEngine
 {
     public sealed class CoordinateTransformer
     {
-        // bbox says (mm, he Gerber)
+        // bbox says (mm, Gerber coordinates)
         private readonly RectangleD _boundsMm;
         private readonly double _marginMm;
         private readonly double _scale;          // px per mm

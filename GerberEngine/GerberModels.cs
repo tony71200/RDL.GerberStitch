@@ -77,7 +77,7 @@ namespace GerberEngine
     public sealed class ApertureMacro
     {
         public string Name;
-        public List<string> Blocks = new List<string>();  // moi phan tu la 1 primitive/variable line
+        public List<string> Blocks = new List<string>();  // each item is one primitive or variable line
     }
 
     public sealed class Aperture
@@ -167,7 +167,7 @@ namespace GerberEngine
     public sealed class ArcPrimitive : GerberPrimitive
     {
         public PointD Start, End, Center;
-        public bool Clockwise;                // G02 = CW (trong he toa do Gerber, Y huong len)
+        public bool Clockwise;                // G02 = clockwise in Gerber coordinates, where Y points up
         public Aperture Aperture;
 
         public double Radius
@@ -181,7 +181,7 @@ namespace GerberEngine
 
         public override RectangleD GetBoundsMm()
         {
-            // Bao thu: bbox ca duong tron (du cho render; toi uu sau neu can)
+            // Bounding box encloses the entire circle (sufficient for rendering; optimize later if needed)
             double r = Radius + Aperture.StrokeDiameter / 2;
             RectangleD b = RectangleD.Empty;
             b.Expand(Center.X - r, Center.Y - r);
@@ -247,7 +247,7 @@ namespace GerberEngine
         public List<GerberPrimitive> Primitives = new List<GerberPrimitive>();
         public List<string> Warnings = new List<string>();   // NFR-003
         public bool Visible = true;
-        public Color DisplayColor = Color.Gold;              // mau tuy bien tung lop (FR-004)
+        public Color DisplayColor = Color.Gold;              // custom color for each layer (FR-004)
 
         public RectangleD GetBoundsMm()
         {

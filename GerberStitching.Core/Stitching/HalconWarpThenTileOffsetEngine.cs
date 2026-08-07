@@ -90,7 +90,7 @@ namespace GerberViewer.Stitching.Stitching
                 HOperatorSet.TileImagesOffset(patchObjects, out tiled, rows, columns, row1, column1, row2, column2, width, height);
                 cancellationToken.ThrowIfCancellationRequested();
                 var directory = Path.GetDirectoryName(path); if (!string.IsNullOrWhiteSpace(directory)) Directory.CreateDirectory(directory);
-                // [Claude] [Change time: 2026-08-06] [Purpose: Đo riêng thời gian ghi ảnh (Save Image) cho tab Execute Time.]
+                // [Claude] [Change time: 2026-08-06] [Purpose: Measure image-writing time separately as Save Image for the Execute Time tab.]
                 var swSave = Stopwatch.StartNew();
                 HOperatorSet.WriteImage(tiled, new HTuple(bigTiff ? "bigtiff none" : "tiff none"), 0, path);
                 swSave.Stop();

@@ -3,84 +3,77 @@ using System;
 namespace RDL.GerberStitch.Facade
 {
     /// <summary>
-    /// Config align/stitch tối giản cho RDL Master/Worker. Chỉ phơi ra những tham số
-    /// thường phải chỉnh theo dây chuyền; phần còn lại của pipeline giữ nguyên default
-    /// đã được chứng minh qua các run Phase 0 (xem docs/Phase0_Closeout.md).
-    ///
-    /// Tên trùng với GerberViewer.Stitching.Models.AlignStitchConfig của Core một cách
-    /// cố ý — cùng vai trò (config cho Align+Stitch), khác tầng (façade vs pipeline nội
-    /// bộ). Vì lớp này được khai báo ngay trong namespace RDL.GerberStitch.Facade, tên
-    /// trần "AlignStitchConfig" bên trong project này luôn phân giải về lớp này; khi cần
-    /// chạm tới kiểu của Core, mapper nội bộ (GerberStitchFacade.BuildCoreConfig) luôn
-    /// viết đủ tên "GerberViewer.Stitching.Models.AlignStitchConfig" — đúng quy ước mà
-    /// chính GerberViewer.Views.AlignStitchingControl.CloneConfigForRun đã dùng.
+    /// Minimal alignment/stitching configuration for RDL Master/Worker. It exposes only settings
+    /// normally tuned for a production line; all other pipeline defaults remain those verified in Phase 0.
+    /// This name intentionally matches the Core AlignStitchConfig type while representing the façade layer.
+    /// GerberStitchFacade.BuildCoreConfig uses the fully qualified Core type name when mapping it.
     /// </summary>
     public sealed class AlignStitchConfig
     {
         // ── Engine ──
 
         /// <summary>
-        /// Engine stitch. Giá trị hợp lệ: "OpenCv" | "HalconProjectiveMosaic" |
+        /// Stitching engine. Valid values: "OpenCv", "HalconProjectiveMosaic",
         /// "HalconProjectiveMosaicRebased" | "HalconWarpThenTileOffsetExperimental" |
-        /// "HalconThenOpenCvFallback". Default HalconProjectiveMosaicRebased — nhanh hơn
-        /// OpenCv 17x ở khâu stitch (13.3s vs 231.7s trên dataset 80 tile tham chiếu).
+        /// "HalconThenOpenCvFallback". The default HalconProjectiveMosaicRebased engine is
+        /// 17 times faster than OpenCV for stitching on the reference 80-tile dataset (13.3s vs 231.7s).
         /// </summary>
         public string StitchingEngine { get; set; } = "HalconProjectiveMosaicRebased";
 
         /// <summary>
-        /// Bật blending ở đường seam. Default false: HOperatorSet.GenProjectiveMosaic
-        /// (engine HALCON) không có tham số blending — bật lên chỉ sinh warning mà
-        /// không có tác dụng, vùng overlap vẫn bị ghi đè cứng. Muốn blending thật thì
-        /// đổi StitchingEngine sang "OpenCv" đồng thời — đánh đổi: chậm hơn 17x.
+        /// Enables seam blending. The default is false because HOperatorSet.GenProjectiveMosaic
+        /// has no blending parameter; enabling this with the HALCON engine only produces a warning
+        /// and overlaps remain hard-overwritten. For real blending, also select the OpenCv engine,
+        /// at the cost of approximately 17-times slower stitching.
         /// </summary>
         public bool EnableBlending { get; set; } = false;
 
-        // ── Ngưỡng Direct Alignment ──
+        // ── Direct Alignment thresholds ──
 
         /// <summary>
-        /// Ngưỡng match score tối thiểu cho matcher HALCON NCC. Default 0.10, khớp
-        /// GerberViewer.Stitching.Configuration.HalconNccOptions.MinScore của Core.
-        /// KHÔNG đặt 0.7 — cao gấp ~5-7 lần default thật, sẽ loại gần hết tile.
+        /// Minimum HALCON NCC match score. The 0.10 default matches
+        /// GerberViewer.Stitching.Configuration.HalconNccOptions.MinScore in Core.
+        /// Do not use 0.7; it is about 5–7 times the real default and rejects almost every tile.
         /// </summary>
         public double NccMinScore { get; set; } = 0.10;
 
         /// <summary>
-        /// Ngưỡng tương quan ECC (refinement matcher). Default 0.13, khớp
-        /// EccOptions.MinCorrelation của Core.
+        /// Minimum ECC correlation for the refinement matcher. The 0.13 default matches
+        /// Core EccOptions.MinCorrelation.
         /// </summary>
         public double EccMinCorrelation { get; set; } = 0.13;
 
-        /// <summary>Dịch chuyển tối đa cho phép (px) khi khớp trực tiếp.</summary>
+        /// <summary>Maximum translation in pixels allowed for direct matching.</summary>
         public double MaxTranslationPixels { get; set; } = 300;
 
         /// <summary>
-        /// Xoay tuyệt đối tối đa (độ) cho phép khi khớp trực tiếp. Chốt 0.1 cho RDL —
-        /// siết hơn default cấu trúc của Core (0.5), vì dây chuyền RDL đặt tile bằng
-        /// cơ cấu cơ khí, sai lệch xoay thực tế rất nhỏ.
+        /// Maximum absolute rotation in degrees allowed for direct matching. RDL uses 0.1,
+        /// tighter than the Core structured default of 0.5, because the mechanical RDL line
+        /// places tiles with very little real rotational deviation.
         /// </summary>
         public double MaxAbsRotationDeg { get; set; } = 0.1;
 
         // ── Fallback RDL ──
 
         /// <summary>
-        /// true: khi align/stitch fail, Worker tự fallback sang merge cũ (NewMergeFunc).
-        /// false: trả lỗi -300 về Master. Cờ này chỉ dành cho caller (Worker) đọc — Core
-        /// không biết khái niệm NewMergeFunc.
+        /// true lets Worker fall back to the legacy NewMergeFunc after an align/stitch failure.
+        /// false returns error -300 to Master. This flag is for the Worker caller only;
+        /// Core has no NewMergeFunc concept.
         /// </summary>
         public bool FallbackToLegacyMerge { get; set; } = false;
 
         internal void Validate()
         {
             if (NccMinScore <= 0 || NccMinScore > 1)
-                throw new ArgumentOutOfRangeException(nameof(NccMinScore), NccMinScore, "NccMinScore phải trong (0, 1].");
+                throw new ArgumentOutOfRangeException(nameof(NccMinScore), NccMinScore, "NccMinScore must be in (0, 1].");
             if (EccMinCorrelation <= 0 || EccMinCorrelation > 1)
-                throw new ArgumentOutOfRangeException(nameof(EccMinCorrelation), EccMinCorrelation, "EccMinCorrelation phải trong (0, 1].");
+                throw new ArgumentOutOfRangeException(nameof(EccMinCorrelation), EccMinCorrelation, "EccMinCorrelation must be in (0, 1].");
             if (MaxTranslationPixels <= 0)
-                throw new ArgumentOutOfRangeException(nameof(MaxTranslationPixels), MaxTranslationPixels, "MaxTranslationPixels phải > 0.");
+                throw new ArgumentOutOfRangeException(nameof(MaxTranslationPixels), MaxTranslationPixels, "MaxTranslationPixels must be greater than 0.");
             if (MaxAbsRotationDeg <= 0)
-                throw new ArgumentOutOfRangeException(nameof(MaxAbsRotationDeg), MaxAbsRotationDeg, "MaxAbsRotationDeg phải > 0.");
+                throw new ArgumentOutOfRangeException(nameof(MaxAbsRotationDeg), MaxAbsRotationDeg, "MaxAbsRotationDeg must be greater than 0.");
             if (ParseEngine(StitchingEngine) == null)
-                throw new ArgumentException("StitchingEngine không hợp lệ: " + StitchingEngine, nameof(StitchingEngine));
+                throw new ArgumentException("Invalid StitchingEngine: " + StitchingEngine, nameof(StitchingEngine));
         }
 
         internal static GerberViewer.Stitching.Models.StitchingEngine? ParseEngine(string value)

@@ -259,7 +259,7 @@ namespace GerberViewer.Stitching.Diagnostics
                 var originalWidth = width.I;
                 var originalHeight = height.I;
                 var scale = Math.Min(1d, maximumSide / (double)Math.Max(originalWidth, originalHeight));
-                // [Claude] [Change time: 2026-08-06] [Purpose: DebugPreview_<time>.jpg không được nhỏ hơn 1/6 kích thước ảnh gốc, kể cả khi ảnh gốc vượt xa maximumSide.]
+                // [Claude] [Change time: 2026-08-06] [Purpose: Keep DebugPreview_<time>.jpg at least one sixth of the source dimensions, even when the source greatly exceeds maximumSide.]
                 const double minimumScale = 1d / 6d;
                 if (scale < minimumScale) scale = minimumScale;
                 var targetWidth = Math.Max(1, (int)Math.Round(originalWidth * scale));
