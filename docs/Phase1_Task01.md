@@ -19,6 +19,17 @@
 
 ---
 
+## ✅ Đã triển khai (2026-08-07, nhánh `Ver1_0`)
+
+Toàn bộ §1–§5 dưới đây đã thực hiện, với 2 điểm lệch so với kế hoạch gốc:
+
+1. **Không đổi tên `Facade/AlignStitchConfig.cs`.** Kế hoạch §2 ban đầu định đổi sang `RdlAlignStitchOptions.cs` để tránh trùng tên với `GerberViewer.Stitching.Models.AlignStitchConfig` của Core. Thực tế **giữ nguyên tên** — vì lớp được khai báo ngay trong `namespace RDL.GerberStitch.Facade`, tên trần `AlignStitchConfig` bên trong project này luôn phân giải về lớp façade (name lookup ưu tiên namespace bao quanh trước using-directive), không lỗi CS0104. Khi mapper nội bộ cần chạm tới kiểu của Core thì viết đủ tên `GerberViewer.Stitching.Models.AlignStitchConfig` — đúng cách `AlignStitchingControl.CloneConfigForRun` trong GerberViewer đã làm. Xem `docs/Phase1_Task02.md` để biết chi tiết.
+2. **Thêm `<Reference Include="System.Drawing" />`** vào `RDL.GerberStitch.csproj` — cần thiết vì `Facade/GerberStitchFacade.cs` dùng `Bitmap`/`Size`/`ImageFormat` trực tiếp (chuyển đổi Gerber render → HObject), và project trước đó chỉ có `System.Drawing.Common` (NuGet), không có `System.Drawing` (BCL) mà `System.Drawing.Common`'s type-forwarding cần.
+
+Build đã xác nhận sạch (`Debug|x64` và `Release|x64`, 0 error) sau khi build lại từ đầu (xoá `bin/`/`obj/` rồi build mới, không phải incremental) — xác nhận `RDL.GerberStitch.dll` không còn rỗng và `halcondotnetxl.dll` **không** bị copy local đúng như kỳ vọng `Private=False`.
+
+---
+
 ## 0. Vấn đề
 
 Bản trước của doc này mô tả việc **tạo mới** project. Việc đó **đã xong** — `RDL.GerberStitch.csproj` tồn tại, nằm trong `RDL.GerberStitch.sln` với GUID `{B9562199-720A-4CCA-A4D3-797412E117E8}`, đã có `ProjectReference` tới cả `GerberEngine` và `GerberStitching.Core`.

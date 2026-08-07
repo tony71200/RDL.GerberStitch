@@ -1,0 +1,11 @@
+{
+  "AlignStitch": {
+    "ManifestPath": "H:\\005_Project\\AOI_2026_07_imp\\data\\GerberSample_20260806_084849\\sample_manifest.json",
+    "ImagesPath": "H:\\005_Project\\AOI_2026_07_imp\\20260720_Gerber_Align\\20260725 Q168 2-1 org",
+    "OutputPath": "H:\\005_Project\\AOI_2026_07_imp\\result_20260807"
+  },
+  "CreateSample": {
+    "RasterImagePath": "H:\\005_Project\\AOI_2026_07_imp\\20260720_Gerber_Align\\q168_Gerber2-1 to 2-4.tiff",
+    "OutputPath": "H:\\005_Project\\AOI_2026_07_imp"
+  }
+}

@@ -69,7 +69,7 @@ Cả 6 run đều trả `succeeded = true`, `runStatus = CompletedWithFallback` 
 
 ### 1.3. Kích thước output
 
-`Stitched.tiff` = **654 MB** (run `090910`). Con số này là cơ sở tính dung lượng ổ chia sẻ (blocker 3, §5).
+`Stitched.tiff` phụ thuộc engine: **654 MB** với engine `OpenCv` (run `090910`), nhưng **~1.3 GB** với engine `HalconProjectiveMosaicRebased` (run `110300`: 1 305 898 710 byte; xác nhận lại y hệt qua harness Task 1.6: 1 305 931 192 byte — chênh 32 KB do metadata). Vì `HalconProjectiveMosaicRebased` là engine **mặc định** của façade (`docs/Phase1_Task02.md`), **1.3 GB mới là con số đúng để tính dung lượng ổ chia sẻ** (blocker 3, §5) — không phải 654 MB như bản trước của mục này ghi nhầm.
 
 ---
 
@@ -79,8 +79,8 @@ Cả 6 run đều trả `succeeded = true`, `runStatus = CompletedWithFallback` 
 |---|---|---|
 | 0.1 Build Core độc lập | ✅ Xong | `GerberStitching.Core/bin/x64/{Debug,Release}` có DLL |
 | 0.2 Thống nhất version HALCON | ✅ Đã quyết | **Nâng Master + Worker lên HALCON 25.05** |
-| 0.3 Spike end-to-end | 🔶 Chuyển Phase 1 | Pipeline chạy đúng, nhưng vẫn trong GerberViewer UI |
-| 0.4 Đo tài nguyên | 🔶 Chuyển Phase 1 | Có stage timing, **thiếu RAM đỉnh** |
+| 0.3 Spike end-to-end | ✅ Đóng qua Task 1.6 | Harness headless chạy trọn qua façade — xem `docs/Phase1_Task06.md` §3 |
+| 0.4 Đo tài nguyên | ✅ Đóng qua Task 1.6 | **RAM đỉnh = 6 616 MB** (~6.6 GB) trên dataset 80 tile, canvas ~40k×32k |
 | 0.5 Quyết định OpenCvSharp | ✅ Đã quyết | **Giữ OpenCvSharp** |
 
 ### 2.1. Quyết định 0.2 — nâng lên HALCON 25.05
@@ -109,16 +109,18 @@ Gỡ OpenCvSharp = mất tầng refinement của Direct Alignment. **Giữ**, v�
 
 ---
 
-## 3. Hai phần việc chuyển sang Phase 1
+## 3. Hai phần việc chuyển sang Phase 1 — ✅ đã đóng
 
-Task 0.3 và 0.4 **không làm lại ở Phase 0** mà gộp vào **Task 1.5** (`Phase1_Task05.md`).
+Task 0.3 và 0.4 **không làm lại ở Phase 0** mà gộp vào harness Phase 1. Ban đầu dự định ở Task 1.5 (`Phase1_Task05.md`, spec-only); thực tế triển khai và chạy thật ở **Task 1.6** (`Phase1_Task06.md`) sau khi façade (Task 1.2) đã có API thật để gọi.
 
-**Lý do:** viết harness ở Phase 0 phải gọi thẳng vào Core; sang Phase 1 có façade lại phải viết lại để gọi façade. Gộp lại chỉ viết một lần, và chính harness đó trở thành exit gate Phase 1 (*"Master và Worker đều add-reference & gọi được façade"*).
+**Lý do gộp:** viết harness ở Phase 0 phải gọi thẳng vào Core; sang Phase 1 có façade lại phải viết lại để gọi façade. Gộp lại chỉ viết một lần.
 
-| Việc còn thiếu | Đóng ở |
-|---|---|
-| Chạy pipeline trong tiến trình headless, ngoài GerberViewer UI | Task 1.5 |
-| Đo RAM đỉnh khi stitch cả lô | Task 1.5 |
+| Việc còn thiếu | Đóng ở | Kết quả |
+|---|---|---|
+| Chạy pipeline trong tiến trình headless, ngoài GerberViewer UI | Task 1.6 | ✅ `RDL.GerberStitch.Harness.exe` chạy độc lập, dataset 80 tile thật, `Success=true` |
+| Đo RAM đỉnh khi stitch cả lô | Task 1.6 | ✅ **6 616 MB** (~6.6 GB), canvas ~40k×32k — số liệu đầu tiên cho roadmap §5 rủi ro "Tài nguyên Worker" |
+
+**Đối chiếu độ chính xác:** kết quả harness (`AlignedTiles=54`, `BlankTiles=26`, `FailedTiles=0`) **khớp chính xác** run tham chiếu `110300` (`SampleAlignment=54`, `BlankSampleExpectedPose=26`) — xác nhận façade tái tạo đúng hành vi pipeline gốc, không lệch do quá trình đóng gói.
 
 ---
 
@@ -169,13 +171,13 @@ Nguồn gốc: default của Core là `StitchingOptions.EnableBlending = true` +
 
 ## 6. Open item
 
-### 6.1. `tileReports = 85` nhưng `tiles = 80`
+### 6.1. `tileReports = 85` nhưng `tiles = 80` — ✅ đã tháo gỡ (2026-08-07)
 
 Trong run tham chiếu, stage `Mapping and Preprocessing` ghi `detail = "tiles=80"`, nhưng `ProcessingReport.TileReports` có **85** mục. Chênh **5** — đúng bằng số tile `NeighborAlignment`.
 
-**Giả thuyết (chưa xác minh trong source):** tile được recovery bị ghi report hai lần.
+**Giả thuyết ban đầu (chưa xác minh trong source):** tile được recovery bị ghi report hai lần.
 
-> ⚠ **Cần làm rõ trước Task 1.2.** Nếu façade lấy `TileReports.Count` làm `TileCount` trả về Master thì con số báo cáo sẽ sai. Trước khi dùng, phải xác định đâu là nguồn đếm đúng — nhiều khả năng là `AlignStitchWorkflowResult.States` hoặc `manifest.Tiles.Count`, không phải `TileReports`.
+**Đã xác nhận đúng bằng dữ liệu thật.** `GerberStitchFacade.MapResult` (Task 1.2) dùng `AlignStitchWorkflowResult.States` — **không** dùng `TileReports` — để đếm `AlignedTileCount`/`BlankTileCount`. Chạy harness Task 1.6 trên đúng dataset của run `110300`: `States` cho **54 + 26 + 0 = 80**, khớp chính xác `manifest.Tiles.Count`, không có phần tử dư. Xác nhận: `AlignStitchWorkflowResult.States` là nguồn đếm đúng (1 tile = 1 state), `ProcessingReport.TileReports` mới là nơi có phần tử trùng lặp (khả năng cao do tile qua Neighbor Recovery được ghi report ở cả bước Direct lẫn bước Recovery).
 
 ### 6.2. Model HALCON — ✅ đã giải quyết (2026-08-07)
 

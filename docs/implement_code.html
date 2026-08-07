@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<title>RDL.GerberStitch — Nhật ký triển khai code</title>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #171a21; --border: #2a2f3a; --text: #e6e8eb;
+    --muted: #9aa3b2; --accent: #5fb0ff; --ok: #4caf7d; --warn: #e0a63e; --bug: #e2645a;
+    --code-bg: #10131a;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 2rem 1.25rem 5rem; background: var(--bg); color: var(--text);
+    font: 15px/1.6 "Segoe UI", -apple-system, sans-serif; max-width: 980px; margin-inline: auto;
+  }
+  h1 { font-size: 1.6rem; margin-bottom: .25rem; }
+  h1 + p.sub { color: var(--muted); margin-top: 0; }
+  h2 { font-size: 1.15rem; border-bottom: 1px solid var(--border); padding-bottom: .4rem; margin-top: 3rem; }
+  h3 { font-size: 1rem; color: var(--accent); margin-top: 1.75rem; }
+  h4 { font-size: .92rem; margin-bottom: .3rem; }
+  a { color: var(--accent); }
+  code { background: var(--code-bg); padding: .1rem .35rem; border-radius: 4px; font-size: .85em; }
+  pre {
+    background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px;
+    padding: .9rem 1rem; overflow-x: auto; font-size: .82rem; line-height: 1.5;
+  }
+  pre code { background: none; padding: 0; }
+  table { width: 100%; border-collapse: collapse; margin: .75rem 0 1.25rem; font-size: .88rem; }
+  th, td { border: 1px solid var(--border); padding: .45rem .6rem; text-align: left; vertical-align: top; }
+  th { background: var(--panel); color: var(--muted); font-weight: 600; }
+  .entry {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    padding: 1.25rem 1.5rem; margin: 1.25rem 0;
+  }
+  .entry-meta { color: var(--muted); font-size: .85rem; margin-bottom: .75rem; }
+  .badge {
+    display: inline-block; padding: .1rem .55rem; border-radius: 999px; font-size: .72rem;
+    font-weight: 600; letter-spacing: .02em; text-transform: uppercase;
+  }
+  .badge.ok { background: rgba(76,175,125,.15); color: var(--ok); }
+  .badge.warn { background: rgba(224,166,62,.15); color: var(--warn); }
+  .badge.bug { background: rgba(226,100,90,.15); color: var(--bug); }
+  ul.filelist { margin: .3rem 0; padding-left: 1.3rem; }
+  ul.filelist code { font-size: .82em; }
+  .note {
+    border-left: 3px solid var(--accent); padding: .5rem .9rem; background: rgba(95,176,255,.06);
+    border-radius: 0 6px 6px 0; margin: .75rem 0; font-size: .9rem;
+  }
+  .toc { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 1rem 1.5rem; }
+  .toc ol { margin: .3rem 0; padding-left: 1.3rem; }
+  .toc a { text-decoration: none; }
+  .toc a:hover { text-decoration: underline; }
+  footer { color: var(--muted); font-size: .8rem; margin-top: 3rem; border-top: 1px solid var(--border); padding-top: 1rem; }
+</style>
+</head>
+<body>
+
+<h1>RDL.GerberStitch — Nhật ký triển khai code</h1>
+<p class="sub">Ghi lại quá trình thực thi các Phase 1 task: những gì đã sửa, vì sao sửa theo cách đó, và mọi lỗi gặp phải kèm cách fix. Cập nhật theo yêu cầu bắt buộc trong <code>CLAUDE.md</code> — mỗi lần thực thi code thật (không phải chỉ viết doc kế hoạch) phải thêm 1 entry mới, không ghi đè entry cũ.</p>
+
+<div class="toc">
+  <strong>Mục lục</strong>
+  <ol>
+    <li><a href="#entry-1">2026-08-07 (nhánh <code>Ver01</code>) — Cờ chọn chế độ sinh model HALCON</a></li>
+    <li><a href="#entry-2">2026-08-07 (nhánh <code>Ver1_0</code>) — Thực thi Task 1.1 + 1.2: façade thật</a></li>
+    <li><a href="#entry-3">2026-08-07 (nhánh <code>Ver1_0</code>) — Task 1.6: harness + chạy thật <code>RunAlignStitch</code></a></li>
+    <li><a href="#entry-4">2026-08-07 (nhánh <code>Ver1_0</code>) — Mở rộng façade + <code>global_config.json</code> + test <code>createsample</code></a></li>
+    <li><a href="#pitfalls">Bảng tổng hợp lỗi &amp; cách fix (tra nhanh)</a></li>
+  </ol>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="entry-1">1. 2026-08-07 (nhánh <code>Ver01</code>) — Cờ chọn chế độ sinh model HALCON</h2>
+<div class="entry">
+  <div class="entry-meta"><span class="badge ok">Core</span> Phạm vi: <code>GerberStitching.Core</code> — không đụng façade</div>
+
+  <h4>Vấn đề</h4>
+  <p>Khối code ghi <code>.ncm</code>/<code>.shm</code> trong <code>SampleTileGenerator.cs</code> đang bị <strong>comment</strong>, và không có file model nào tồn tại trên đĩa trong toàn bộ dataset Phase 0. Các run vẫn chạy đúng vì <code>HalconShapeModelProvider.GetOrCreate</code> tự <code>CreateShapeModel</code> trong bộ nhớ khi không tìm thấy file. Điều này lật giả định của roadmap (Master sinh model sẵn, ghi ra ổ chia sẻ cho Worker đọc).</p>
+
+  <h4>Quyết định</h4>
+  <p>Không chọn cứng một phương án — thêm <strong>cờ cấu hình</strong> để người dùng chọn theo từng lần chạy, và ghi lại lựa chọn vào <code>sample_manifest.json</code> để Worker biết manifest có kèm model hay không.</p>
+
+  <h4>File đã đổi</h4>
+  <ul class="filelist">
+    <li><code>GerberStitching.Core/Configuration/GerberSampleConfig.cs</code> — thêm <code>enum SampleModelGenerationMode { OnTheFly = 0, Pregenerate = 1 }</code> + property <code>ModelGeneration</code>, default <code>OnTheFly</code></li>
+    <li><code>GerberStitching.Core/Models/SampleManifest.cs</code> — thêm <code>[DataMember(Order = 17, EmitDefaultValue = false)] public string ModelGeneration</code></li>
+    <li><code>GerberStitching.Core/Imaging/SampleTileGenerator.cs</code> — bỏ comment khối sinh <code>.ncm</code>/<code>.shm</code>, đặt sau cờ <code>pregenerateModels</code>; <code>BuildManifest</code> tra <code>nccMetadata</code> null-safe (chế độ <code>OnTheFly</code> không có metadata)</li>
+  </ul>
+
+  <h4>Điểm cần lưu ý</h4>
+  <ul>
+    <li>Default <code>OnTheFly</code> giữ nguyên hành vi hiện hành — <strong>không hồi quy</strong> với các run Phase 0 đã kiểm chứng.</li>
+    <li><code>Pregenerate</code> chỉ ghi model cho tile <code>ContentClass == Matchable</code> — tile rỗng/low-texture không có model, đúng ý đồ (tạo shape model trên vùng không có nội dung là vô nghĩa).</li>
+    <li>Manifest cũ (sinh trước thay đổi này) không có trường <code>ModelGeneration</code> → đọc ra <code>null</code>, hiểu là <code>OnTheFly</code>. Tương thích ngược.</li>
+    <li><strong>Chưa đo được mức tiết kiệm thời gian của <code>Pregenerate</code></strong> tại thời điểm này — xem entry 4 để biết khi nào được xác nhận field này hoạt động đúng bằng dữ liệu thật.</li>
+  </ul>
+
+  <h4>Build</h4>
+  <p><span class="badge ok">PASS</span> <code>Debug|x64</code> và <code>Release|x64</code>, 0 error.</p>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="entry-2">2. 2026-08-07 (nhánh <code>Ver1_0</code>) — Thực thi Task 1.1 + 1.2: façade thật</h2>
+<div class="entry">
+  <div class="entry-meta"><span class="badge ok">Facade</span> Phạm vi: <code>RDL.GerberStitch.csproj</code>, <code>Facade/AlignStitchConfig.cs</code>, <code>Facade/GerberStitchFacade.cs</code></div>
+
+  <h4>Bối cảnh</h4>
+  <p><code>docs/Phase1_Task01.md</code> và <code>docs/Phase1_Task02.md</code> trước đó chỉ là <strong>kế hoạch</strong> (façade còn là stub rỗng, <code>internal</code>). Lượt này thực thi thật, tham khảo trực tiếp code sản xuất trong repo <code>GerberViewer</code>:</p>
+  <ul>
+    <li><code>GerberViewer/Views/AlignStitchingControl.cs</code> — hàm <code>RunWorkflowAsync</code> (nhánh full workflow) → mẫu cho <code>RunAlignStitch</code></li>
+    <li><code>GerberViewer/Views/CreateGerberSampleControl.cs</code> — hàm <code>PrepareCurrentSampleAsync</code> + gọi <code>SampleTileGenerator().GenerateAsync</code> → mẫu cho <code>GenerateSampleManifest</code></li>
+  </ul>
+
+  <h4>Task 1.1 — sửa <code>.csproj</code></h4>
+  <ul class="filelist">
+    <li><code>RDL.GerberStitch.csproj</code>: hint path HALCON → <code>$(HALCONROOT)\bin\dotnet35\...</code> (bỏ đường dẫn máy cá nhân <code>C:\Users\USER\...</code>), <code>Private=False</code>; gộp <code>LangVersion=7.3</code> lên <code>PropertyGroup</code> chung; <strong>thêm <code>&lt;Reference Include="System.Drawing" /&gt;</code></strong> (thiếu — cần cho <code>Bitmap</code>/<code>Size</code>/<code>ImageFormat</code> trong façade)</li>
+    <li><code>GerberStitching.Core.csproj</code>: cùng thay đổi hint path + <code>Private=False</code> cho <code>halcondotnetxl</code>/<code>hdevenginedotnetxl</code></li>
+  </ul>
+
+  <h4>Task 1.2 — nội dung façade</h4>
+  <p><code>GerberStitchFacade</code> đổi <code>internal</code> → <code>public sealed</code>, thêm 2 hàm chính: <code>GenerateSampleManifest</code> (render Gerber → crop tile → manifest) và <code>RunAlignStitch</code> (Align→PoseGraph→Stitch cho cả lô).</p>
+
+  <div class="note">
+    <strong>3 quyết định thiết kế khác kế hoạch cũ</strong> (phát hiện khi đọc code tham khảo, không phải tự chọn):
+    <ol>
+      <li><strong>Không tạo DTO ảnh thủ công.</strong> Core đã có <code>Arrangement.CapturedImageLoader.Load(imageFolder, manifestPath, w, h)</code> — tự đọc manifest, natural-sort tên file, ghép theo vị trí index với <code>manifest.Tiles</code>, validate đủ (số lượng khớp, không trùng khoá, kích thước ảnh khớp nhau). <code>RunAlignStitch</code> vì vậy nhận <strong>thư mục ảnh</strong> (<code>string</code>), không nhận <code>IList&lt;DTO&gt;</code> tự chế.</li>
+      <li><strong>Không tạo DTO grid config riêng.</strong> <code>GenerateSampleManifest</code> nhận thẳng <code>GerberViewer.Stitching.Configuration.GerberSampleConfig</code> của Core — DTO thuần dữ liệu, an toàn để chạm trực tiếp. Đánh đổi: façade lộ 1 kiểu của Core (hơi ngược <code>AGENTS.md</code> §3.1) — chấp nhận có chủ đích.</li>
+      <li><strong>Publish bằng <code>RunOutputLifecycle.Publish</code>/<code>Cleanup</code> có sẵn trong Core</strong> (<code>Stitching/RunOutputLifecycle.cs</code>) — không tự viết lại pattern <code>.creating\</code> → di chuyển ra thư mục cuối.</li>
+    </ol>
+  </div>
+
+  <h4>Giữ tên <code>AlignStitchConfig</code>, không đổi thành <code>RdlAlignStitchOptions</code></h4>
+  <p>Kế hoạch cũ (từ phiên trước) định đổi tên để tránh trùng <code>GerberViewer.Stitching.Models.AlignStitchConfig</code> của Core. Thực tế <strong>giữ nguyên</strong> — vì lớp được khai báo ngay trong <code>namespace RDL.GerberStitch.Facade</code>, tên trần <code>AlignStitchConfig</code> trong project này luôn phân giải về lớp façade (name lookup ưu tiên namespace bao quanh trước using-directive) — không lỗi CS0104 <em>miễn</em> mapper nội bộ viết đủ tên <code>GerberViewer.Stitching.Models.AlignStitchConfig</code> khi cần chạm kiểu của Core. Đúng cách <code>AlignStitchingControl.CloneConfigForRun</code> đã làm trong code gốc.</p>
+
+  <h4>Bẫy <code>ConfigVersion</code> — đã né đúng cách</h4>
+  <p><code>AlignStitchConfigMapper.EnsureComposite</code> chỉ thoát sớm khi <code>ConfigVersion &gt;= 3</code>; object mới có <code>ConfigVersion = 0</code> (default <code>int</code>), khiến nhánh migration 0/1 chạy và <strong>ghi đè</strong> options cấu trúc bằng field phẳng legacy (2 bộ default lệch nhau — vd <code>MaxAbsRotationDeg</code>: cấu trúc 0.5° vs phẳng 0.1°). Cách làm đúng, xác nhận qua đọc <code>AlignStitchConfigMapper.CloneForRun</code> (dòng 187-233 — chính production cũng đặt <code>ConfigVersion = 3</code> ở cuối <code>CloneForRun</code>):</p>
+  <pre><code>var baseConfig = new GerberViewer.Stitching.Models.AlignStitchConfig { ConfigVersion = 3 }; // TRƯỚC mọi thứ khác
+baseConfig.Input.ManifestPath = manifestPath;
+// ... áp override ...
+AlignStitchConfigMapper.EnsureComposite(baseConfig);
+return AlignStitchConfigMapper.CloneForRun(baseConfig, outputPath); // tự đặt lại ConfigVersion=3 + SyncLegacy</code></pre>
+
+  <h4>Đếm tile: dùng <code>States</code>, không dùng <code>TileReports</code></h4>
+  <p>Run tham chiếu Phase 0 có <code>TileReports.Count = 85</code> nhưng chỉ 80 tile thật — nghi ngờ tile qua Neighbor Recovery bị ghi report 2 lần. <code>GerberStitchFacade.MapResult</code> dùng <code>AlignStitchWorkflowResult.States</code> (không dùng <code>TileReports</code>) để đếm — <strong>đã xác nhận đúng bằng dữ liệu thật ở entry 3</strong> (States cho đúng 80 phần tử, không dư).</p>
+
+  <h4>Lỗi gặp phải &amp; cách fix</h4>
+  <table>
+    <tr><th>Lỗi</th><th>Nguyên nhân</th><th>Cách fix</th></tr>
+    <tr>
+      <td><code>CS0104: 'GerberSampleConfig' is ambiguous</code></td>
+      <td>Có <strong>2 class trùng tên</strong>: <code>GerberViewer.Stitching.Configuration.GerberSampleConfig</code> (đúng, dùng cho pipeline tạo sample) và <code>GerberViewer.Stitching.Models.GerberSampleConfig</code> (nghèo trường hơn, không dùng). File façade <code>using</code> cả <code>Models</code> (cho <code>AlignStitchConfig</code>, <code>CapturedImageInfo</code>) lẫn tham số kiểu <code>Configuration.GerberSampleConfig</code>.</td>
+      <td>Viết đủ tên <code>GerberViewer.Stitching.Configuration.GerberSampleConfig</code> tại điểm khai báo tham số/khởi tạo.</td>
+    </tr>
+    <tr>
+      <td><code>CS0104: 'ColorMode' is ambiguous</code></td>
+      <td><code>GerberEngine.ColorMode</code> trùng tên với <code>System.Drawing.Imaging.ColorMode</code> (BCL) — cả 2 namespace đều <code>using</code> trong cùng file.</td>
+      <td>Viết đủ tên <code>GerberEngine.ColorMode.Realistic</code>.</td>
+    </tr>
+    <tr>
+      <td><code>CS1069</code>/<code>CS0012: type 'Bitmap'/'Size' not referenced</code></td>
+      <td><code>RDL.GerberStitch.csproj</code> chỉ có <code>System.Drawing.Common</code> (NuGet), thiếu <code>System.Drawing</code> (BCL) — <code>System.Drawing.Common</code> type-forward cần bản BCL để resolve đầy đủ.</td>
+      <td>Thêm <code>&lt;Reference Include="System.Drawing" /&gt;</code>.</td>
+    </tr>
+  </table>
+
+  <h4>Build</h4>
+  <p><span class="badge ok">PASS</span> — build lại từ đầu (xoá <code>bin/</code>/<code>obj/</code>, không phải incremental) để xác nhận <code>RDL.GerberStitch.dll</code> thật sự sinh ra (trước đó rỗng dù exit gate cũ ghi <code>[x]</code>) và <code>halcondotnetxl.dll</code> <strong>không</strong> bị copy local (đúng <code>Private=False</code>).</p>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="entry-3">3. 2026-08-07 (nhánh <code>Ver1_0</code>) — Task 1.6: harness + chạy thật <code>RunAlignStitch</code></h2>
+<div class="entry">
+  <div class="entry-meta"><span class="badge ok">Harness</span> Phạm vi: project mới <code>RDL.GerberStitch.Harness</code></div>
+
+  <h4>Mục tiêu</h4>
+  <p>Chạy façade thật (không qua GerberViewer UI) với dataset 80 tile thật, đo RAM đỉnh + thời gian — đóng nốt task 0.3/0.4 còn treo từ Phase 0.</p>
+
+  <h4>File tạo mới</h4>
+  <ul class="filelist">
+    <li><code>RDL.GerberStitch.Harness/Program.cs</code>, <code>Properties/AssemblyInfo.cs</code>, <code>packages.config</code>, <code>RDL.GerberStitch.Harness.csproj</code></li>
+    <li>Thêm project vào <code>RDL.GerberStitch.sln</code></li>
+  </ul>
+
+  <h4>Vấn đề dependency phải giải quyết</h4>
+  <p><code>RDL.GerberStitch</code>/<code>GerberStitching.Core</code> cố ý đặt <code>Private=False</code> cho HALCON (đúng cho Master/Worker — họ đã có sẵn DLL trong folder deploy). Harness là tool test độc lập, <strong>không có</strong> folder deploy nào — nếu giữ nguyên sẽ crash lúc runtime (nạp assembly managed <strong>không</strong> dò theo <code>PATH</code>, khác native DLL).</p>
+
+  <h4>Lỗi gặp phải &amp; cách fix</h4>
+  <table>
+    <tr><th>Lỗi</th><th>Nguyên nhân</th><th>Cách fix</th></tr>
+    <tr>
+      <td>Build ban đầu OK nhưng thiếu <code>System.Buffers.dll</code>/<code>System.Memory.dll</code>/<code>System.Numerics.Vectors.dll</code>/<code>OpenCvSharp.Extensions.dll</code> ở output — sẽ crash giữa run khi matcher OpenCV chạy tới</td>
+      <td>MSBuild <strong>không</strong> copy-local đầy đủ xuyên 2 tầng <code>ProjectReference</code> (Harness → RDL.GerberStitch → GerberStitching.Core) cho reference kiểu <code>HintPath</code>/<code>packages.config</code> cũ. <code>halcondotnetxl.dll</code> và <code>OpenCvSharp.dll</code> vẫn được copy (không rõ vì sao chỉ 2 cái này lọt), các assembly còn lại thì không.</td>
+      <td>Khai trực tiếp từng <code>&lt;Reference&gt;</code> với đúng <code>HintPath</code> như <code>RDL.GerberStitch.csproj</code> trong harness — không phó mặc copy-local xuyên tầng.</td>
+    </tr>
+    <tr>
+      <td>Nạp <code>halcondotnetxl.dll</code> fail lúc runtime nếu copy-local bị dọn/thiếu</td>
+      <td>Harness không có folder deploy sẵn DLL như Master/Worker.</td>
+      <td>2 lớp bảo vệ: (1) harness tự <code>&lt;Reference Private="True"&gt;</code> copy-local; (2) <code>AppDomain.CurrentDomain.AssemblyResolve</code> fallback đọc <code>%HALCONROOT%\bin\dotnet35\</code>.</td>
+    </tr>
+    <tr>
+      <td>Thiếu native <code>OpenCvSharpExtern.dll</code></td>
+      <td>Chỉ project trực tiếp import NuGet native-runtime targets mới nhận được native asset — không tự propagate qua ProjectReference.</td>
+      <td>Harness tự thêm <code>packages.config</code> (<code>OpenCvSharp4.runtime.win</code>) + <code>&lt;Import&gt;</code> props/targets, giống <code>RDL.GerberStitch.csproj</code> — cách NuGet chính thống, không phải hack.</td>
+    </tr>
+    <tr>
+      <td>Chữ có dấu tiếng Việt trong console hiển thị sai (<code>t?i stage</code> thay vì <code>tại stage</code>)</td>
+      <td><code>Console.Write</code>/<code>WriteLine</code> mặc định dùng codepage hệ thống (CP1252/CP437), không phải UTF-8.</td>
+      <td>Thêm <code>Console.OutputEncoding = Encoding.UTF8;</code> đầu <code>Main</code>. Chỉ ảnh hưởng hiển thị, không ảnh hưởng dữ liệu.</td>
+    </tr>
+  </table>
+
+  <h3>Kết quả chạy thật</h3>
+  <p>Input: <code>manifest_path</code>, <code>image_path</code> (80 ảnh), <code>output_path</code> — dataset trùng dataset Phase 0 tham chiếu (run <code>110300</code>).</p>
+  <table>
+    <tr><th></th><th>Harness</th><th>Run tham chiếu Phase 0 (<code>110300</code>, qua UI)</th></tr>
+    <tr><td>AlignedTiles</td><td>54</td><td>54</td></tr>
+    <tr><td>BlankTiles</td><td>26</td><td>26</td></tr>
+    <tr><td>FailedTiles</td><td>0</td><td>0</td></tr>
+    <tr><td>Kích thước <code>Stitched.tiff</code></td><td>1 305 931 192 B</td><td>1 305 898 710 B (chênh 32 KB — metadata)</td></tr>
+    <tr><td>Tổng thời gian</td><td>303 s</td><td>247 s (chênh do tải máy dev)</td></tr>
+    <tr><td>RAM đỉnh</td><td colspan="2"><strong>6 616 MB (~6.6 GB)</strong> — số liệu đầu tiên, chưa từng đo trước đây</td></tr>
+  </table>
+  <p>Số tile <strong>khớp tuyệt đối</strong> — xác nhận façade tái tạo đúng hành vi pipeline gốc, không lệch do quá trình đóng gói.</p>
+
+  <div class="note">
+    <strong>Sửa 1 sai lệch phát hiện được:</strong> <code>docs/Phase0_Closeout.md</code> §1.3 (viết ở phiên trước) ghi <code>Stitched.tiff = 654 MB</code> — con số đó là của engine <code>OpenCv</code>, không phải <code>HalconProjectiveMosaicRebased</code> (engine mặc định của façade, cho ra ~1.3 GB). Đã sửa lại doc. Ảnh hưởng: tính dung lượng ổ chia sẻ (blocker 3) phải theo 1.3 GB/lô.
+  </div>
+
+  <h4>Hiểu nhầm cần đính chính (do user chỉ ra)</h4>
+  <p>Trong lúc theo dõi run, có kiểm tra thư mục <code>...\AlignStitch_&lt;timestamp&gt;\.creating\</code> và thấy "No such file or directory", diễn đạt nhầm là "đang lỗi". Thực tế đây là <strong>hành vi đúng</strong>: <code>RunOutputLifecycle.Publish</code> (Core) di chuyển toàn bộ file từ <code>.creating\</code> ra thư mục cha rồi <code>Directory.Delete(creatingDirectory, false)</code> — xoá thư mục tạm ngay khi publish xong. Không thấy <code>.creating\</code> giữa chừng = đã publish thành công.</p>
+
+  <h4>Build</h4>
+  <p><span class="badge ok">PASS</span> — <code>RDL.GerberStitch.sln</code> 4 project, <code>Debug|x64</code> + <code>Release|x64</code>, 0 error.</p>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="entry-4">4. 2026-08-07 (nhánh <code>Ver1_0</code>) — Mở rộng façade + <code>global_config.json</code> + test <code>createsample</code></h2>
+<div class="entry">
+  <div class="entry-meta"><span class="badge ok">Facade</span> <span class="badge ok">Harness</span> Phạm vi: <code>GerberStitchFacade.cs</code>, harness (mode switch + config file)</div>
+
+  <h4>Yêu cầu</h4>
+  <p>Test thêm nhánh tạo sample (<code>CreateSample</code>), input là <strong>ảnh raster đã render sẵn</strong> (<code>.tiff</code>), không phải file Gerber gốc; thêm <code>global_config.json</code> cho harness; tên thư mục output theo format <code>Sample_&lt;tên file không đuôi&gt;</code>.</p>
+
+  <h3>4.1. Façade — thêm <code>GenerateSampleManifestFromRaster</code></h3>
+  <p>Phát hiện: input thật (<code>q168_Gerber2-1 to 2-4.tiff</code>) khớp chính xác <code>SourceRasterPath</code> đã ghi trong manifest tham chiếu Phase 0 — đây là route <strong><code>CreateGerberSampleControl</code></strong> trong GerberViewer (chọn file raster qua <code>OpenFileDialog</code> rồi <code>HOperatorSet.ReadImage</code> thẳng), <strong>khác</strong> route <code>ReadGerberControl</code> (render Gerber → Bitmap) mà <code>GenerateSampleManifest</code> hiện có đang giả định. Hai route độc lập trong GerberViewer gốc (Tab 1 vs Tab 2), façade cũ chỉ có route Tab 1.</p>
+
+  <p>Thêm hàm mới, đồng thời refactor phần dùng chung (validate kích thước, <code>SamplePreparationService.Prepare</code>, <code>SampleTileGenerator.GenerateAsync</code>) ra <code>PrepareAndCropAsync</code> — dùng chung giữa <code>GenerateSampleManifest</code> (route Gerber) và <code>GenerateSampleManifestFromRaster</code> (route raster có sẵn), tránh trùng lặp code.</p>
+
+  <p>Cả 2 hàm được thêm tham số <code>sampleFolderName</code> (optional) — truyền tiếp vào overload 5-tham số có sẵn của <code>SampleTileGenerator.GenerateAsync(preparedRun, outputRoot, folderName, ct, progress)</code> (Core đã có sẵn, comment gốc: "Cho phép Tab 2 đặt tên folder sample"). Null → Core tự đặt tên <code>GerberSample_&lt;timestamp&gt;</code> như cũ.</p>
+
+  <h4>Lỗi gặp phải &amp; cách fix</h4>
+  <table>
+    <tr><th>Lỗi</th><th>Nguyên nhân</th><th>Cách fix</th></tr>
+    <tr>
+      <td><code>CS0012: 'GerberSampleConfig' is defined in an assembly that is not referenced. You must add a reference to 'GerberStitching.Core'</code> — <strong>xảy ra ngay cả khi harness chỉ truyền <code>null</code></strong> cho tham số đó</td>
+      <td>Dự định ban đầu: gọi <code>facade.GenerateSampleManifestFromRaster(rasterPath, null, ...)</code> từ harness để <strong>tránh</strong> phải reference <code>GerberStitching.Core</code>, giữ ranh giới façade thuần cho harness. <strong>Không hoạt động</strong> — C# yêu cầu assembly định nghĩa một type xuất hiện trong <em>signature</em> của method đang gọi phải được reference trực tiếp lúc biên dịch, bất kể có truyền <code>null</code> hay không. Đây là hành vi chuẩn của compiler, không phải hạn chế riêng của project kiểu cũ.</td>
+      <td>Thêm <code>&lt;ProjectReference&gt;</code> từ harness tới <code>GerberStitching.Core.csproj</code> trực tiếp. Đồng thời sửa code harness từ ý định "truyền null để giấu" thành tạo tường minh <code>new GerberViewer.Stitching.Configuration.GerberSampleConfig()</code> — rõ ràng hơn, không còn lý do giữ null nữa. <strong>Hệ quả tài liệu:</strong> tiêu chí "harness không using namespace nào của Core" giờ chỉ đúng cho nhánh <code>RunAlignStitch</code>, không còn đúng cho nhánh tạo sample — đã cập nhật lại nghiệm thu trong <code>docs/Phase1_Task06.md</code> §2 thay vì che giấu ngoại lệ này.</td>
+    </tr>
+  </table>
+
+  <h3>4.2. Harness — <code>global_config.json</code> + <code>--mode</code></h3>
+  <ul class="filelist">
+    <li><code>RDL.GerberStitch.Harness/GlobalConfig.cs</code> (mới) — <code>DataContractJsonSerializer</code> (BCL có sẵn, không thêm thư viện JSON mới, giống cách Core tự đọc <code>sample_manifest.json</code>)</li>
+    <li><code>RDL.GerberStitch.Harness/global_config.json</code> (mới) — 2 section <code>AlignStitch</code> + <code>CreateSample</code>, <code>CopyToOutputDirectory=PreserveNewest</code></li>
+    <li><code>Program.cs</code> — thêm <code>--mode alignstitch|createsample</code> (default <code>alignstitch</code>); độ ưu tiên tham số: <strong>CLI arg &gt; global_config.json &gt; báo lỗi thiếu tham số</strong> (không còn hard-code đường dẫn máy cụ thể trong source)</li>
+    <li><code>RDL.GerberStitch.Harness.csproj</code> — thêm <code>&lt;Reference Include="System.Runtime.Serialization" /&gt;</code> (cho <code>DataContractJsonSerializer</code>)</li>
+  </ul>
+
+  <h3>4.3. Kết quả chạy thật — <code>createsample</code></h3>
+  <p>Input: <code>q168_Gerber2-1 to 2-4.tiff</code> (40418×32364), output root <code>H:\005_Project\AOI_2026_07_imp</code>, không truyền <code>--folder</code> → tự sinh <code>Sample_q168_Gerber2-1 to 2-4</code>.</p>
+  <table>
+    <tr><th>Kiểm tra</th><th>Kết quả</th></tr>
+    <tr><td>Success</td><td>True</td></tr>
+    <tr><td>Thời gian</td><td>22 929 ms (~23s — nhanh vì không có vòng lặp Direct Alignment, chỉ crop + ghi file)</td></tr>
+    <tr><td>Số tile sinh ra</td><td>80 (<code>Sample_R00_C00_O000.tiff</code> … <code>Sample_R07_C09_O079.tiff</code>, grid mặc định Core 8×10)</td></tr>
+    <tr><td>Tên thư mục</td><td><code>Sample_q168_Gerber2-1 to 2-4</code> — đúng format yêu cầu</td></tr>
+    <tr><td><code>manifest.ModelGeneration</code></td><td><code>"OnTheFly"</code> — <strong>lần đầu đường sinh manifest thật ghi trường này</strong> (entry 1 chỉ thêm code, chưa có run thật nào đi qua <code>BuildManifest</code> để kiểm chứng cho tới lần này — run <code>alignstitch</code> ở entry 3 dùng manifest <em>có sẵn từ trước</em>)</td></tr>
+    <tr><td><code>manifest.SourceWidth/Height</code></td><td>40418 × 32364 — khớp input, không resize</td></tr>
+  </table>
+
+  <h4>Build</h4>
+  <p><span class="badge ok">PASS</span> — 4 project, 0 error. Xác nhận <code>GerberStitching.Core.dll</code> và <code>global_config.json</code> đều có mặt ở output harness sau build.</p>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="pitfalls">5. Bảng tổng hợp lỗi &amp; cách fix (tra nhanh)</h2>
+<table>
+  <tr><th>Triệu chứng</th><th>Nguyên nhân gốc</th><th>Fix</th><th>Entry</th></tr>
+  <tr><td><code>CS0104</code> ambiguous <code>GerberSampleConfig</code></td><td>2 class trùng tên (<code>Configuration/</code> vs <code>Models/</code>)</td><td>Viết đủ tên namespace</td><td><a href="#entry-2">2</a></td></tr>
+  <tr><td><code>CS0104</code> ambiguous <code>ColorMode</code></td><td><code>GerberEngine.ColorMode</code> vs BCL <code>System.Drawing.Imaging.ColorMode</code></td><td>Viết đủ tên namespace</td><td><a href="#entry-2">2</a></td></tr>
+  <tr><td><code>CS1069</code>/<code>CS0012</code> thiếu <code>Bitmap</code>/<code>Size</code></td><td>Thiếu reference <code>System.Drawing</code> (BCL)</td><td>Thêm <code>&lt;Reference Include="System.Drawing" /&gt;</code></td><td><a href="#entry-2">2</a></td></tr>
+  <tr><td>Thiếu DLL ở output khi build project cuối chuỗi (harness)</td><td>MSBuild không copy-local đủ xuyên 2 tầng <code>ProjectReference</code> kiểu cũ</td><td>Khai trực tiếp từng <code>&lt;Reference&gt;</code>, không phó mặc copy-local xuyên tầng</td><td><a href="#entry-3">3</a></td></tr>
+  <tr><td>Chữ tiếng Việt lỗi font trong console</td><td>Codepage mặc định không phải UTF-8</td><td><code>Console.OutputEncoding = Encoding.UTF8;</code></td><td><a href="#entry-3">3</a></td></tr>
+  <tr><td><code>CS0012</code> dù chỉ truyền <code>null</code></td><td>C# vẫn cần reference assembly định nghĩa type trong signature, bất kể giá trị truyền vào</td><td>Thêm <code>ProjectReference</code> trực tiếp tới assembly đó</td><td><a href="#entry-4">4</a></td></tr>
+</table>
+
+<footer>
+  Repo: <code>RDL.GerberStitch</code> · File này cập nhật theo yêu cầu bắt buộc trong <code>CLAUDE.md</code> (mục "Ghi log triển khai") — thêm entry mới mỗi lần thực thi code thật, không sửa/xoá entry cũ trừ khi entry đó ghi sai.
+</footer>
+
+</body>
+</html>
