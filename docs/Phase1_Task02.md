@@ -15,6 +15,24 @@
 
 ---
 
+## ✅ Đã triển khai (2026-08-07, nhánh `Ver1_0`)
+
+Đã viết `Facade/GerberStitchFacade.cs` + `Facade/AlignStitchConfig.cs` thật, build sạch, và **chạy thành công với dữ liệu thật** qua harness (`docs/Phase1_Task06.md`) — dataset 80 tile tại `H:\005_Project\AOI_2026_07_imp\data\GerberSample_20260806_084849` + `H:\005_Project\AOI_2026_07_imp\20260720_Gerber_Align\20260725 Q168 2-1 org`.
+
+So với kế hoạch §1–§4 dưới đây, có **5 điểm thiết kế lại** — phát sinh từ việc đọc trực tiếp `AlignStitchingControl.RunWorkflowAsync` và `CreateGerberSampleControl` trong repo GerberViewer (theo yêu cầu tham khảo code sản xuất trước khi viết façade):
+
+1. **Không tạo `RdlCapturedTile`/danh sách DTO ảnh thủ công.** Core đã có sẵn `GerberViewer.Stitching.Arrangement.CapturedImageLoader.Load(imageFolder, manifestPath, w, h)` — tự đọc lại manifest, natural-sort tên file trong thư mục, ghép theo vị trí **index** với `manifest.Tiles` (đã đảm bảo liên tục 0..N-1 theo `OrderIndex`), trả `IList<CapturedImageInfo>` đã validate (số lượng khớp, không trùng khoá, kích thước ảnh khớp nhau). Đây chính là cơ chế production dùng ở `AlignStitchingControl`/`CreateGerberSampleControl`. `RunAlignStitch` vì vậy nhận **thư mục ảnh** (`string capturedImagesFolder`), không nhận `IList<RdlCapturedTile>` — đơn giản hơn thiết kế cũ, và tránh đúng rủi ro "OrderIndex lệch không báo lỗi" mà §1 dưới đây cảnh báo.
+2. **Không tạo `RdlGridConfig`.** `GenerateSampleManifest` nhận thẳng `GerberViewer.Stitching.Configuration.GerberSampleConfig` của Core — đây là DTO thuần dữ liệu (không HObject/HALCON handle), tạo một bản sao gần giống hệt (`RdlGridConfig`) là dư thừa. Đánh đổi: façade lộ ra 1 kiểu của Core, hơi ngược với AGENTS.md §3.1; chấp nhận có chủ đích vì DTO này an toàn để chạm trực tiếp.
+3. **Giữ tên `AlignStitchConfig.cs`/`class AlignStitchConfig`, không đổi sang `RdlAlignStitchOptions`.** Xem `docs/Phase1_Task01.md` mục "Đã triển khai" — tên trần trong namespace bao quanh không xung đột; mapper nội bộ (`GerberStitchFacade.BuildCoreConfig`) viết đủ tên `GerberViewer.Stitching.Models.AlignStitchConfig` khi cần chạm kiểu của Core, đúng cách `AlignStitchingControl.CloneConfigForRun` đã làm.
+4. **`BuildCoreConfig` dùng đúng pattern production**, không tự chế: đặt `ConfigVersion = 3` ngay khi khởi tạo (né bẫy §2 của `docs/Phase1_Task04.md`), set `Input.ManifestPath`/`CapturedFolderPath`, ghi đè 6 trường override từ `AlignStitchConfig` façade lên cây cấu trúc, gọi `AlignStitchConfigMapper.EnsureComposite` rồi `AlignStitchConfigMapper.CloneForRun(baseConfig, outputPath)` — **`CloneForRun` đã tự đặt lại `ConfigVersion = 3` + `SyncLegacy` ở cuối**, xác nhận qua đọc trực tiếp `AlignStitchConfigMapper.cs:187-233`. Đây đúng chuỗi gọi `AlignStitchingControl.CloneConfigForRun(source, creatingDir)` dùng trong `RunWorkflowAsync`.
+5. **Publish kết quả bằng `RunOutputLifecycle.Publish`/`Cleanup` có sẵn trong Core** (`Stitching/RunOutputLifecycle.cs`) — không tự viết lại pattern `.creating` → di chuyển vào folder cuối. `RunAlignStitch` tạo `outputRoot\AlignStitch_<timestamp>\.creating\`, gọi `RunAsync`, rồi `Publish` — giống hệt `finalRunDir`/`creatingDir` trong `AlignStitchingControl.RunWorkflowAsync`.
+
+**Không triển khai trong task này** (nằm ngoài phạm vi 2 file được yêu cầu): bộ JSON `processing_report.json` chi tiết mà `AlignStitchingControl.WriteProcessingReport` ghi (130 dòng, phục vụ debug/so sánh run — thuộc về công cụ chẩn đoán của GerberViewer, không phải hợp đồng Master/Worker). `AlignStitchResult` (façade) đã đủ để Worker báo cáo về Master theo đúng field đã thiết kế ở §4.1 dưới đây.
+
+**Sửa 1 phát hiện mới:** `GerberSampleConfig` bị trùng tên **compile-error thật** (`CS0104`), không chỉ là rủi ro lý thuyết như §3.1 mô tả — `using GerberViewer.Stitching.Models;` (cho `AlignStitchConfig`, `CapturedImageInfo`...) và tham số kiểu `Configuration.GerberSampleConfig` cùng có mặt trong `GerberStitchFacade.cs` khiến bản build đầu tiên fail ngay. Đã sửa bằng cách viết đủ tên `GerberViewer.Stitching.Configuration.GerberSampleConfig` tại điểm khai báo tham số. Tương tự, `ColorMode` cũng trùng tên giữa `GerberEngine.ColorMode` và `System.Drawing.Imaging.ColorMode` (BCL) — sửa bằng full-qualify.
+
+---
+
 ## 0. Vấn đề
 
 Bản trước của doc này mô tả API dựa trên **suy đoán**, tự nó ghi chú *"Bảng trên dựa trên cấu trúc branch `2026-08-04_Ver4_implement_claude`"*. Đối chiếu source thật: **4/5 đường dẫn sai**, và signature được tự nghĩ ra.

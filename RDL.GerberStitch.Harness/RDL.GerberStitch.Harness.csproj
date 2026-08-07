@@ -4,35 +4,17 @@
   <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
   <PropertyGroup>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
-    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
-    <ProjectGuid>{B9562199-720A-4CCA-A4D3-797412E117E8}</ProjectGuid>
-    <OutputType>Library</OutputType>
+    <Platform Condition=" '$(Platform)' == '' ">x64</Platform>
+    <ProjectGuid>{3F1E7B7A-8C2B-4B77-9B7B-2B7E9D3C6F11}</ProjectGuid>
+    <OutputType>Exe</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
-    <RootNamespace>RDL.GerberStitch</RootNamespace>
-    <AssemblyName>RDL.GerberStitch</AssemblyName>
+    <RootNamespace>RDL.GerberStitch.Harness</RootNamespace>
+    <AssemblyName>RDL.GerberStitch.Harness</AssemblyName>
     <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <Deterministic>true</Deterministic>
     <LangVersion>7.3</LangVersion>
-    <NuGetPackageImportStamp>
-    </NuGetPackageImportStamp>
-  </PropertyGroup>
-  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
-    <DebugSymbols>true</DebugSymbols>
-    <DebugType>full</DebugType>
-    <Optimize>false</Optimize>
-    <OutputPath>bin\Debug\</OutputPath>
-    <DefineConstants>DEBUG;TRACE</DefineConstants>
-    <ErrorReport>prompt</ErrorReport>
-    <WarningLevel>4</WarningLevel>
-  </PropertyGroup>
-  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
-    <DebugType>pdbonly</DebugType>
-    <Optimize>true</Optimize>
-    <OutputPath>bin\Release\</OutputPath>
-    <DefineConstants>TRACE</DefineConstants>
-    <ErrorReport>prompt</ErrorReport>
-    <WarningLevel>4</WarningLevel>
+    <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Debug|x64'">
     <DebugSymbols>true</DebugSymbols>
@@ -40,7 +22,9 @@
     <DefineConstants>DEBUG;TRACE</DefineConstants>
     <DebugType>full</DebugType>
     <PlatformTarget>x64</PlatformTarget>
+    <Prefer32Bit>false</Prefer32Bit>
     <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Release|x64'">
     <OutputPath>bin\x64\Release\</OutputPath>
@@ -48,31 +32,31 @@
     <Optimize>true</Optimize>
     <DebugType>pdbonly</DebugType>
     <PlatformTarget>x64</PlatformTarget>
+    <Prefer32Bit>false</Prefer32Bit>
     <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
   </PropertyGroup>
   <ItemGroup>
+    <!-- Copy-local riêng cho harness: đây là tool test độc lập, không có folder deploy Master/Worker
+         sẵn halcondotnetxl.dll như production, nên khác với RDL.GerberStitch/GerberStitching.Core
+         (Private=False), harness tự copy để chạy được ngay từ bin\ của chính nó. -->
     <Reference Include="halcondotnetxl">
       <HintPath>$(HALCONROOT)\bin\dotnet35\halcondotnetxl.dll</HintPath>
-      <Private>False</Private>
+      <Private>True</Private>
     </Reference>
     <Reference Include="hdevenginedotnetxl">
       <HintPath>$(HALCONROOT)\bin\dotnet35\hdevenginedotnetxl.dll</HintPath>
-      <Private>False</Private>
+      <Private>True</Private>
     </Reference>
-    <Reference Include="Newtonsoft.Json">
-      <HintPath>..\..\Lib_Supporter\dll\Newtonsoft.Json.dll</HintPath>
-    </Reference>
-    <Reference Include="OpenCvSharp, Version=4.0.0.0, Culture=neutral, PublicKeyToken=6adad1e807fea099, processorArchitecture=MSIL">
-      <HintPath>..\packages\OpenCvSharp4.4.13.0.20260627\lib\netstandard2.0\OpenCvSharp.dll</HintPath>
-    </Reference>
+    <!-- Reference trực tiếp các package NuGet mà RDL.GerberStitch/GerberStitching.Core dùng —
+         không phó mặc MSBuild tự copy-local xuyên 2 tầng ProjectReference (thực tế không đủ tin cậy
+         cho hint-path reference kiểu packages.config cũ, một số assembly bị bỏ sót khi build harness). -->
     <Reference Include="OpenCvSharp.Extensions, Version=4.0.0.0, Culture=neutral, PublicKeyToken=6adad1e807fea099, processorArchitecture=MSIL">
       <HintPath>..\packages\OpenCvSharp4.Extensions.4.13.0.20260627\lib\netstandard2.0\OpenCvSharp.Extensions.dll</HintPath>
     </Reference>
-    <Reference Include="System" />
     <Reference Include="System.Buffers, Version=4.0.5.0, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51, processorArchitecture=MSIL">
       <HintPath>..\packages\System.Buffers.4.6.1\lib\net462\System.Buffers.dll</HintPath>
     </Reference>
-    <Reference Include="System.Core" />
     <Reference Include="System.Drawing" />
     <Reference Include="System.Drawing.Common, Version=10.0.0.0, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51, processorArchitecture=MSIL">
       <HintPath>..\packages\System.Drawing.Common.10.0.9\lib\net462\System.Drawing.Common.dll</HintPath>
@@ -80,41 +64,47 @@
     <Reference Include="System.Memory, Version=4.0.5.0, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51, processorArchitecture=MSIL">
       <HintPath>..\packages\System.Memory.4.6.3\lib\net462\System.Memory.dll</HintPath>
     </Reference>
-    <Reference Include="System.Numerics" />
     <Reference Include="System.Numerics.Vectors, Version=4.1.6.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a, processorArchitecture=MSIL">
       <HintPath>..\packages\System.Numerics.Vectors.4.6.1\lib\net462\System.Numerics.Vectors.dll</HintPath>
     </Reference>
     <Reference Include="System.Runtime.CompilerServices.Unsafe, Version=6.0.3.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a, processorArchitecture=MSIL">
       <HintPath>..\packages\System.Runtime.CompilerServices.Unsafe.6.1.2\lib\net462\System.Runtime.CompilerServices.Unsafe.dll</HintPath>
     </Reference>
+    <Reference Include="System" />
+    <Reference Include="System.Core" />
     <Reference Include="System.Xml.Linq" />
     <Reference Include="System.Data.DataSetExtensions" />
     <Reference Include="Microsoft.CSharp" />
     <Reference Include="System.Data" />
     <Reference Include="System.Net.Http" />
+    <Reference Include="System.Runtime.Serialization" />
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="Facade\AlignStitchConfig.cs" />
-    <Compile Include="Facade\GerberStitchFacade.cs" />
+    <Compile Include="GlobalConfig.cs" />
+    <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\GerberEngine\GerberEngine.csproj">
-      <Project>{e8cd28fa-da0b-4f1c-b301-267be64c0513}</Project>
-      <Name>GerberEngine</Name>
+    <ProjectReference Include="..\RDL.GerberStitch\RDL.GerberStitch.csproj">
+      <Project>{b9562199-720a-4cca-a4d3-797412e117e8}</Project>
+      <Name>RDL.GerberStitch</Name>
     </ProjectReference>
+    <!-- Chỉ cần cho nhánh createsample: GenerateSampleManifestFromRaster nhận tham số kiểu
+         Configuration.GerberSampleConfig của Core (Task 1.2 chấp nhận đánh đổi này có chủ đích,
+         xem docs/Phase1_Task02.md). C# yêu cầu assembly định nghĩa type xuất hiện trong signature
+         phải được reference trực tiếp để compile, kể cả khi gọi chỉ truyền null — ProjectReference
+         gián tiếp qua RDL.GerberStitch không đủ với project .csproj kiểu cũ này. -->
     <ProjectReference Include="..\GerberStitching.Core\GerberStitching.Core.csproj">
       <Project>{a9ebae59-cc60-4a29-b248-9b3779c20f57}</Project>
       <Name>GerberStitching.Core</Name>
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>
-    <Folder Include="Internal\" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="app.config" />
     <None Include="packages.config" />
+    <None Include="global_config.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <Target Name="EnsureNuGetPackageBuildImports" BeforeTargets="PrepareForBuild">
