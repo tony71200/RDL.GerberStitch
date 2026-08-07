@@ -101,11 +101,11 @@ namespace GerberEngine
             {
                 case LayerType.TopCopper:
                 case LayerType.BottomCopper:
-                case LayerType.InnerCopper: return Color.FromArgb(224, 178, 82);   // dong ma vang
+                case LayerType.InnerCopper: return Color.FromArgb(224, 178, 82);   // gold-plated copper
                 case LayerType.TopSolderMask:
-                case LayerType.BottomSolderMask: return Color.FromArgb(150, 0, 102, 51); // xanh solder mask ban trong
+                case LayerType.BottomSolderMask: return Color.FromArgb(150, 0, 102, 51); // translucent green solder mask
                 case LayerType.TopSilkscreen:
-                case LayerType.BottomSilkscreen: return Color.FromArgb(240, 240, 240);   // chu in trang
+                case LayerType.BottomSilkscreen: return Color.FromArgb(240, 240, 240);   // white silkscreen
                 case LayerType.BoardOutline: return Color.FromArgb(200, 200, 60);
                 case LayerType.Drill: return Color.FromArgb(40, 40, 40);
                 default: return Color.Gold;
@@ -262,7 +262,7 @@ namespace GerberEngine
                         for (int i = 0; i < n; i++)
                         {
                             double ang = rotDeg * Math.PI / 180 + 2 * Math.PI * i / n;
-                            // Y dao dau vi he anh Y xuong
+                            // invert Y because image coordinates point down
                             pts[i] = new PointF(pos.X + d / 2 * (float)Math.Cos(ang),
                                                 pos.Y - d / 2 * (float)Math.Sin(ang));
                         }
@@ -288,7 +288,7 @@ namespace GerberEngine
             {
                 using (GraphicsPath path = (GraphicsPath)shape.Path.Clone())
                 {
-                    // mm cuc bo (Y len) -> pixel: scale X, dao Y, tinh tien ve vi tri flash
+                    // local mm (Y up) to pixels: scale X, invert Y, and translate to the flash position
                     using (var mtx = new Matrix(s, 0, 0, -s, pos.X, pos.Y))
                         path.Transform(mtx);
 
@@ -331,7 +331,7 @@ namespace GerberEngine
             var path = new GraphicsPath();
             float x = c.X - w / 2, y = c.Y - h / 2;
             float r = Math.Min(w, h) / 2;
-            // Capsule: rounded-rect voi ban kinh = nua canh ngan
+            // Capsule: rounded rectangle with radius equal to half its shorter side
             path.AddArc(x, y, 2 * r, 2 * r, 180, 90);
             path.AddArc(x + w - 2 * r, y, 2 * r, 2 * r, 270, 90);
             path.AddArc(x + w - 2 * r, y + h - 2 * r, 2 * r, 2 * r, 0, 90);
@@ -367,7 +367,7 @@ namespace GerberEngine
                                 Aperture = new Aperture { Shape = ApertureShape.Circle, Parameters = new double[] { 0 } }
                             };
                             using (GraphicsPath ap = BuildArcPath(arc, t))
-                                if (ap.PointCount > 0) path.AddPath(ap, true); // connect = true noi lien contour
+                                if (ap.PointCount > 0) path.AddPath(ap, true); // connect = true joins the contour
                         }
                         else
                         {

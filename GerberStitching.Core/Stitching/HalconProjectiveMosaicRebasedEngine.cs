@@ -207,7 +207,7 @@ namespace GerberViewer.Stitching.Stitching
             return result;
         }
 
-        // [Claude] [Change time: 2026-08-06] [Purpose: Đo riêng thời gian ghi ảnh HALCON (Save Image) cho tab Execute Time.]
+        // [Claude] [Change time: 2026-08-06] [Purpose: Measure HALCON image writing separately as Save Image for the Execute Time tab.]
         private static void Write(string path, HObject image, bool bigTiff, StitchingExecutionReport report = null)
         {
             var directory = Path.GetDirectoryName(path);

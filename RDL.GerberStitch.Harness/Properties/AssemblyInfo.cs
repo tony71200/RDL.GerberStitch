@@ -2,7 +2,7 @@ using System.Reflection;
 using System.Runtime.InteropServices;
 
 [assembly: AssemblyTitle("RDL.GerberStitch.Harness")]
-[assembly: AssemblyDescription("Console harness chạy thử RDL.GerberStitch.Facade với dữ liệu thật.")]
+[assembly: AssemblyDescription("Console harness for exercising RDL.GerberStitch.Facade with real data.")]
 [assembly: AssemblyConfiguration("")]
 [assembly: AssemblyCompany("")]
 [assembly: AssemblyProduct("RDL.GerberStitch.Harness")]

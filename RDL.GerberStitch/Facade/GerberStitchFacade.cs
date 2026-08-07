@@ -18,7 +18,7 @@ using HalconDotNet;
 
 namespace RDL.GerberStitch.Facade
 {
-    /// <summary>Kết quả GenerateSampleManifest.</summary>
+    /// <summary>Result returned by GenerateSampleManifest.</summary>
     public sealed class GenerateManifestResult
     {
         public bool Success { get; set; }
@@ -32,7 +32,7 @@ namespace RDL.GerberStitch.Facade
         }
     }
 
-    /// <summary>Tiến độ RunAlignStitch, bọc GerberViewer.Stitching.Models.WorkflowProgress của Core.</summary>
+    /// <summary>RunAlignStitch progress data wrapping the Core WorkflowProgress type.</summary>
     public sealed class AlignStitchProgress
     {
         public int Current { get; set; }
@@ -48,27 +48,27 @@ namespace RDL.GerberStitch.Facade
         public string Reason { get; set; }
     }
 
-    /// <summary>Kết quả RunAlignStitch.</summary>
+    /// <summary>Result returned by RunAlignStitch.</summary>
     public sealed class AlignStitchResult
     {
         public bool Success { get; set; }
         public string TiffPath { get; set; }
         public long ElapsedMs { get; set; }
 
-        /// <summary>Tổng tile theo manifest (manifest.Tiles.Count) — KHÔNG lấy report.TileReports.Count,
-        /// xem docs/Phase0_Closeout.md §6.1 (chênh lệch 85 vs 80 tile chưa lý giải được ở run tham chiếu).</summary>
+        /// <summary>Total tiles in the manifest (manifest.Tiles.Count); do not use report.TileReports.Count.
+        /// See docs/Phase0_Closeout.md section 6.1 for the unexplained 85-versus-80 discrepancy in the reference run.</summary>
         public int TileCount { get; set; }
 
-        /// <summary>Tile khớp bằng ảnh hoặc nội suy hợp lệ (SampleAlignment/NeighborAlignment/AnchorAdjusted/Interpolated/Manual).</summary>
+        /// <summary>Tiles aligned from an image or a valid interpolation (SampleAlignment/NeighborAlignment/AnchorAdjusted/Interpolated/Manual).</summary>
         public int AlignedTileCount { get; set; }
 
-        /// <summary>Tile sample rỗng/không đo được, đặt theo grid pose danh định. KHÔNG phải lỗi — xem docs/Phase0_Closeout.md §4.2.</summary>
+        /// <summary>Blank or unmeasurable sample tiles placed at their nominal grid pose. These are not failures; see docs/Phase0_Closeout.md section 4.2.</summary>
         public int BlankTileCount { get; set; }
 
         public IList<FailedTileInfo> FailedTiles { get; set; } = new List<FailedTileInfo>();
 
-        /// <summary>Mã lỗi RDL. 0 = OK (kể cả khi có vài FailedTiles — partial success vẫn stitch được),
-        /// -300 = fail toàn bộ, không có ảnh output.</summary>
+        /// <summary>RDL error code. 0 means success, including partial success with some FailedTiles;
+        /// -300 means the entire operation failed and produced no output image.</summary>
         public int ErrorCode { get; set; }
 
         public IList<string> Warnings { get; set; } = new List<string>();
@@ -81,11 +81,11 @@ namespace RDL.GerberStitch.Facade
     }
 
     /// <summary>
-    /// Façade duy nhất mà RDL Master/Worker được reference. Bọc GerberStitching.Core +
-    /// GerberEngine sau 2 hàm: GenerateSampleManifest (Master, lúc Prepare) và
-    /// RunAlignStitch (Worker, khi nhận lô).
+    /// The only façade that RDL Master/Worker should reference. It wraps GerberStitching.Core and
+    /// GerberEngine behind GenerateSampleManifest (called by Master during Prepare) and
+    /// RunAlignStitch (called by Worker when it receives a batch).
     ///
-    /// Luồng thực thi tham khảo trực tiếp từ code sản xuất trong repo GerberViewer:
+    /// The execution flow is based directly on production code in the GerberViewer repository:
     /// - GenerateSampleManifest: ReadGerberControl (render Gerber → Bitmap) +
     ///   CreateGerberSampleControl.PrepareCurrentSampleAsync/GenerateAsync (Bitmap → sample tile + manifest).
     /// - RunAlignStitch: AlignStitchingControl.RunWorkflowAsync (CloneConfigForRun →
@@ -94,25 +94,25 @@ namespace RDL.GerberStitch.Facade
     public sealed class GerberStitchFacade
     {
         /// <summary>
-        /// Render Gerber, cắt thành lưới sample tile, ghi manifest. Master gọi khi Prepare (S002),
-        /// khi đầu vào là file Gerber gốc (.gbr/.ger) cần render trước — giống luồng Tab 1
-        /// (ReadGerberControl) nối sang Tab 2 (CreateGerberSampleControl) trong GerberViewer.
-        /// Nếu đầu vào đã là ảnh raster có sẵn (đã render/scan), dùng
-        /// <see cref="GenerateSampleManifestFromRaster"/> thay vì hàm này.
+        /// Renders a Gerber file, cuts a sample-tile grid, and writes a manifest. Master calls this during Prepare (S002)
+        /// when the original input is a Gerber file (.gbr/.ger) that must be rendered first, matching the flow from Tab 1
+        /// (ReadGerberControl) to Tab 2 (CreateGerberSampleControl) in GerberViewer.
+        /// If the input is already a rendered or scanned raster image, use
+        /// <see cref="GenerateSampleManifestFromRaster"/> instead.
         /// </summary>
-        /// <param name="gerberFilePath">File Gerber gốc (.gbr/.ger).</param>
+        /// <param name="gerberFilePath">Original Gerber file (.gbr/.ger).</param>
         /// <param name="gridConfig">
-        /// Cấu hình lưới/crop — dùng thẳng kiểu GerberSampleConfig của Core (Rows, Columns,
+        /// Grid and crop settings; this directly uses the Core GerberSampleConfig type (Rows, Columns,
         /// OverlapValue/Unit, ProcessedWidth/Height, StartOrder, CropOrder, ModelGeneration...).
-        /// Đây là DTO thuần dữ liệu (không HObject/HALCON handle) nên façade tái dùng trực
-        /// tiếp thay vì nhân đôi một lớp gần giống hệt — SourceRasterPath/OutputDirectory
-        /// trên tham số này sẽ bị ghi đè bởi hàm này, không cần set trước.
+        /// This is a data-only DTO with no HObject or HALCON handles, so the façade reuses it instead
+        /// of duplicating an almost identical class. This method overwrites SourceRasterPath and
+        /// OutputDirectory, so callers do not need to set them first.
         /// </param>
-        /// <param name="outputRoot">Thư mục ghi ảnh raster trung gian + tile + manifest.</param>
-        /// <param name="renderDpi">DPI render Gerber→raster. Default 600 (khớp combobox mặc định Tab 1 GerberViewer).</param>
+        /// <param name="outputRoot">Directory for the intermediate raster, tiles, and manifest.</param>
+        /// <param name="renderDpi">Gerber-to-raster DPI. The default is 600, matching the default GerberViewer Tab 1 selection.</param>
         /// <param name="sampleFolderName">
-        /// Tên thư mục con chứa tile+manifest bên trong outputRoot. Null → Core tự đặt tên
-        /// "GerberSample_&lt;timestamp&gt;" (mặc định của SampleTileGenerator).
+        /// Name of the child directory containing tiles and the manifest. When null, Core assigns
+        /// "GerberSample_&lt;timestamp&gt;", the SampleTileGenerator default.
         /// </param>
         public async Task<GenerateManifestResult> GenerateSampleManifest(
             string gerberFilePath,
@@ -127,8 +127,8 @@ namespace RDL.GerberStitch.Facade
             if (string.IsNullOrWhiteSpace(outputRoot))
                 return GenerateManifestResult.Fail("Output root is required.");
 
-            // GerberSampleConfig là tên trùng giữa Configuration/ (đúng, dùng cho pipeline này) và
-            // Models/ (nghèo trường hơn, không dùng ở đây) — phải viết đủ tên để tránh CS0104.
+            // GerberSampleConfig exists in both Configuration (the pipeline type used here) and
+            // Models (a smaller type not used here), so use the fully qualified name to avoid CS0104.
             var config = gridConfig ?? new GerberViewer.Stitching.Configuration.GerberSampleConfig();
 
             Bitmap rendered = null;
@@ -137,17 +137,17 @@ namespace RDL.GerberStitch.Facade
             {
                 Directory.CreateDirectory(outputRoot);
 
-                // 1) Load + render Gerber -> Bitmap (giống ReadGerberControl.RenderPreviewAsync).
+                // 1) Load and render the Gerber into a Bitmap, as ReadGerberControl.RenderPreviewAsync does.
                 var engine = new GerberEngineFacade();
                 engine.LoadLayer(gerberFilePath);
-                // ColorMode trùng tên với System.Drawing.Imaging.ColorMode (BCL) — viết đủ tên để tránh CS0104.
+                // ColorMode conflicts with System.Drawing.Imaging.ColorMode; qualify it to avoid CS0104.
                 var renderOptions = new RenderOptions { Dpi = renderDpi, Mode = GerberEngine.ColorMode.Realistic };
                 cancellationToken.ThrowIfCancellationRequested();
                 rendered = await Task.Run(() => engine.RenderCombined(renderOptions), cancellationToken);
 
-                // 2) Lưu raster trung gian ra đĩa để SourceRasterPath có nguồn thật, đối chiếu
-                //    được sau này (giống việc user chọn file .png ở CreateGerberSampleControl) —
-                //    tránh double-render bằng cách convert thẳng Bitmap đang có trong bộ nhớ.
+                // 2) Persist an intermediate raster so SourceRasterPath identifies a real, auditable source,
+                //    as when a user selects a PNG in CreateGerberSampleControl. Avoid rendering twice by
+                //    converting the in-memory Bitmap directly.
                 var rasterPath = Path.Combine(outputRoot, "source_raster.png");
                 var sourceSize = new Size(rendered.Width, rendered.Height);
                 rendered.Save(rasterPath, ImageFormat.Png);
@@ -175,15 +175,15 @@ namespace RDL.GerberStitch.Facade
         }
 
         /// <summary>
-        /// Cắt thành lưới sample tile, ghi manifest — từ một ảnh **raster có sẵn** (đã render/scan),
-        /// KHÔNG render lại từ Gerber. Đúng luồng CreateGerberSampleControl.ReplaceSampleImage +
-        /// PrepareCurrentSampleAsync trong GerberViewer (chọn file raster qua OpenFileDialog rồi
-        /// HOperatorSet.ReadImage), không đụng GerberEngineFacade.
+        /// Cuts an existing rendered or scanned raster into a sample-tile grid and writes a manifest;
+        /// it does not render the source again from Gerber. This matches CreateGerberSampleControl.ReplaceSampleImage and
+        /// PrepareCurrentSampleAsync in GerberViewer, where a raster is selected and read through
+        /// HOperatorSet.ReadImage without using GerberEngineFacade.
         /// </summary>
-        /// <param name="rasterImagePath">File ảnh raster đã render sẵn (.tiff/.png/.bmp...).</param>
-        /// <param name="gridConfig">Cấu hình lưới/crop — xem GenerateSampleManifest.</param>
-        /// <param name="outputRoot">Thư mục ghi tile + manifest.</param>
-        /// <param name="sampleFolderName">Tên thư mục con — xem GenerateSampleManifest.</param>
+        /// <param name="rasterImagePath">Pre-rendered raster image (.tiff/.png/.bmp, etc.).</param>
+        /// <param name="gridConfig">Grid and crop configuration; see GenerateSampleManifest.</param>
+        /// <param name="outputRoot">Directory for the tiles and manifest.</param>
+        /// <param name="sampleFolderName">Child-directory name; see GenerateSampleManifest.</param>
         public async Task<GenerateManifestResult> GenerateSampleManifestFromRaster(
             string rasterImagePath,
             GerberViewer.Stitching.Configuration.GerberSampleConfig gridConfig,
@@ -204,7 +204,7 @@ namespace RDL.GerberStitch.Facade
                 Directory.CreateDirectory(outputRoot);
                 cancellationToken.ThrowIfCancellationRequested();
 
-                // Đọc raster trực tiếp bằng HALCON — giống ReplaceSampleImage trong
+                // Read the raster directly with HALCON, as ReplaceSampleImage does in
                 // CreateGerberSampleControl (OpenFileDialog + HOperatorSet.ReadImage).
                 var image = sourceImage;
                 await Task.Run(() => HOperatorSet.ReadImage(out image, rasterImagePath), cancellationToken);
@@ -231,9 +231,9 @@ namespace RDL.GerberStitch.Facade
         }
 
         /// <summary>
-        /// Phần dùng chung giữa GenerateSampleManifest và GenerateSampleManifestFromRaster: validate
-        /// config theo kích thước ảnh, Prepare (tiền xử lý + layout lưới), rồi cắt tile + ghi manifest.
-        /// KHÔNG dispose sourceImage — caller sở hữu và tự dispose (façade chỉ tạo bản sao qua Prepare).
+        /// Shared implementation for both manifest-generation methods: validate the configuration against
+        /// image dimensions, prepare the preprocessed image and grid layout, then cut tiles and write the manifest.
+        /// This method does not dispose sourceImage; the caller owns it and Prepare creates its own copy.
         /// </summary>
         private static async Task<GenerateManifestResult> PrepareAndCropAsync(
             HObject sourceImage,
@@ -263,13 +263,13 @@ namespace RDL.GerberStitch.Facade
 
             cancellationToken.ThrowIfCancellationRequested();
 
-            // Prepare: dựng ảnh đã tiền xử lý + layout lưới (giống PrepareCurrentSampleAsync).
-            // SamplePreparationService.Prepare tự CopyImage sourceImage bên trong (PreparedSampleRun
-            // sở hữu bản sao riêng) — sourceImage của caller không bị đụng tới, caller tự dispose.
+            // Prepare the preprocessed image and grid layout, matching PrepareCurrentSampleAsync.
+            // SamplePreparationService.Prepare copies sourceImage internally; PreparedSampleRun owns
+            // that copy, while the caller retains ownership of and disposes sourceImage.
             using (var prepared = await Task.Run(() => new SamplePreparationService().Prepare(sourceImage, config, cancellationToken), cancellationToken))
             {
-                // Cắt tile + ghi manifest (giống CreateGerberSampleControl dòng
-                // await new SampleTileGenerator().GenerateAsync). sampleFolderName null -> Core tự đặt tên.
+                // Cut tiles and write the manifest as CreateGerberSampleControl does through
+                // SampleTileGenerator.GenerateAsync. A null sampleFolderName lets Core assign the name.
                 var cropResult = string.IsNullOrWhiteSpace(sampleFolderName)
                     ? await new SampleTileGenerator().GenerateAsync(prepared, outputRoot, cancellationToken, null)
                     : await new SampleTileGenerator().GenerateAsync(prepared, outputRoot, sampleFolderName, cancellationToken, null);
@@ -284,16 +284,16 @@ namespace RDL.GerberStitch.Facade
         }
 
         /// <summary>
-        /// Chạy trọn Align → PoseGraph → Stitch cho cả lô. Worker gọi khi nhận batch dispatch.
+        /// Runs Align → Pose Graph → Stitch for the entire batch. Worker calls this after batch dispatch.
         /// </summary>
-        /// <param name="manifestPath">Đường dẫn sample_manifest.json (từ GenerateSampleManifest).</param>
+        /// <param name="manifestPath">Path to sample_manifest.json produced by GenerateSampleManifest.</param>
         /// <param name="capturedImagesFolder">
-        /// Thư mục ảnh đã chụp. Khớp với manifest bằng CapturedImageLoader (Core) — natural-sort
-        /// tên file rồi ghép theo thứ tự OrderIndex của manifest; KHÔNG cần ExpectedX/Y đi kèm ảnh
-        /// (toạ độ kỳ vọng đã nằm sẵn trong manifest — xem docs/Phase1_Task02.md §1).
+        /// Folder containing captured images. Core CapturedImageLoader natural-sorts file names and
+        /// maps them to the manifest OrderIndex sequence. Images do not need accompanying ExpectedX/Y values
+        /// because expected coordinates are already in the manifest; see docs/Phase1_Task02.md section 1.</param>
         /// </param>
-        /// <param name="options">Config align/stitch (façade). Null → dùng default.</param>
-        /// <param name="outputRoot">Thư mục gốc ghi kết quả; mỗi lần chạy tạo 1 folder con "AlignStitch_&lt;timestamp&gt;".</param>
+        /// <param name="options">Façade alignment/stitching configuration. Null selects defaults.</param>
+        /// <param name="outputRoot">Root result directory; each run creates an "AlignStitch_&lt;timestamp&gt;" child directory.</param>
         public async Task<AlignStitchResult> RunAlignStitch(
             string manifestPath,
             string capturedImagesFolder,
@@ -329,8 +329,8 @@ namespace RDL.GerberStitch.Facade
                 return AlignStitchResult.Fail("Manifest unreadable: " + ex.Message);
             }
 
-            // CapturedImageLoader (Core) tự đọc lại manifest để ghép ảnh theo thứ tự OrderIndex —
-            // không tự chế logic ghép tay ở façade, tránh lệch OrderIndex âm thầm (xem docs/Phase1_Task05.md §2.1).
+            // Core CapturedImageLoader rereads the manifest and maps images by OrderIndex.
+            // Do not duplicate that mapping in the façade, which could silently misalign indexes.
             var loadResult = new CapturedImageLoader().Load(capturedImagesFolder, manifestPath);
             if (!loadResult.Succeeded)
                 return AlignStitchResult.Fail("Captured image mapping failed: " + string.Join("; ", loadResult.Errors));
@@ -356,8 +356,8 @@ namespace RDL.GerberStitch.Facade
                     }));
                 }
 
-                // AlignStitchWorkflowService(null, null): dùng aligner/manual-provider mặc định của
-                // Core, đúng như GerberViewer.Views.AlignStitchingControl.RunWorkflowAsync (nhánh full workflow).
+                // Null constructor dependencies select the default Core aligner and manual provider,
+                // matching the full-workflow branch in AlignStitchingControl.RunWorkflowAsync.
                 var service = new AlignStitchWorkflowService(null, null);
                 var workflowResult = await service.RunAsync(coreConfig, manifest, loadResult.Images, coreProgress, cancellationToken);
                 cancellationToken.ThrowIfCancellationRequested();
@@ -369,7 +369,7 @@ namespace RDL.GerberStitch.Facade
                     return AlignStitchResult.Fail("Stitch did not produce an output image.");
                 }
 
-                // Publish .creating -> final run dir, giống PublishRunDirectory trong AlignStitchingControl.
+                // Publish .creating as the final run directory, matching AlignStitchingControl.
                 var stitchedFileName = Path.GetFileName(report.FinalOutputPath);
                 RunOutputLifecycle.Publish(finalRunDir, creatingDir);
                 var publishedTiffPath = Path.Combine(finalRunDir, stitchedFileName);
@@ -391,9 +391,9 @@ namespace RDL.GerberStitch.Facade
         private static GerberViewer.Stitching.Models.AlignStitchConfig BuildCoreConfig(
             AlignStitchConfig options, string manifestPath, string capturedFolderPath, string outputPath)
         {
-            // [Claude] [Change time: 2026-08-07] [Purpose: ConfigVersion phải đặt 3 TRƯỚC EnsureComposite,
-            // nếu không nhánh migration 0/1 sẽ ghi đè options cấu trúc bằng field phẳng legacy (giá trị
-            // mặc định lệch nhau) — xem docs/Phase1_Task04.md §2 (bẫy ConfigVersion).]
+            // Set ConfigVersion to 3 before EnsureComposite; otherwise migration for versions 0/1
+            // overwrites structured options with legacy flat fields whose defaults differ.
+            // See docs/Phase1_Task04.md section 2 for this ConfigVersion pitfall.
             var baseConfig = new GerberViewer.Stitching.Models.AlignStitchConfig { ConfigVersion = 3 };
             baseConfig.Input.ManifestPath = manifestPath;
             baseConfig.Input.CapturedFolderPath = capturedFolderPath;
@@ -409,8 +409,8 @@ namespace RDL.GerberStitch.Facade
 
             AlignStitchConfigMapper.EnsureComposite(baseConfig);
 
-            // CloneForRun gán Output.OutputPath=outputPath, khoá lại ConfigVersion=3, đồng bộ SyncLegacy —
-            // đúng đường production dùng (AlignStitchingControl.CloneConfigForRun).
+            // CloneForRun assigns Output.OutputPath, locks ConfigVersion to 3, and calls SyncLegacy,
+            // matching the production path in AlignStitchingControl.CloneConfigForRun.
             return AlignStitchConfigMapper.CloneForRun(baseConfig, outputPath);
         }
 
@@ -441,8 +441,8 @@ namespace RDL.GerberStitch.Facade
                         break;
                     case PoseSource.BlankSampleExpectedPose:
                     case PoseSource.ExpectedGridOffset:
-                        // Sample rỗng/không đo được nội dung, đặt theo grid pose danh định — hợp lệ,
-                        // KHÔNG phải lỗi (xem docs/Phase0_Closeout.md §4.2). Không đưa vào FailedTiles.
+                        // A blank or unmeasurable sample uses its nominal grid pose and remains valid;
+                        // it is not a failure and must not be included in FailedTiles.
                         result.BlankTileCount++;
                         break;
                     default:
@@ -460,8 +460,8 @@ namespace RDL.GerberStitch.Facade
                 }
             }
 
-            // Ngưỡng "fail quá nhiều tile -> báo lỗi toàn lô" chưa được chốt (open item) — hiện tại
-            // façade coi đã có Stitched.tiff hợp lệ là thành công, FailedTiles chỉ mang tính báo cáo.
+            // The threshold for failing a whole batch because too many tiles failed remains open.
+            // For now, a valid Stitched.tiff means success; FailedTiles is reporting information only.
             return result;
         }
     }

@@ -1,5 +1,116 @@
 # RDL.GerberStitch
 
+## English
+
+A façade library that packages the **Gerber image alignment and stitching pipeline**, ported from `tony71200/GerberViewer` branch `2026-08-04_Ver4_implement_claude`, for use by the **RDL Master/Worker AOI** system. This repository covers Phases 0 and 1 of the integration roadmap.
+
+> Core integration principle: **do not change the main AOI workflow**. Gerber Align/Stitch is added as a new `WorkModel` alongside the existing workflow. See the [English integration roadmap](docs/roadmap_GerberAlignStitch_integration_EN.md).
+
+### Architecture
+
+```text
+RDL.GerberStitch (façade)  ──depends on──►  GerberStitching.Core, GerberEngine
+RDL.GerberStitch.Harness   ──depends on──►  RDL.GerberStitch (+ GerberStitching.Core for createsample)
+```
+
+| Project | Responsibility |
+|---|---|
+| **`GerberEngine`** | Pure Gerber parser and renderer (`GerberParser`, `GerberRenderer`), with no HALCON or OpenCV dependency. |
+| **`GerberStitching.Core`** | The complete alignment and stitching pipeline under the `GerberViewer.Stitching` namespace. Depends on HALCON 25.05 and OpenCvSharp4 4.13. |
+| **`RDL.GerberStitch`** | The **only façade** referenced by Master/Worker. Its main methods are `GenerateSampleManifest`, `GenerateSampleManifestFromRaster`, and `RunAlignStitch`. |
+| **`RDL.GerberStitch.Harness`** | A console application for exercising the façade with real data; it is not an NUnit/xUnit test project. |
+
+Read [AGENTS.md](AGENTS.md) and [CLAUDE.md](CLAUDE.md) before changing any file.
+
+### Align and Stitch workflow (Pose Graph, Version 4)
+
+`GerberStitching.Core` implements the workflow described in [flow_v4.md](flow_v4.md) and [Flow_V4.html](Flow_V4.html). The entry point is `AlignStitchWorkflowService.RunAsync`, which calls `RunCore`.
+
+```mermaid
+flowchart LR
+    A["① Input\nmanifest + captured"] --> B["② Preprocess\nvalidate + map"]
+    B --> C["③ Direct Alignment\nHalconShapeModel → PyramidEcc"]
+    C --> D["④ Failure Recovery\nneighbor rescue (2 passes)"]
+    D --> E["⑤ Neighbor Graph\nmeasure every Manhattan-adjacent pair"]
+    E -->|PoseGraph.Enabled| F["⑥ Pose-Graph Optimizer\nGauss-Newton + IRLS Huber"]
+    E -->|legacy| G["Anchor + bottleneck propagation"]
+    F --> H["⑦ Validate"]
+    G --> H
+    H --> I["⑧ Stitch\nGenProjectiveMosaic"]
+    I --> J["⑨ Output\nStitched.tiff + report"]
+```
+
+The nine main stages are:
+
+1. **Input** — validate the manifest and captured-image folder, then create the `.creating/` directory through `RunOutputLifecycle`.
+2. **Preprocess** — call `AlignStitchConfigMapper.EnsureComposite`/`SyncLegacy` and map images to tiles by manifest `OrderIndex`.
+3. **Direct Alignment** — run coarse `HalconShapeModel` matching and refine it with `PyramidEcc`. This stage consumes about 90% of total processing time.
+4. **Failure Recovery** — rescue failed tiles in two neighbor passes: predecessors only, then predecessors and successors.
+5. **Neighbor Graph** — measure every Manhattan-adjacent tile pair with `PyramidPhaseCorrelation` and record `RecoveryEdges`. With Pose Graph enabled, this stage measures only and does not propagate poses.
+6. **Pose-Graph Optimizer** — solve all poses globally with Gauss-Newton and Huber IRLS. `MaxPoseCorrectionPixels` prevents application of implausibly large corrections.
+7. **Validation** — validate scale, rotation, finite coordinates, canvas bounds, and tile connectivity.
+8. **Stitching** — use `HOperatorSet.GenProjectiveMosaic` through the default `HalconProjectiveMosaicRebased` engine. HALCON does not provide seam blending here; this is a known limitation.
+9. **Output** — write `Stitched.tiff` and `processing_report.json`, then publish `.creating/` as the final run directory.
+
+Reference results for the 80-tile dataset are documented in [Phase0_Closeout.md](docs/Phase0_Closeout.md) and [Phase1_Task06.md](docs/Phase1_Task06.md):
+
+| Metric | Measured value |
+|---|---|
+| Total time | 247–303 seconds; Direct Alignment accounts for about 90% |
+| Peak RAM | About 6.5–6.6 GB for a roughly 40k × 32k canvas |
+| Median seam residual before/after pose graph | 5.35 px → 0.38 px |
+| `Stitched.tiff` size | About 1.3 GB with HALCON; about 654 MB with OpenCV |
+
+### Façade implementation status
+
+| Method | Status | Use |
+|---|---|---|
+| `GenerateSampleManifest(gerberFilePath, ...)` | ✅ Implemented and exercised with real data | Render an original Gerber file through `GerberEngineFacade`, then create tiles. |
+| `GenerateSampleManifestFromRaster(rasterImagePath, ...)` | ✅ Implemented and exercised with real data | Read an already-rendered raster directly through HALCON without rendering it again. |
+| `RunAlignStitch(manifestPath, capturedImagesFolder, ...)` | ✅ Implemented and exercised with real data | Run Align → Pose Graph → Stitch for a Worker batch. |
+
+All three methods have been checked against a reference run with real data through `RDL.GerberStitch.Harness`. See [implement_code.html](docs/implement_code.html) for implementation decisions, tradeoffs, and resolved issues.
+
+### Build
+
+```bash
+msbuild RDL.GerberStitch.sln /p:Configuration=Release /p:Platform=x64
+```
+
+- Set **`HALCONROOT`** to a HALCON 25.05 Progress installation.
+- Build **x64 only**; do not build AnyCPU or x86.
+- Required NuGet packages, including OpenCvSharp4 and System.Drawing.Common, are present under `packages/`.
+
+### Run the harness with real data
+
+```bat
+RDL.GerberStitch.Harness\bin\x64\Release\RDL.GerberStitch.Harness.exe
+```
+
+The harness supports `--mode alignstitch` (default) and `--mode createsample`. Parameters come from command-line arguments or `global_config.json` beside the executable; command-line arguments take precedence. See [Phase1_Task06.md](docs/Phase1_Task06.md).
+
+### Documentation
+
+| File | Contents |
+|---|---|
+| [English integration roadmap](docs/roadmap_GerberAlignStitch_integration_EN.md) | Context, architectural decisions, and the six integration phases. |
+| [Phase 0 closeout](docs/Phase0_Closeout.md) | Measurements from six real runs and Phase 0 decisions. |
+| [Phase 1 tasks](docs/Phase1_Task01.md) | Task-by-task Phase 1 specifications; continue through `Phase1_Task06.md`. |
+| [Deployment dependencies](docs/deploy_deps.md) | Dependency checklist for deploying the façade to Master/Worker. |
+| [Implementation log](docs/implement_code.html) | Changed files, implementation notes, and issue resolutions. |
+| [Version 4 flow](flow_v4.md) | Detailed Pose Graph pipeline flow, also available as [HTML](Flow_V4.html). |
+
+### Open items
+
+- Resolve Phase 0 blockers 3 and 4: shared-storage capacity for approximately 1.3 GB per batch and a grid configuration matching the production capture grid.
+- Upgrade Master/Worker from `halcondotnetxl` 18.11.1.1 to HALCON 25.05 before deploying this façade.
+- Measure the real performance benefit of pregenerated HALCON models (`SampleModelGenerationMode.Pregenerate`).
+- Implement harness `--repeat N` support for observing memory usage across consecutive runs.
+
+---
+
+## Tiếng Việt
+
 Façade library đóng gói pipeline **align + stitch ảnh Gerber** (port từ repo `tony71200/GerberViewer`, nhánh `2026-08-04_Ver4_implement_claude`) để hệ thống **RDL Master/Worker AOI** (solution khác, ngoài repo này) reference và gọi. Đây là phần **Phase 0/1** của roadmap tích hợp Gerber Align & Stitch vào luồng AOI hiện có.
 
 > Nguyên tắc gốc của tích hợp: **không thay flow AOI chính** — Gerber Align/Stitch chỉ thêm vào như một `WorkModel` mới, song song với luồng hiện tại. Chi tiết đầy đủ: [`docs/roadmap_GerberAlignStitch_integration_EN.md`](docs/roadmap_GerberAlignStitch_integration_EN.md).

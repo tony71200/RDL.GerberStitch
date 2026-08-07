@@ -1,6 +1,6 @@
 ﻿// GerberEngine/GerberParser.cs
 // Parser RS-274X / Gerber X2 (FR-001, FR-002, FR-007, NFR-003).
-// Output: GerberLayer with primitives that adjust the height and angle of Gerber (Y len).
+// Output: GerberLayer with primitives that adjust the height and angle of Gerber (Y up).
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -57,9 +57,9 @@ namespace GerberEngine
 
                 if (c == '%')
                 {
-                    // Extended command: doc den '%' dong
+                    // Extended command: read through the closing '%'
                     int end = content.IndexOf('%', i + 1);
-                    if (end < 0) { Warn("Thieu '%' dong extended command"); break; }
+                    if (end < 0) { Warn("Missing closing '%' for extended command"); break; }
                     string block = content.Substring(i + 1, end - i - 1);
                     CountLines(block);
                     SafeExec(() => HandleExtended(block));
@@ -67,7 +67,7 @@ namespace GerberEngine
                     continue;
                 }
 
-                // Word command: doc den '*'
+                // Word command: read through '*'
                 int star = content.IndexOf('*', i);
                 if (star < 0) break;
                 string wordCmd = content.Substring(i, star - i).Trim();
@@ -85,18 +85,18 @@ namespace GerberEngine
         private void SafeExec(Action a)
         {
             try { a(); }
-            catch (Exception ex) { Warn("Bo qua lenh loi: " + ex.Message); }
+            catch (Exception ex) { Warn("Skipping invalid command: " + ex.Message); }
         }
 
         private void Warn(string msg)
         {
-            _layer.Warnings.Add("Dong " + _lineNo + ": " + msg);
+            _layer.Warnings.Add("Line " + _lineNo + ": " + msg);
         }
 
         // ---------- Extended commands (%...%) ----------
         private void HandleExtended(string block)
         {
-            // Mot block co the chua nhieu lenh phan cach '*'
+            // One block may contain multiple commands separated by '*'
             string[] cmds = block.Split(new[] { '*' }, StringSplitOptions.RemoveEmptyEntries);
             foreach (string raw in cmds)
             {
@@ -106,21 +106,21 @@ namespace GerberEngine
                 if (cmd.StartsWith("FS")) ParseFormat(cmd);
                 else if (cmd.StartsWith("MO")) ParseUnit(cmd);
                 else if (cmd.StartsWith("ADD")) ParseApertureDef(cmd);
-                else if (cmd.StartsWith("AM")) { ParseMacro(cmd, cmds); return; } // AM nuot cac block sau trong cung %..%
+                else if (cmd.StartsWith("AM")) { ParseMacro(cmd, cmds); return; } // AM consumes subsequent blocks within the same %..% group
                 else if (cmd.StartsWith("LPD")) _polarity = GerberPolarity.Dark;
                 else if (cmd.StartsWith("LPC")) _polarity = GerberPolarity.Clear;
                 else if (cmd.StartsWith("TF.FileFunction")) ParseFileFunction(cmd);
-                else if (cmd.StartsWith("TF") || cmd.StartsWith("TA") || cmd.StartsWith("TO") || cmd.StartsWith("TD")) { /* X2 attribute khac: bo qua */ }
-                else if (cmd.StartsWith("IP") || cmd.StartsWith("LN") || cmd.StartsWith("SR") || cmd.StartsWith("OF") || cmd.StartsWith("AS") || cmd.StartsWith("IN") || cmd.StartsWith("MI") || cmd.StartsWith("SF")) { /* deprecated/khong ho tro */ }
-                else Warn("Extended command khong nhan dien: " + cmd.Substring(0, Math.Min(10, cmd.Length)));
+                else if (cmd.StartsWith("TF") || cmd.StartsWith("TA") || cmd.StartsWith("TO") || cmd.StartsWith("TD")) { /* other X2 attribute: skip */ }
+                else if (cmd.StartsWith("IP") || cmd.StartsWith("LN") || cmd.StartsWith("SR") || cmd.StartsWith("OF") || cmd.StartsWith("AS") || cmd.StartsWith("IN") || cmd.StartsWith("MI") || cmd.StartsWith("SF")) { /* deprecated/unsupported */ }
+                else Warn("Unrecognized extended command: " + cmd.Substring(0, Math.Min(10, cmd.Length)));
             }
         }
 
         private void ParseFormat(string cmd)
         {
-            // FSLAX36Y36 -> 3 nguyen, 6 thap phan (omit leading zeros, absolute)
+            // FSLAX36Y36 -> 3 integer digits, 6 fractional digits (omit leading zeros, absolute)
             int ix = cmd.IndexOf('X');
-            if (ix < 0 || ix + 2 >= cmd.Length) { Warn("FS khong hop le"); return; }
+            if (ix < 0 || ix + 2 >= cmd.Length) { Warn("Invalid FS"); return; }
             _intDigits = cmd[ix + 1] - '0';
             _decDigits = cmd[ix + 2] - '0';
         }
@@ -165,7 +165,7 @@ namespace GerberEngine
                 case "O": ap.Shape = ApertureShape.Obround; ap.Parameters = ToMmArray(args, -1); break;
                 case "P":
                     ap.Shape = ApertureShape.Polygon;
-                    // P: dia(mm), soCanh(khong doi), rotation deg(khong doi), hole(mm)
+                    // P: diameter (mm), side count (unitless), rotation degrees (unitless), hole (mm)
                     ap.Parameters = (double[])args.Clone();
                     if (args.Length > 0) ap.Parameters[0] = ToMm(args[0]);
                     if (args.Length > 3) ap.Parameters[3] = ToMm(args[3]);
@@ -176,12 +176,12 @@ namespace GerberEngine
                     {
                         ap.Shape = ApertureShape.Macro;
                         ap.Macro = macro;
-                        ap.MacroArgs = (double[])args.Clone();          // giu don vi file
+                        ap.MacroArgs = (double[])args.Clone();          // retain file units
                         ap.MacroUnitScale = _unit == GerberUnit.Inch ? InchToMm : 1.0;
                     }
                     else
                     {
-                        Warn("Aperture macro not yet defined: " + shapeName + " -> thay bang Circle 0.1mm");
+                        Warn("Aperture macro not yet defined: " + shapeName + " -> replaced with a 0.1 mm circle");
                         ap.Shape = ApertureShape.Circle;
                         ap.Parameters = new double[] { 0.1 };
                     }
@@ -192,7 +192,7 @@ namespace GerberEngine
 
         private void ParseMacro(string firstCmd, string[] allCmds)
         {
-            // %AMNAME*block1*block2*...*%  - firstCmd la "AMNAME", cac block la phan tu sau trong allCmds
+            // %AMNAME*block1*block2*...*% - firstCmd is "AMNAME"; blocks are the following items in allCmds
             var macro = new ApertureMacro { Name = firstCmd.Substring(2).Trim() };
             bool after = false;
             foreach (string cmd in allCmds)
@@ -207,18 +207,18 @@ namespace GerberEngine
 
         private void HandleWord(string cmd)
         {
-            // Co the co G-code dinh kem toa do: "G01X100Y200D01"
+            // A G-code may accompany coordinates: "G01X100Y200D01"
             if (cmd.StartsWith("G04")) return;                       // comment
             if (cmd == "M02" || cmd == "M00" || cmd == "M01") return; // end of file
             if (cmd == "G36") { BeginRegion(); return; }
             if (cmd == "G37") { EndRegion(); return; }
-            if (cmd == "G74" || cmd == "G75") return;                // quadrant mode: luon xu ly multi-quadrant
+            if (cmd == "G74" || cmd == "G75") return;                // quadrant mode: always process as multi-quadrant
             if (cmd == "G70") { _unit = GerberUnit.Inch; return; }   // deprecated
             if (cmd == "G71") { _unit = GerberUnit.Millimeter; return; }
-            if (cmd == "G90" || cmd == "G91") return;                // absolute/incremental (chi ho tro absolute)
+            if (cmd == "G90" || cmd == "G91") return;                // absolute/incremental (only absolute mode is supported)
 
             int i = 0;
-            // G-codes command
+            // G-code command
             while (i < cmd.Length && cmd[i] == 'G')
             {
                 int j = i + 1;
@@ -232,7 +232,7 @@ namespace GerberEngine
             }
             if (i >= cmd.Length) return;
 
-            // "Dnn" does not include coordinates: nn>=10 la chon aperture; D01/D02/D03 tran thao tac tai diem hien hanh
+            // A coordinate-free Dnn selects an aperture for nn >= 10; D01/D02/D03 operate at the current point
             if (cmd[i] == 'D' && !ContainsCoord(cmd, i))
             {
                 int code = int.Parse(cmd.Substring(i + 1), CultureInfo.InvariantCulture);
@@ -259,7 +259,7 @@ namespace GerberEngine
                     case 'I': iOfs = ParseCoord(num); break;
                     case 'J': jOfs = ParseCoord(num); break;
                     case 'D': dCode = int.Parse(num, CultureInfo.InvariantCulture); break;
-                    default: Warn("Ky tu khong nhan dien '" + key + "' trong: " + cmd); j = i + 1; break;
+                    default: Warn("Unrecognized character '" + key + "' in: " + cmd); j = i + 1; break;
                 }
                 i = j;
             }
@@ -273,7 +273,7 @@ namespace GerberEngine
                 case 2: MoveTo(target); break;
                 case 3: Flash(target); break;
                 case -1:
-                    // Khong co D-code: theo chuan cu, lap lai thao tac truoc do -> coi nhu D01
+                    // Without a D-code, the legacy specification repeats the previous operation; treat it as D01
                     Interpolate(target, iOfs ?? 0, jOfs ?? 0);
                     break;
             }
@@ -308,7 +308,7 @@ namespace GerberEngine
         {
             if (!_apertures.TryGetValue(code, out _currentAperture))
             {
-                Warn("Aperture D" + code + " chua dinh nghia");
+                Warn("Aperture D" + code + " is undefined");
                 _currentAperture = new Aperture { Code = code, Shape = ApertureShape.Circle, Parameters = new double[] { 0.1 } };
                 _apertures[code] = _currentAperture;
             }
@@ -337,7 +337,7 @@ namespace GerberEngine
             }
             else
             {
-                if (_currentAperture == null) { Warn("D01 truoc khi chon aperture"); SelectAperture(10); }
+                if (_currentAperture == null) { Warn("D01 before selecting an aperture"); SelectAperture(10); }
                 if (_interpolation == 1)
                 {
                     _layer.Primitives.Add(new StrokePrimitive
