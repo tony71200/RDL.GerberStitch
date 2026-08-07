@@ -1,0 +1,1206 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Flow V4 — Align &amp; Stitching (Pose-Graph)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mermaid/10.6.1/mermaid.min.js"></script>
+<style>
+  :root{
+    --bg: #0A0D13;
+    --surface: #11161F;
+    --surface-2: #171E2A;
+    --surface-3: #1D2634;
+    --border: #262F3F;
+    --border-soft: #1B2330;
+    --text: #E9EDF5;
+    --text-dim: #93A0B7;
+    --text-faint: #5C6880;
+    --accent: #45D8C4;
+    --accent-dim: #2C6E64;
+    --warn: #E8763C;
+    --warn-dim: #6B4530;
+    --font-display: 'Space Grotesk', sans-serif;
+    --font-body: 'IBM Plex Sans', sans-serif;
+    --font-mono: 'IBM Plex Mono', monospace;
+    --sidebar-w: 288px;
+  }
+  *{ box-sizing:border-box; margin:0; padding:0; }
+  html{ scroll-behavior:smooth; }
+  body{
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-body);
+    line-height: 1.6;
+    background-image:
+      linear-gradient(var(--border-soft) 1px, transparent 1px),
+      linear-gradient(90deg, var(--border-soft) 1px, transparent 1px);
+    background-size: 64px 64px;
+  }
+
+  /* ---------- topbar ---------- */
+  .topbar{
+    position: sticky; top:0; z-index: 60;
+    display:flex; align-items:center; justify-content:space-between;
+    padding: 12px 22px;
+    background: rgba(10,13,19,0.9);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--border);
+  }
+  .topbar .mark{
+    font-family: var(--font-mono); font-size:12px; color:var(--text-faint); letter-spacing:0.08em;
+  }
+  .burger{
+    display:none;
+    width:32px; height:32px;
+    border:1px solid var(--border);
+    background: var(--surface-2);
+    border-radius:8px;
+    color:var(--text);
+    cursor:pointer;
+    align-items:center; justify-content:center;
+    font-size:16px;
+  }
+
+  /* ---------- layout ---------- */
+  .layout{
+    display:flex;
+    max-width: 1320px;
+    margin: 0 auto;
+    align-items: flex-start;
+  }
+
+  /* ---------- sidebar ---------- */
+  .sidebar{
+    width: var(--sidebar-w);
+    flex-shrink:0;
+    position: sticky;
+    top: 57px;
+    height: calc(100vh - 57px);
+    overflow-y: auto;
+    padding: 28px 18px 40px 24px;
+    border-right: 1px solid var(--border-soft);
+  }
+  .sidebar::-webkit-scrollbar{ width:6px; }
+  .sidebar::-webkit-scrollbar-thumb{ background: var(--border); border-radius:3px; }
+
+  .side-title{
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+    margin-bottom: 12px;
+  }
+  .side-nav a{
+    display:block;
+    font-size: 13.5px;
+    color: var(--text-dim);
+    text-decoration:none;
+    padding: 6px 10px;
+    border-radius: 6px;
+    margin-bottom: 2px;
+    border-left: 2px solid transparent;
+    transition: background .15s ease, color .15s ease, border-color .15s ease;
+  }
+  .side-nav a:hover{ background: var(--surface-2); color: var(--text); }
+  .side-nav a.active{
+    color: var(--accent);
+    border-left-color: var(--accent);
+    background: var(--surface-2);
+  }
+  .side-nav .sub a{ padding-left: 24px; font-size: 12.5px; }
+  .side-nav .group-label{
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-faint);
+    padding: 14px 10px 4px;
+    letter-spacing: 0.04em;
+  }
+  .side-actions{
+    display:flex; gap:8px; margin: 16px 0 4px;
+  }
+  .side-actions button{
+    flex:1;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    border-radius: 6px;
+    padding: 6px 4px;
+    cursor:pointer;
+    letter-spacing: 0.03em;
+  }
+  .side-actions button:hover{ color: var(--accent); border-color: var(--accent-dim); }
+
+  /* ---------- main ---------- */
+  main{
+    flex: 1;
+    min-width: 0;
+    padding: 40px 40px 120px;
+  }
+
+  .doc-eyebrow{
+    font-family: var(--font-mono);
+    font-size: 12px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 16px;
+  }
+  main > h1{
+    font-family: var(--font-display);
+    font-weight:600;
+    font-size: clamp(24px, 3.4vw, 34px);
+    margin-bottom: 14px;
+    line-height:1.2;
+  }
+  .doc-sub{
+    color: var(--text-dim);
+    font-size: 15px;
+    max-width: 720px;
+    margin-bottom: 40px;
+  }
+  .doc-sub code{ color:var(--accent); background:var(--surface-2); padding:1px 6px; border-radius:4px; font-family:var(--font-mono); font-size:13px;}
+
+  section.doc-section{
+    padding: 46px 0;
+    border-top: 1px solid var(--border-soft);
+    scroll-margin-top: 72px;
+  }
+  section.doc-section:first-of-type{ border-top:none; padding-top:0; }
+
+  .sec-num{
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text-faint);
+    letter-spacing: 0.1em;
+    margin-bottom: 8px;
+  }
+  h2{
+    font-family: var(--font-display);
+    font-size: clamp(20px, 2.6vw, 26px);
+    font-weight:600;
+    margin-bottom: 18px;
+  }
+  h3{
+    font-family: var(--font-display);
+    font-size: 16px;
+    font-weight:600;
+    margin: 22px 0 10px;
+    color: var(--text);
+  }
+  p{ color: var(--text-dim); font-size:14.5px; margin-bottom:12px; max-width: 760px; }
+  p code, li code{
+    font-family: var(--font-mono); font-size:13px; background:var(--surface-2);
+    color: var(--accent); padding:1px 6px; border-radius:4px;
+  }
+  strong{ color: var(--text); font-weight:600; }
+  ol, ul{ color:var(--text-dim); font-size:14.5px; padding-left:22px; margin-bottom:14px; max-width:760px; }
+  li{ margin-bottom:6px; }
+
+  /* mermaid panel */
+  .diagram-panel{
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 20px;
+    overflow-x: auto;
+    margin: 8px 0 24px;
+  }
+  .diagram-panel .mermaid{ display:flex; justify-content:center; }
+
+  /* tables */
+  table{ width:100%; max-width:760px; border-collapse:collapse; margin: 10px 0 22px; font-size:13.5px; }
+  th, td{ text-align:left; padding:9px 12px; border-bottom:1px solid var(--border-soft); }
+  th{
+    font-family: var(--font-mono); font-size:10.5px; text-transform:uppercase;
+    letter-spacing:0.06em; color:var(--text-faint); font-weight:500;
+  }
+  td{ color: var(--text-dim); }
+  td code{ font-family:var(--font-mono); font-size:12.5px; color:var(--accent); background:var(--surface-2); padding:1px 5px; border-radius:4px; }
+
+  /* callouts */
+  .callout{
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: 8px;
+    padding: 13px 18px;
+    margin: 14px 0 18px;
+    font-size: 13.5px;
+    color: var(--text-dim);
+    max-width: 760px;
+  }
+  .callout.warn{ border-left-color: var(--warn); }
+  .callout strong{ color: var(--text); }
+
+  /* stage cards (details) */
+  .stage-list{ display:flex; flex-direction:column; gap:12px; margin-top: 20px; }
+  details.stage{
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    scroll-margin-top: 72px;
+  }
+  details.stage[open]{ border-color: var(--accent-dim); }
+  details.stage summary{
+    list-style:none;
+    cursor:pointer;
+    display:flex;
+    align-items:center;
+    gap:14px;
+    padding: 16px 20px;
+    user-select:none;
+  }
+  details.stage summary::-webkit-details-marker{ display:none; }
+  details.stage summary .num{
+    font-family: var(--font-mono);
+    font-size: 18px;
+    font-weight:600;
+    color: var(--accent);
+    width: 34px;
+    flex-shrink:0;
+  }
+  details.stage summary .title{
+    font-family: var(--font-display);
+    font-weight:600;
+    font-size: 15px;
+    color: var(--text);
+    flex:1;
+  }
+  details.stage summary .title .zh{
+    display:block;
+    font-family: var(--font-body);
+    font-weight:400;
+    font-size: 12.5px;
+    color: var(--text-faint);
+    margin-top: 2px;
+  }
+  details.stage summary .chev{
+    font-size: 13px;
+    color: var(--text-faint);
+    transition: transform .2s ease;
+    flex-shrink:0;
+  }
+  details.stage[open] summary .chev{ transform: rotate(90deg); color:var(--accent); }
+  details.stage .stage-body{
+    padding: 4px 20px 22px;
+    border-top: 1px solid var(--border-soft);
+  }
+  .meta-row{
+    display:flex; flex-wrap:wrap; gap: 10px 24px;
+    font-size: 13px; color: var(--text-dim);
+    margin: 14px 0 6px;
+  }
+  .meta-row b{ color:var(--text-faint); font-family:var(--font-mono); font-size:11px; text-transform:uppercase; letter-spacing:0.05em; margin-right:6px; }
+
+  pre.flow{
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    line-height: 1.7;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 18px;
+    overflow-x: auto;
+    color: var(--text-dim);
+    margin: 14px 0 18px;
+    white-space: pre;
+  }
+  pre.flow .tree{ color: var(--text-faint); }
+  pre.flow .fn{ color: var(--accent); }
+  pre.flow .num{ color: var(--warn); }
+  pre.flow .cmt{ color: var(--text-faint); font-style: italic; }
+  pre.flow .arrow{ color: var(--accent); font-weight:600; }
+  pre.flow .kw{ color: #C9A6FF; }
+
+  .badge{
+    display:inline-block;
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    color: var(--text-faint);
+    letter-spacing: 0.04em;
+  }
+  .badge.new{ color:#0B1512; background: var(--accent); border-color:var(--accent); font-weight:600; }
+
+  /* spec summary table (section 5) */
+  .spec-table{ max-width: 760px; }
+  .spec-table td:first-child{ color: var(--text-faint); width: 42%; }
+  .spec-table td:last-child{ font-family: var(--font-mono); color: var(--text); }
+
+  footer{
+    max-width: 760px;
+    padding: 40px 0 20px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text-faint);
+  }
+
+  /* mobile */
+  .sidebar-overlay{ display:none; }
+  @media (max-width: 980px){
+    .burger{ display:flex; }
+    .sidebar{
+      position: fixed;
+      top: 57px; left: 0;
+      height: calc(100vh - 57px);
+      background: var(--bg);
+      z-index: 55;
+      transform: translateX(-100%);
+      transition: transform .25s ease;
+      box-shadow: 0 0 40px rgba(0,0,0,0.5);
+    }
+    .sidebar.open{ transform: translateX(0); }
+    .sidebar-overlay.open{
+      display:block;
+      position: fixed; inset: 57px 0 0 0;
+      background: rgba(0,0,0,0.5);
+      z-index: 54;
+    }
+    main{ padding: 28px 20px 100px; }
+  }
+</style>
+</head>
+<body>
+
+  <div class="topbar">
+    <button class="burger" id="burger" aria-label="Toggle menu">☰</button>
+    <span class="mark">GERBERVIEWER · TAB 3 · ALIGN &amp; STITCHING · VER 4</span>
+    <span style="width:32px"></span>
+  </div>
+
+  <div class="layout">
+    <div class="sidebar-overlay" id="overlay"></div>
+    <aside class="sidebar" id="sidebar">
+      <div class="side-title">Mục lục</div>
+      <nav class="side-nav" id="sideNav">
+        <a href="#purpose">1. Mục đích</a>
+        <a href="#flowchart">2. Flowchart tổng quát</a>
+        <div class="group-label">3. Chi tiết từng giai đoạn</div>
+        <div class="sub">
+          <a href="#stage-1">① Input</a>
+          <a href="#stage-2">② Preprocessing</a>
+          <a href="#stage-3">③ Direct Alignment</a>
+          <a href="#stage-4">④ Failure Recovery</a>
+          <a href="#stage-5">⑤ Neighbor Graph</a>
+          <a href="#stage-6">⑥ Pose-Graph Optimizer</a>
+          <a href="#stage-7">⑦ Validation</a>
+          <a href="#stage-8">⑧ Stitching</a>
+          <a href="#stage-9">⑨ Output</a>
+        </div>
+        <a href="#statediagram">4. State flow của tile</a>
+        <a href="#summary">5. Tóm tắt thông số</a>
+      </nav>
+      <div class="side-actions">
+        <button id="expandAll">Mở tất cả</button>
+        <button id="collapseAll">Thu gọn</button>
+      </div>
+    </aside>
+
+    <main>
+      <div class="doc-eyebrow">Flow document · Ver 4</div>
+      <h1>Tab 3 — Alignment and Stitching<br>Global Pose-Graph Optimizer</h1>
+      <p class="doc-sub">
+        Chi tiết dòng hoạt động của Tab 3, bao gồm Global Pose-Graph Least
+        Squares Optimizer. Mọi tên hàm, biến, class, thông số cấu hình phản
+        ánh chính xác code trên nhánh <code>2026-08-04_Ver4_implement_claude</code>.
+      </p>
+
+      <!-- ============ 1. PURPOSE ============ -->
+      <section class="doc-section" id="purpose">
+        <div class="sec-num">01</div>
+        <h2>Mục đích</h2>
+        <p>
+          Tài liệu này mô tả <strong>chi tiết dòng hoạt động</strong> của
+          Tab 3 — Alignment and Stitching, phiên bản Ver 4 bao gồm
+          <strong>Global Pose-Graph Least Squares Optimizer</strong>. Mọi tên
+          hàm, biến, class, thông số cấu hình đều phản ánh chính xác code
+          trên nhánh <code>2026-08-04_Ver4_implement_claude</code>.
+        </p>
+      </section>
+
+      <!-- ============ 2. FLOWCHART ============ -->
+      <section class="doc-section" id="flowchart">
+        <div class="sec-num">02</div>
+        <h2>Flowchart tổng quát</h2>
+        <p>9 giai đoạn từ nhận ảnh đến xuất kết quả. Nhánh rẽ then chốt tại
+          <code>⑤ NEIGHBOR GRAPH</code>: nếu <code>PoseGraph.Enabled</code>
+          thì đi vào bộ tối ưu hoá pose-graph toàn cục; nếu không thì dùng
+          lại đường propagate cũ.</p>
+        <div class="diagram-panel">
+          <pre class="mermaid">
+flowchart TD
+    subgraph INPUT["① INPUT — Nhận ảnh"]
+        A1[Người dùng chọn Sample Manifest + Captured folder]
+        A2[UI: ValidateRunInputs]
+        A3["RunOutputLifecycle: tạo finalRunDir/.creating"]
+        A4["UI: CloneForRun(OutputPath = .creating)"]
+    end
+
+    subgraph PREPROCESS["② PREPROCESSING — Tiền xử lí"]
+        B1["AlignStitchConfigMapper.EnsureComposite(config)"]
+        B2["AlignStitchConfigMapper.SyncLegacy(config)"]
+        B3["WorkflowImageMappingService.ValidateAndMap"]
+        B4["ProcessingReport.Create(config, manifest)"]
+        B5["AlignStitchConfigMapper.CreateSnapshot → report.EffectiveConfig"]
+    end
+
+    subgraph DIRECT["③ DIRECT ALIGNMENT — Align từng tile"]
+        C1["Loop ordered tiles: SolveDirect / SolveDirectWithMatcherFactory"]
+        C2["Preprocessing: Contrast = 200%"]
+        C3["Coarse: HalconShapeModel → find_shape_model"]
+        C4["Refinement: PyramidEcc → findTransformECC"]
+        C5["DirectCandidateEvaluator → DirectCandidateSelector.Apply"]
+        C6["GlobalPose = T(ExpectedX+ManualOffsetX, ...) × CapturedToSample"]
+        C7["Lưu OriginalDirectGlobalPose (Debug + Release)"]
+    end
+
+    subgraph RECOVERY["④ FAILURE RECOVERY — Cứu tile thất bại"]
+        D1["Pass 1: Recover(includeSuccessor=false)"]
+        D2["Pass 2: Recover(includeSuccessor=true)"]
+        D3["BuildRecoveryCandidates → MatchNeighborEdge"]
+        D4["NeighborCandidateRanker.Rank → CompleteRecoveryFromAnchor"]
+    end
+
+    subgraph NEIGHBOR["⑤ NEIGHBOR GRAPH — Đo toàn bộ edge"]
+        E1["ReconcileNeighborGraph"]
+        E2["Enumerate tất cả cặp Manhattan-neighbor"]
+        E3["MatchNeighborEdge: PyramidPhaseCorrelation trên overlap ROI"]
+        E4["Ghi report.RecoveryEdges"]
+        E5{PoseGraph.Enabled?}
+        E6["Legacy: anchor select + max-bottleneck propagate + AnchorAdjusted"]
+    end
+
+    subgraph POSEGRAPH["⑥ POSE-GRAPH OPTIMIZER — Giải pose toàn cục"]
+        F1["GlobalPoseGraphOptimizer.Optimize"]
+        F2["Build nodes: prior = OriginalDirectGlobalPose, λ theo PoseSource"]
+        F3["Edge gate: loại period-slip, finite check, phase/overlap thresholds"]
+        F4["Khử trùng lặp: giữ edge có phaseScore cao nhất mỗi cặp"]
+        F5["Tính connected components + IsolatedTiles"]
+        F6["GlobalSimilarityFit.TryFit → (s, φ, gx, gy)"]
+        F7["PoseGraphSolver.Solve → Gauss-Newton + IRLS Huber"]
+        F8["Guard: MaxPoseCorrectionPixels → Applied true/false"]
+        F9["Apply: ghi lại GlobalPose per tile, PoseSource transitions"]
+    end
+
+    subgraph VALIDATE["⑦ VALIDATION"]
+        G1["ValidateGlobalPoses: scale/rotation/finite/canvas check"]
+        G2["GlobalPoseValidator.Validate"]
+        G3["Ghi report.Poses + report.TileReports"]
+    end
+
+    subgraph STITCH["⑧ STITCHING — Ghép ảnh"]
+        H1["WorkflowStitchingService → GlobalTransformStitcher"]
+        H2["HOperatorSet.GenProjectiveMosaic → Stitched.tiff"]
+        H3["(Không blending — HALCON không hỗ trợ)"]
+    end
+
+    subgraph OUTPUT["⑨ OUTPUT — Xuất kết quả"]
+        I1["SampleComparisonService.Generate → comparison artifacts"]
+        I2["Ghi processing_report.json"]
+        I3["RunOutputLifecycle.Publish(.creating → finalRunDir)"]
+        I4["UI validate/rebase/bind published artifacts"]
+    end
+
+    INPUT --> PREPROCESS --> DIRECT --> RECOVERY --> NEIGHBOR
+    E5 -->|Yes| POSEGRAPH
+    E5 -->|No| E6
+    E6 --> VALIDATE
+    POSEGRAPH --> VALIDATE
+    VALIDATE --> STITCH --> OUTPUT
+    NEIGHBOR --> E5
+          </pre>
+        </div>
+      </section>
+
+      <!-- ============ 3. STAGES ============ -->
+      <section class="doc-section" id="stages">
+        <div class="sec-num">03</div>
+        <h2>Chi tiết từng giai đoạn</h2>
+        <p>Bấm vào từng thẻ để mở/đóng chi tiết. Dùng "Mở tất cả" ở sidebar để xem toàn bộ cùng lúc (tiện Ctrl+F).</p>
+
+        <div class="stage-list">
+
+          <!-- STAGE 1 -->
+          <details class="stage" id="stage-1" open>
+            <summary>
+              <span class="num">①</span>
+              <span class="title">INPUT — Nhận ảnh và cấu hình<span class="zh">Người dùng chọn manifest + captured folder → khởi tạo run</span></span>
+              <span class="chev">▸</span>
+            </summary>
+            <div class="stage-body">
+              <div class="meta-row"><b>Trigger</b> Người dùng nhấn Run trên <code>AlignStitchingControl</code></div>
+              <h3>Flow</h3>
+              <ol>
+                <li><code>AlignStitchingControl.ValidateRunInputs()</code> — kiểm tra manifest path, captured folder, output path hợp lệ.</li>
+                <li><code>RunOutputLifecycle.CreateOrVerify(finalRunDir)</code> — tạo <code>finalRunDir/.creating/</code>.</li>
+                <li><code>AlignStitchingControl.CloneForRun()</code> — clone effective config với <code>OutputPath = .creating</code>.</li>
+                <li>UI subscribe <code>MatcherResultAvailable</code> event.</li>
+                <li>Gọi <code>AlignStitchWorkflowService.RunAsync(config, manifest, captured, progress, ct)</code>.</li>
+              </ol>
+              <h3>Biến đầu vào chính</h3>
+              <table>
+                <thead><tr><th>Biến</th><th>Kiểu</th><th>Nguồn</th></tr></thead>
+                <tbody>
+                  <tr><td><code>config</code></td><td><code>AlignStitchConfig</code></td><td>UI PropertyGrid, clone cho run</td></tr>
+                  <tr><td><code>manifest</code></td><td><code>SampleManifest</code></td><td>JSON từ Tab 2</td></tr>
+                  <tr><td><code>captured</code></td><td><code>IList&lt;CapturedImageInfo&gt;</code></td><td>Folder ảnh chụp</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </details>
+
+          <!-- STAGE 2 -->
+          <details class="stage" id="stage-2">
+            <summary>
+              <span class="num">②</span>
+              <span class="title">PREPROCESSING — Validate và Map<span class="zh">EnsureComposite → SyncLegacy → ValidateAndMap</span></span>
+              <span class="chev">▸</span>
+            </summary>
+            <div class="stage-body">
+              <div class="meta-row"><b>Entry point</b> <code>RunCore()</code> trong <code>AlignStitchWorkflowService</code></div>
+              <h3>Flow</h3>
+<pre class="flow">AlignStitchConfigMapper.EnsureComposite(config)
+   └── Đảm bảo config composite (DirectAlignment, NeighborAlignment, Recovery, PoseGraph, Stitching, Output) 
+       đều non-null, fill defaults nếu thiếu
+
+AlignStitchConfigMapper.SyncLegacy(config)
+   └── Đồng bộ flat legacy field ↔ composite object
+
+ct.ThrowIfCancellationRequested()
+
+imageMap = WorkflowImageMappingService.ValidateAndMap(manifest, captured, ct)
+   ├── Validate: SampleCount == CapturedCount
+   ├── Không duplicate/missing OrderIndex
+   └── Return: TileByOrder, CapturedByOrder, OrderedCaptured
+
+report = ProcessingReport.Create(config, manifest)
+report.EffectiveConfig = AlignStitchConfigMapper.CreateSnapshot(config)</pre>
+              <h3>Output</h3>
+              <table>
+                <thead><tr><th>Biến</th><th>Mô tả</th></tr></thead>
+                <tbody>
+                  <tr><td><code>imageMap.TileByOrder</code></td><td><code>Dictionary&lt;int, SampleTileInfo&gt;</code></td></tr>
+                  <tr><td><code>imageMap.CapturedByOrder</code></td><td><code>Dictionary&lt;int, CapturedImageInfo&gt;</code></td></tr>
+                  <tr><td><code>imageMap.OrderedCaptured</code></td><td><code>IList&lt;CapturedImageInfo&gt;</code> sắp theo OrderIndex</td></tr>
+                  <tr><td><code>solved</code></td><td><code>Dictionary&lt;int, TileWorkflowState&gt;</code> — khởi tạo rỗng</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </details>
+
+          <!-- STAGE 3 -->
+          <details class="stage" id="stage-3">
+            <summary>
+              <span class="num">③</span>
+              <span class="title">DIRECT ALIGNMENT — Align từng tile với sample<span class="zh">HalconShapeModel (coarse) → PyramidEcc (refinement)</span></span>
+              <span class="chev">▸</span>
+            </summary>
+            <div class="stage-body">
+              <div class="meta-row"><b>Entry point</b> Vòng <code>for</code> trên <code>ordered</code> trong <code>RunCore()</code></div>
+              <h3>Cấu hình Direct Alignment (user-specified)</h3>
+<pre class="flow">DirectAlignment:
+├── Preprocessing:
+│   └── Contrast = 200                      # Tăng contrast ảnh captured trước khi match
+├── CoarseMatcher = HalconShapeModel        # Coarse matcher
+├── RefinementMatcher = PyramidEcc          # Refinement matcher
+├── Geometry:
+│   ├── MinTextureStdDev = 7                # Ngưỡng std dev để phân loại low-texture
+│   ├── MinOverlapRatio = 0.01 (default)
+│   ├── MaxTranslationPixels = 300 (default)
+│   ├── MaxAbsRotationDeg = 0.5 (default)
+│   ├── MinScale = 0.95 (default)
+│   └── MaxScale = 1.05 (default)
+├── Shape:
+│   ├── Greediness = 0.75                   # Tham số tìm kiếm HALCON find_shape_model
+│   ├── Mode = (default)
+│   ├── NumLevels = (default)
+│   ├── AngleStartRad, AngleExtentRad, AngleStepRad = (default)
+│   ├── MinScore = (default)
+│   └── SubPixel, Contrast, MinContrast, ... = (default)
+├── Ncc: (không dùng — CoarseMatcher = HalconShapeModel)
+├── Ecc:
+│   ├── MotionModel = Euclidean (default)
+│   ├── PyramidLevels = 3 (default)
+│   ├── MaxIterations = 80 (default)
+│   ├── Epsilon = 1e-5 (default)
+│   └── MinCorrelation = 0.13 (default)
+└── Policy:
+    ├── AllowCoarseOnlyAcceptance = true     # Chấp nhận chỉ coarse nếu refinement fail
+    └── AllowRefinementFromExpectedWhenCoarseFails = true (default)</pre>
+
+              <h3>Flow chi tiết mỗi tile</h3>
+<pre class="flow">GetSampleContent(config, tile)
+   └── SampleTileContentAnalyzer.Analyze() → SampleTileContentMetrics
+       ├── ContentClass: Normal / LowTexture / ExactZero
+       └── StdDevGray, MinGray, MaxGray, MeanGray, NonZeroPixelRatio
+
+if ContentClass == ExactZero && AutoPlaceExactZeroSample:
+   → PoseSource.BlankSampleExpectedPose, pose = T(ExpectedX, ExpectedY)
+
+if ContentClass == LowTexture && MinTextureStdDev = 7:
+   → skip matching, PoseSource.BlankSampleExpectedPose
+
+Nếu tile bình thường:
+   SolveDirectWithMatcherFactory(config, tile, cap, report, ct, metrics)
+   │
+   ├── MatcherPipeline(_matcherFactory, ForwardMatcherResult)
+   │
+   ├── Build MatchRequest:
+   │   ├── ReferenceImage = _imageCache.GetMono8(tile.ExpectedPath)
+   │   ├── MovingImage = _imageCache.GetDirectMovingMono8(cap.FilePath, Contrast=200)
+   │   │                 └── Linear contrast stretch: pixel = clamp((pixel-128)*2 + 128)
+   │   ├── ReferenceShapeModelPath = tile.ShapeModelPath
+   │   ├── ReferenceShapeModelRoi = ToShapeRoi(tile)
+   │   ├── ShapeOptions = config.DirectAlignment.Shape  (Greediness=0.75)
+   │   └── Options = AlignStitchConfigMapper.ToDirectMatcherOptions(config)
+   │
+   ├── pipeline.MatchDirect(request, coarse=HalconShapeModel, refinement=PyramidEcc, 
+   │                        allowCoarseOnly=true, allowRefFromExpected=true, ct)
+   │   │
+   │   ├── Coarse: HalconShapeModelMatcher
+   │   │   └── HALCON find_shape_model(Image, ModelID, AngleStart, AngleExtent, 
+   │   │       MinScore, NumMatches, MaxOverlap, SubPixel, NumLevels, Greediness=0.75)
+   │   │       → Row, Column, Angle, Score
+   │   │
+   │   └── Refinement: PyramidEccMatcher
+   │       └── OpenCV findTransformECC(src, dst, warpMatrix, MOTION_EUCLIDEAN,
+   │           criteria(MaxIterations=80, Epsilon=1e-5), inputMask, PyramidLevels=3)
+   │       → MovingToReferenceTransform (2D affine/euclidean)
+   │
+   ├── DirectCandidateEvaluator.Evaluate() (nếu Evaluation enabled)
+   ├── DirectCandidateSelector.Apply(result, evaluation, evaluationOptions)
+   │
+   └── Nếu match.Success:
+       │   directGlobal = Multiply(
+       │       Translation(ExpectedX + ManualOffsetX, ExpectedY + ManualOffsetY),
+       │       CapturedToSampleTransform
+       │   )
+       │   state.OriginalDirectGlobalPose = clone(directGlobal)
+       │   → PoseSource.SampleAlignment
+       │
+       └── Nếu match.Fail:
+           → PoseSource.Failed</pre>
+
+              <h3>Transform direction contract</h3>
+<pre class="flow">CapturedToSampleTransform:  MovingImage → ReferenceImage  (captured → sample tile)
+DirectGlobalPose = T(ExpectedX, ExpectedY) × CapturedToSample
+                 = tile offset trong global frame × local alignment</pre>
+            </div>
+          </details>
+
+          <!-- STAGE 4 -->
+          <details class="stage" id="stage-4">
+            <summary>
+              <span class="num">④</span>
+              <span class="title">FAILURE RECOVERY — Cứu tile thất bại bằng neighbor<span class="zh">2 pass: predecessor/grid-neighbor, rồi thêm successor</span></span>
+              <span class="chev">▸</span>
+            </summary>
+            <div class="stage-body">
+              <div class="meta-row"><b>Trigger</b> Tile có <code>PoseSource.Failed</code> và <code>config.Recovery.RecoverFailedTiles == true</code></div>
+
+              <h3>Pass 1 (includeSuccessor = false)</h3>
+<pre class="flow">Recover(config, tile, cap, solved, ordered, capturedByOrder, tileByOrder, report, ct, false)
+│
+├── BuildRecoveryCandidates(cap, solved, ordered, includeSuccessor=false)
+│   ├── traversal-predecessor (OrderIndex - 1) nếu IsStitchable
+│   └── solved-grid-neighbor: mọi tile kề Manhattan đã stitchable, sắp theo distance+OrderIndex
+│
+├── Với mỗi candidate:
+│   MatchNeighborEdge(config, tile, cap, anchorOrderIndex, ...)
+│   ├── Xác định direction: "right"/"left"/"top"/"bottom"
+│   ├── AnchorRoi / TargetRoi từ tile geometry (overlap = ExpectedOverlap, ~60px)
+│   ├── CropCopy overlap regions
+│   ├── PyramidPhaseCorrelationMatcher trên ROI
+│   ├── RoiTransformToFull: chuyển transform từ ROI space → full tile space
+│   ├── NeighborTransformModel.ExpectedTargetToAnchor(anchorTile, targetTile)
+│   ├── NeighborTransformModel.Residual(expected, measured)
+│   └── NeighborMatchAcceptance.Validate → accepted/rejected
+│
+├── NeighborCandidateRanker.Rank(measured edges)
+│   └── Sắp theo: accepted first → phaseScore desc → overlapRatio desc
+│
+└── CompleteRecoveryFromAnchor(target, best_candidate, best_edge)
+    └── GlobalPose = AnchorGlobalPose × TargetToAnchorTransform
+    └── PoseSource.NeighborAlignment</pre>
+
+              <h3>Pass 2 (includeSuccessor = true)</h3>
+              <p>Giống Pass 1 nhưng thêm <code>traversal-successor (OrderIndex + 1)</code> vào candidate list.</p>
+            </div>
+          </details>
+
+          <!-- STAGE 5 -->
+          <details class="stage" id="stage-5">
+            <summary>
+              <span class="num">⑤</span>
+              <span class="title">NEIGHBOR GRAPH — Đo toàn bộ cặp kề cạnh<span class="zh">Ver4: chỉ đo, không propagate khi PoseGraph bật</span></span>
+              <span class="chev">▸</span>
+              <span class="badge new">VER 4 CHANGE</span>
+            </summary>
+            <div class="stage-body">
+              <div class="meta-row"><b>Entry point</b> <code>ReconcileNeighborGraph()</code> — chỉ khi <code>ReconcileAllMatchedTiles == true</code></div>
+              <div class="callout warn">
+                <strong>Lưu ý Ver 4:</strong> Nếu <code>PoseGraph.Enabled == true</code> nhưng
+                <code>ReconcileAllMatchedTiles == false</code>, service <strong>tự bật</strong>
+                <code>ReconcileAllMatchedTiles</code> và ghi warning, vì optimizer cần toàn bộ edge.
+              </div>
+<pre class="flow">ReconcileNeighborGraph(config, solved, ordered, capturedByOrder, tileByOrder, report, progress, ct)
+│
+├── Enumerate eligible pairs:
+│   eligible = tiles có file tồn tại && không Excluded
+│   pairs = mọi cặp (a, b) sao cho:
+│       b.OrderIndex > a.OrderIndex
+│       |a.Row - b.Row| + |a.Column - b.Column| == 1  (Manhattan-neighbor)
+│
+├── Với mỗi pair:
+│   MatchNeighborEdge → RecoveryEdgeReport
+│   ├── Matcher: PyramidPhaseCorrelationMatcher (phase-only, không rotation)
+│   ├── pairMeasuredRotationDeg = 0  (luôn, neighbor không đo rotation)
+│   │
+│   ├── Nếu edge accepted && cả 2 node đã có pose:
+│   │   Legacy closure check:
+│   │   predicted = Multiply(anchorPose, TargetToAnchor)
+│   │   closure = PoseResidual(predicted, targetPose)
+│   │   Nếu closure > MaxCycleClosureErrorPixels(=12):
+│   │       → edge.Accepted = false, reason = "Rejected by cycle/direct-pose closure check"
+│   │
+│   └── report.RecoveryEdges.Add(edge)
+│
+└── if config.PoseGraph.Enabled:
+        return;    // ← VER 4: CHỈ ĐO, KHÔNG PROPAGATE. Optimizer xử lí.
+    else:
+        Legacy path: anchor selection + max-bottleneck propagation + AnchorAdjusted</pre>
+            </div>
+          </details>
+
+          <!-- STAGE 6 -->
+          <details class="stage" id="stage-6">
+            <summary>
+              <span class="num">⑥</span>
+              <span class="title">POSE-GRAPH OPTIMIZER — Giải pose toàn cục<span class="zh">Gauss-Newton + IRLS Huber + Global Similarity Fit</span></span>
+              <span class="chev">▸</span>
+              <span class="badge new">VER 4 NEW</span>
+            </summary>
+            <div class="stage-body">
+              <div class="meta-row"><b>Entry point</b> <code>GlobalPoseGraphOptimizer.Optimize()</code> — sau ReconcileNeighborGraph, trước Stitching</div>
+              <div class="meta-row"><b>Trigger</b> <code>config.PoseGraph.Enabled == true</code> (default: <code>true</code>)</div>
+
+              <h3>Cấu hình PoseGraphOptions (defaults)</h3>
+<pre class="flow">PoseGraph:
+├── Enabled = true
+├── Prior weights:
+│   ├── LambdaDirect = 0.30      # SampleAlignment, scaled by SelectedCommonScore
+│   ├── LambdaWeak = 0.02        # NeighborAlignment, AnchorAdjusted, Failed
+│   ├── LambdaBlank = 0.02       # BlankSampleExpectedPose
+│   └── LambdaPinned = 100.0     # Manual
+├── Solver:
+│   ├── RotationScalePixels = 4000.0    # ≈ half tile side
+│   ├── HuberPixels = 3.0               # Huber robust loss threshold
+│   ├── MaxIterations = 8               # Gauss-Newton iterations
+│   ├── MaxCgIterations = 500           # CG inner iterations
+│   └── CgTolerance = 1e-10
+├── Global similarity:
+│   ├── EstimateGlobalScale = true
+│   ├── MinGlobalScale = 0.99
+│   ├── MaxGlobalScale = 1.01
+│   └── MaxGlobalRotationDeg = 0.5
+├── Edge gate:
+│   ├── UseRejectedEdges = true          # Dùng cả edge bị legacy closure reject
+│   ├── MaxEdgeResidualPixels = 40.0     # Chống period-slip
+│   └── MaxEdgeRotationDeg = 0.5
+└── Safety:
+    └── MaxPoseCorrectionPixels = 120.0  # Guard: abort nếu tile dịch quá xa</pre>
+
+              <h3>Flow chi tiết</h3>
+<pre class="flow">GlobalPoseGraphOptimizer.Optimize(config, tiles, states, edges)
+│
+├── 1. Build Nodes
+│   ordered = states.Where(s => s.Source != Excluded).OrderBy(OrderIndex)
+│   Với mỗi state:
+│   │   priorMatrix = OriginalDirectGlobalPose ?? GlobalPose
+│   │   Tx, Ty = initMatrix[0,2], initMatrix[1,2]   (hoặc ExpectedX/Y nếu không finite)
+│   │   Theta = atan2(initMatrix[1,0], initMatrix[0,0])
+│   │   Scale = sqrt(a² + b²) từ prior (giữ nguyên, không optimize)
+│   │   Lambda = LambdaFor(state, options):
+│   │       SampleAlignment  → LambdaDirect(0.30) × clamp(SelectedCommonScore, 0.05, 1.0)
+│   │       Manual           → LambdaPinned(100.0)
+│   │       BlankSample      → LambdaBlank(0.02)
+│   │       Neighbor/Adjusted/Failed → LambdaWeak(0.02)
+│   └── HasPrior = true nếu priorMatrix finite
+│
+├── 2. Edge Gate &amp; Deduplication
+│   fullEdges = edges.Where(Purpose == FullPoseReconciliation)
+│   Với mỗi edge:
+│   │   Reject if:
+│   │   ├── !UseRejectedEdges && !Accepted        → "Not accepted by legacy, UseRejected=false"
+│   │   ├── anchor/target not in nodeIndex         → "Tile excluded"
+│   │   ├── MeasuredTransform not finite           → "Not finite"
+│   │   ├── PhaseScore < Phase.MinResponse(0.15)   → "Below min response"
+│   │   ├── OverlapRatio < Acceptance.MinOverlapRatio(0.01) → "Below min overlap"
+│   │   ├── ResidualNorm > MaxEdgeResidualPixels(40) → "Period slip"
+│   │   └── |RotationDeg| > MaxEdgeRotationDeg(0.5) → "Rotation exceeded"
+│   │
+│   │   Build PoseGraphEdge:
+│   │       AnchorIndex, TargetIndex = local indices in node array
+│   │       Mx, My = MeasuredTargetToAnchor[0,2], [1,2]
+│   │       MTheta = atan2(M[1,0], M[0,0])
+│   │       BaseWeight = sqrt(max(PhaseScore, 1e-3)) × sqrt(max(OverlapRatio, 1e-3))
+│   │       HuberWeight = 1.0 (initial)
+│   │
+│   Khử trùng: key = (min(anchor,target), max(anchor,target))
+│   └── Giữ edge có PhaseScore cao nhất mỗi cặp
+│
+├── 3. Connected Components (Union-Find)
+│   edgeCountByNode[i]++
+│   Union(anchor, target)
+│   → ComponentSizes, IsolatedTiles
+│
+├── 4. PoseGraphSolver.Solve(problem, options)
+│   │
+│   │   for it = 0 .. MaxIterations-1:
+│   │   │
+│   │   ├── GlobalSimilarityFit.TryFit(nodes, EstimateGlobalScale)
+│   │   │   Weighted Umeyama 4-DOF:
+│   │   │   d̄ = Σ(λ·prior) / Σλ,  t̄ = Σ(λ·pose) / Σλ
+│   │   │   Sxx = Σ λ(D·T),  Sxy = Σ λ(D×T),  Sdd = Σ λ|D|²
+│   │   │   φ = atan2(Sxy, Sxx)
+│   │   │   s = sqrt(Sxx² + Sxy²) / Sdd
+│   │   │   g = t̄ - s·R(φ)·d̄
+│   │   │   Clamp: s ∈ [0.99, 1.01], φ ∈ [-0.5°, +0.5°]
+│   │   │
+│   │   ├── BuildRows(nodes, edges, options, s, φ, gx, gy)
+│   │   │   │
+│   │   │   ├── Per edge (3 rows):
+│   │   │   │   r_tx = R(θ_a)ᵀ·(t_b - t_a) - m   (x component)
+│   │   │   │   r_ty = R(θ_a)ᵀ·(t_b - t_a) - m   (y component)
+│   │   │   │   r_θ  = θ_b - θ_a - dθ_meas
+│   │   │   │   weight = BaseWeight × HuberWeight
+│   │   │   │   rotation weight *= RotationScalePixels(4000)
+│   │   │   │
+│   │   │   └── Per prior node (3 rows):
+│   │   │       predX = s·(cosφ·PriorDx - sinφ·PriorDy) + gx
+│   │   │       predY = s·(sinφ·PriorDx + cosφ·PriorDy) + gy
+│   │   │       r_px = Tx - predX
+│   │   │       r_py = Ty - predY
+│   │   │       r_pθ = θ - (PriorTheta + φ)
+│   │   │       weight = Lambda
+│   │   │
+│   │   ├── SparseNormalEquationCg.Solve(3n unknowns, rows, MaxCgIter=500, tol=1e-10)
+│   │   │   Matrix-free CG on normal equations:
+│   │   │   (JᵀWJ + εI) Δ = -JᵀW·r
+│   │   │   Jacobi preconditioner: diag = Σ w²·g_j²
+│   │   │   Damping: ε = 1e-9 × trace/nUnknown
+│   │   │
+│   │   ├── Apply delta:
+│   │   │   node[i].Tx += Δ[3i]
+│   │   │   node[i].Ty += Δ[3i+1]
+│   │   │   node[i].Theta = wrap(Theta + Δ[3i+2])
+│   │   │
+│   │   └── UpdateHuberWeights:
+│   │       er = ||R(θ_a)ᵀ(t_b-t_a) - m||
+│   │       HuberWeight = 1.0          nếu er ≤ HuberPixels(3.0)
+│   │       HuberWeight = 3.0 / er     nếu er > 3.0
+│   │
+│   └── Return PoseGraphSolveStats (iterations, residuals, global similarity params)
+│
+├── 5. Safety Guard
+│   delta[i] = ||newPose - originalPose||
+│   Nếu bất kì delta > MaxPoseCorrectionPixels(120):
+│       Applied = false → giữ nguyên pose cũ, ghi warning
+│
+├── 6. Apply Solution (nếu Applied == true)
+│   Với mỗi node:
+│       cos, sin = cos(θ), sin(θ)
+│       k = node.Scale (giữ nguyên từ direct)
+│       GlobalPose = [[k·cos, -k·sin, Tx],
+│                     [k·sin,  k·cos, Ty],
+│                     [0,      0,     1 ]]
+│       state.PoseGraphAdjusted = true
+│       state.PoseGraphDeltaPixels = delta
+│       PoseSource transitions:
+│           Failed + có edge → NeighborAlignment (IsStitchable=true)
+│           Còn lại → giữ nguyên PoseSource
+│
+└── 7. Return PoseGraphReport
+    ├── EdgesTotal, EdgesUsed, EdgesGatedOut
+    ├── GlobalScale ≈ 0.999, GlobalRotationDeg ≈ 0.059°
+    ├── BeforeResidual: median ~5.35 px → AfterResidual: median ~0.38 px
+    ├── ComponentSizes, IsolatedTiles
+    ├── Tiles[], EdgeDiagnostics[]
+    └── Warnings[]</pre>
+            </div>
+          </details>
+
+          <!-- STAGE 7 -->
+          <details class="stage" id="stage-7">
+            <summary>
+              <span class="num">⑦</span>
+              <span class="title">VALIDATION<span class="zh">ValidateGlobalPoses → GlobalPoseValidator</span></span>
+              <span class="chev">▸</span>
+            </summary>
+            <div class="stage-body">
+<pre class="flow">1. Non-stitchable tiles (not Excluded):
+   state.GlobalPose = Translation(tile.ExpectedX, tile.ExpectedY)
+   → Black placeholder position
+
+2. ValidateGlobalPoses(config, solved, tileByOrder, report)
+   Với mỗi tile stitchable:
+   ├── scale = sqrt(p[0,0]² + p[1,0]²)
+   ├── rotation = |atan2(p[1,0], p[0,0])| * 180/π
+   ├── scale ∈ [Acceptance.MinScale, MaxScale]
+   ├── rotation ≤ 180°
+   ├── translation < 1e9
+   └── tile Width, Height > 0
+   
+   Connectivity check:
+   ├── roots = {SampleAlignment, Manual, BlankSampleExpectedPose}
+   └── NeighborAlignment tiles phải nối được tới root qua accepted edges
+
+3. GlobalPoseValidator.Validate(config, manifest, ordered, outputStates, recoveryEdges)
+   → report.GlobalPoseValidation (per-tile diagnostics)</pre>
+            </div>
+          </details>
+
+          <!-- STAGE 8 -->
+          <details class="stage" id="stage-8">
+            <summary>
+              <span class="num">⑧</span>
+              <span class="title">STITCHING — Ghép ảnh<span class="zh">HOperatorSet.GenProjectiveMosaic → Stitched.tiff</span></span>
+              <span class="chev">▸</span>
+            </summary>
+            <div class="stage-body">
+<pre class="flow">if !string.IsNullOrWhiteSpace(config.OutputPath):
+│
+├── Nếu PoseGraph.Enabled:
+│   Skip DirectPoseOutlierCorrector
+│   Ghi message: "pose graph supersedes median-angle correction"
+│
+├── Nếu !PoseGraph.Enabled:
+│   DirectPoseOutlierCorrector.Correct(config, tiles, states)
+│   → Sửa rotation outlier theo MAD
+│
+├── GlobalPoseValidator.Validate → safety gate
+│
+└── WorkflowStitchingService:
+    ├── Map stitching options
+    └── GlobalTransformStitcher.StitchFromGlobalTransforms
+        ├── Engine = HalconProjectiveMosaicRebased
+        ├── HOperatorSet.GenProjectiveMosaic(Images, ..., HomMatrices2D, StackingOrder, TransformDomain)
+        ├── Không blending (HALCON không hỗ trợ blending parameter)
+        └── Output: .creating/Stitched.tiff</pre>
+            </div>
+          </details>
+
+          <!-- STAGE 9 -->
+          <details class="stage" id="stage-9">
+            <summary>
+              <span class="num">⑨</span>
+              <span class="title">OUTPUT — Xuất kết quả<span class="zh">Comparison artifacts → processing_report.json → Publish</span></span>
+              <span class="chev">▸</span>
+            </summary>
+            <div class="stage-body">
+<pre class="flow">1. SampleComparisonService.Generate
+   → preview, overlay, difference, edge artifacts
+   → comparison_metadata.json
+
+2. Ghi .creating/processing_report.json
+   Bao gồm block "poseGraph" mới:
+   {
+     "enabled": true,
+     "applied": true,
+     "iterations": 8,
+     "converged": true,
+     "edgesTotal": 156,
+     "edgesUsed": 142,
+     "globalScale": 0.999086,
+     "globalRotationDeg": 0.0592,
+     "beforeResidualMedian": 5.35,
+     "afterResidualMedian": 0.38,
+     ...
+   }
+
+3. HALCON reopen/validate Stitched.tiff
+
+4. RunOutputLifecycle.Publish(finalRunDir, .creating)
+   └── Move file-by-file (không atomic rename)
+
+5. UI rebase artifact paths → final directory
+6. Bind comparison artifacts, hiển thị kết quả</pre>
+            </div>
+          </details>
+
+        </div>
+      </section>
+
+      <!-- ============ 4. STATE DIAGRAM ============ -->
+      <section class="doc-section" id="statediagram">
+        <div class="sec-num">04</div>
+        <h2>State flow của một tile</h2>
+        <p>Ver 4 giữ nguyên toàn bộ giá trị <code>PoseSource</code> — pose-graph optimizer chỉ <strong>tinh chỉnh pose</strong>, không tạo state mới.</p>
+        <div class="diagram-panel">
+          <pre class="mermaid">
+stateDiagram-v2
+    [*] --> Failed: chưa có accepted pose / direct rejected
+    [*] --> SampleAlignment: direct matcher accepted
+    [*] --> BlankSampleExpectedPose: exact-zero / low-texture auto-place
+
+    Failed --> NeighborAlignment: recovery pass 1/2
+    Failed --> Manual: manual provider accepts
+    Failed --> Excluded: manual provider skips
+
+    SampleAlignment --> SampleAlignment: pose-graph tinh chỉnh (PoseGraphAdjusted=true)
+    NeighborAlignment --> NeighborAlignment: pose-graph tinh chỉnh
+    BlankSampleExpectedPose --> BlankSampleExpectedPose: pose-graph dịch chuyển
+    AnchorAdjusted --> AnchorAdjusted: pose-graph tinh chỉnh
+    
+    Failed --> NeighborAlignment: pose-graph kết nối qua edge(s)
+
+    note right of SampleAlignment
+      Ver4: PoseSource KHÔNG đổi
+      Chỉ pose được tinh chỉnh
+    end note
+          </pre>
+        </div>
+      </section>
+
+      <!-- ============ 5. SUMMARY ============ -->
+      <section class="doc-section" id="summary">
+        <div class="sec-num">05</div>
+        <h2>Tóm tắt thông số cụ thể (Dataset tham chiếu)</h2>
+        <p>Dataset: <code>AlignStitch_20260804_110852</code> — 80 tile, 8 row × 10 col, serpentine column-major</p>
+        <table class="spec-table">
+          <tbody>
+            <tr><td>Tile size</td><td>4096 × 4096 px</td></tr>
+            <tr><td>Grid step</td><td>4036 px</td></tr>
+            <tr><td>Overlap</td><td>60 px</td></tr>
+            <tr><td>Coarse matcher</td><td>HalconShapeModel (Greediness = 0.75)</td></tr>
+            <tr><td>Refinement matcher</td><td>PyramidEcc</td></tr>
+            <tr><td>Preprocessing contrast</td><td>200%</td></tr>
+            <tr><td>MinTextureStdDev</td><td>7</td></tr>
+            <tr><td>Direct match rate</td><td>36/80 SampleAlignment</td></tr>
+            <tr><td>Blank tiles</td><td>21 BlankSampleExpectedPose</td></tr>
+            <tr><td>AllowCoarseOnlyAcceptance</td><td>true</td></tr>
+            <tr><td>Neighbor edges (full reconciliation)</td><td>156 bản ghi → 142 cặp unique</td></tr>
+            <tr><td>Global scale (fit)</td><td>≈ 0.999086</td></tr>
+            <tr><td>Global rotation (fit)</td><td>≈ +0.0592°</td></tr>
+            <tr><td>Seam residual TRƯỚC pose-graph</td><td>median 5.35 px, p90 10.62, max 12.64</td></tr>
+            <tr><td>Seam residual SAU pose-graph</td><td>median 0.38 px, p90 0.77, max 1.62</td></tr>
+            <tr><td>Pose dịch chuyển</td><td>median 11.19 px, p90 27.63, max 40.25</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <footer>
+        GerberViewer · Tab 3 Align &amp; Stitching · flow_v4.md · 2026-08-04
+      </footer>
+    </main>
+  </div>
+
+<script>
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'base',
+    themeVariables: {
+      background: '#11161F',
+      primaryColor: '#171E2A',
+      primaryTextColor: '#E9EDF5',
+      primaryBorderColor: '#45D8C4',
+      lineColor: '#45D8C4',
+      secondaryColor: '#1D2634',
+      tertiaryColor: '#11161F',
+      fontFamily: 'IBM Plex Mono, monospace',
+      fontSize: '13px',
+      clusterBkg: '#171E2A',
+      clusterBorder: '#262F3F',
+      edgeLabelBackground: '#11161F',
+      textColor: '#E9EDF5',
+      nodeTextColor: '#E9EDF5'
+    },
+    flowchart: { curve: 'basis', padding: 12 },
+    securityLevel: 'loose'
+  });
+
+  // ---- sidebar mobile toggle ----
+  var sidebar = document.getElementById('sidebar');
+  var overlay = document.getElementById('overlay');
+  var burger = document.getElementById('burger');
+  function closeSidebar(){ sidebar.classList.remove('open'); overlay.classList.remove('open'); }
+  burger.addEventListener('click', function(){
+    sidebar.classList.toggle('open');
+    overlay.classList.toggle('open');
+  });
+  overlay.addEventListener('click', closeSidebar);
+  document.querySelectorAll('.side-nav a').forEach(function(a){
+    a.addEventListener('click', closeSidebar);
+  });
+
+  // ---- expand / collapse all ----
+  document.getElementById('expandAll').addEventListener('click', function(){
+    document.querySelectorAll('details.stage').forEach(function(d){ d.open = true; });
+  });
+  document.getElementById('collapseAll').addEventListener('click', function(){
+    document.querySelectorAll('details.stage').forEach(function(d){ d.open = false; });
+  });
+
+  // ---- scrollspy for sidebar ----
+  var navLinks = Array.prototype.slice.call(document.querySelectorAll('.side-nav a'));
+  var targets = navLinks.map(function(a){
+    return document.querySelector(a.getAttribute('href'));
+  });
+  function onScroll(){
+    var pos = window.scrollY + 90;
+    var activeIdx = 0;
+    for (var i = 0; i < targets.length; i++){
+      if (targets[i] && targets[i].offsetTop <= pos) activeIdx = i;
+    }
+    navLinks.forEach(function(a, i){
+      a.classList.toggle('active', i === activeIdx);
+    });
+  }
+  window.addEventListener('scroll', onScroll, { passive: true });
+  onScroll();
+
+  // ---- lightweight syntax highlight for .flow pre blocks ----
+  function escapeHtml(s){
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+  document.querySelectorAll('pre.flow').forEach(function(pre){
+    var text = pre.textContent;
+    var html = escapeHtml(text);
+
+    // comments starting with # to end of line
+    html = html.replace(/(#[^\n]*)/g, '<span class="cmt">$1</span>');
+
+    // tree-drawing characters
+    html = html.replace(/([├└│─┌┐╞╡])/g, '<span class="tree">$1</span>');
+
+    // arrows
+    html = html.replace(/(→|=&gt;)/g, '<span class="arrow">$1</span>');
+
+    // Class.Method( or Class.Property patterns
+    html = html.replace(/\b([A-Z][A-Za-z0-9]*(?:\.[A-Za-z_][A-Za-z0-9]*)+)/g, '<span class="fn">$1</span>');
+
+    // standalone PascalCase identifiers followed by (
+    html = html.replace(/\b([A-Z][A-Za-z0-9]*)(?=\()/g, '<span class="fn">$1</span>');
+
+    // numbers with optional unit
+    html = html.replace(/\b(\d+(?:\.\d+)?(?:e-?\d+)?(?:px|%|°)?)\b/g, '<span class="num">$1</span>');
+
+    // keywords
+    html = html.replace(/\b(true|false|null|if|else|return|for|Nếu|nếu)\b/g, '<span class="kw">$1</span>');
+
+    pre.innerHTML = html;
+  });
+</script>
+
+</body>
+</html>

@@ -1,0 +1,11 @@
+
+mode   = createsample
+raster = H:\005_Project\AOI_2026_07_imp\20260720_Gerber_Align\q168_Gerber2-1 to 2-4.tiff
+output = H:\005_Project\AOI_2026_07_imp
+folder = Sample_q168_Gerber2-1 to 2-4
+
+=== RESULT ===
+Success          : True
+ManifestPath     : H:\005_Project\AOI_2026_07_imp\Sample_q168_Gerber2-1 to 2-4\sample_manifest.json
+OutputDirectory  : H:\005_Project\AOI_2026_07_imp\Sample_q168_Gerber2-1 to 2-4
+ElapsedMs        : 22929
