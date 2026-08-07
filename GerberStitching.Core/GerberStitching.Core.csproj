@@ -1,0 +1,206 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Import Project="..\packages\OpenCvSharp4.runtime.win.4.13.0.20260627\build\netstandard\OpenCvSharp4.runtime.win.props" Condition="Exists('..\packages\OpenCvSharp4.runtime.win.4.13.0.20260627\build\netstandard\OpenCvSharp4.runtime.win.props')" />
+  <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <ProjectGuid>{A9EBAE59-CC60-4A29-B248-9B3779C20F57}</ProjectGuid>
+    <OutputType>Library</OutputType>
+    <RootNamespace>GerberViewer.Stitching</RootNamespace>
+    <AssemblyName>GerberStitching.Core</AssemblyName>
+    <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
+    <FileAlignment>512</FileAlignment>
+    <Deterministic>true</Deterministic>
+    <NuGetPackageImportStamp>
+    </NuGetPackageImportStamp>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+    <OutputPath>bin\Debug\</OutputPath>
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+    <PlatformTarget>x64</PlatformTarget>
+    <Prefer32Bit>false</Prefer32Bit>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+    <DebugType>pdbonly</DebugType>
+    <Optimize>true</Optimize>
+    <OutputPath>bin\Release\</OutputPath>
+    <DefineConstants>TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+    <PlatformTarget>x64</PlatformTarget>
+    <Prefer32Bit>false</Prefer32Bit>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|x64' ">
+    <DebugSymbols>true</DebugSymbols>
+    <OutputPath>bin\x64\Debug\</OutputPath>
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+    <DebugType>full</DebugType>
+    <PlatformTarget>x64</PlatformTarget>
+    <Prefer32Bit>false</Prefer32Bit>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|x64' ">
+    <OutputPath>bin\x64\Release\</OutputPath>
+    <DefineConstants>TRACE</DefineConstants>
+    <Optimize>true</Optimize>
+    <DebugType>pdbonly</DebugType>
+    <PlatformTarget>x64</PlatformTarget>
+    <Prefer32Bit>false</Prefer32Bit>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="hdevenginedotnetxl">
+      <HintPath>C:\Users\USER\AppData\Local\Programs\MVTec\HALCON-25.05-Progress\bin\dotnet35\hdevenginedotnetxl.dll</HintPath>
+    </Reference>
+    <Reference Include="OpenCvSharp, Version=4.0.0.0, Culture=neutral, PublicKeyToken=6adad1e807fea099, processorArchitecture=MSIL">
+      <HintPath>..\packages\OpenCvSharp4.4.13.0.20260627\lib\netstandard2.0\OpenCvSharp.dll</HintPath>
+    </Reference>
+    <Reference Include="OpenCvSharp.Extensions, Version=4.0.0.0, Culture=neutral, PublicKeyToken=6adad1e807fea099, processorArchitecture=MSIL">
+      <HintPath>..\packages\OpenCvSharp4.Extensions.4.13.0.20260627\lib\netstandard2.0\OpenCvSharp.Extensions.dll</HintPath>
+    </Reference>
+    <Reference Include="System" />
+    <Reference Include="System.Buffers, Version=4.0.5.0, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51, processorArchitecture=MSIL">
+      <HintPath>..\packages\System.Buffers.4.6.1\lib\net462\System.Buffers.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Core" />
+    <Reference Include="System.Drawing" />
+    <Reference Include="System.Drawing.Common, Version=10.0.0.0, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51, processorArchitecture=MSIL">
+      <HintPath>..\packages\System.Drawing.Common.10.0.9\lib\net462\System.Drawing.Common.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Memory, Version=4.0.5.0, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51, processorArchitecture=MSIL">
+      <HintPath>..\packages\System.Memory.4.6.3\lib\net462\System.Memory.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Numerics" />
+    <Reference Include="System.Numerics.Vectors, Version=4.1.6.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a, processorArchitecture=MSIL">
+      <HintPath>..\packages\System.Numerics.Vectors.4.6.1\lib\net462\System.Numerics.Vectors.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Runtime.CompilerServices.Unsafe, Version=6.0.3.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a, processorArchitecture=MSIL">
+      <HintPath>..\packages\System.Runtime.CompilerServices.Unsafe.6.1.2\lib\net462\System.Runtime.CompilerServices.Unsafe.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Runtime.Serialization" />
+    <Reference Include="System.Windows.Forms" />
+    <Reference Include="halcondotnetxl, Version=25.5.0.1, Culture=neutral, PublicKeyToken=4973bed59ddbf2b8, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>C:\Users\USER\AppData\Local\Programs\MVTec\HALCON-25.05-Progress\bin\dotnet35\halcondotnetxl.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="System.Xml" />
+    <Reference Include="System.Xml.Linq" />
+    <Reference Include="System.Xml.Serialization" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="Alignment\SampleAlignmentModels.cs" />
+    <Compile Include="Alignment\Evaluation\DirectCandidateEvaluator.cs" />
+    <Compile Include="Alignment\AlignStitchWorkflowService_Simple.cs" />
+    <Compile Include="Alignment\ModalityAwarePreprocessor.cs" />
+    <Compile Include="Alignment\SampleAligners.cs" />
+    <Compile Include="Alignment\NeighborMatchAcceptance.cs" />
+    <Compile Include="Alignment\NeighborTransformModel.cs" />
+    <Compile Include="Alignment\NeighborCandidateRanker.cs" />
+    <Compile Include="Alignment\Neighbor\StitchingOffsetTestRunner.cs" />
+    <Compile Include="Alignment\WorkflowImageCache.cs" />
+    <Compile Include="Mapping\WorkflowImageMap.cs" />
+    <Compile Include="Matching\IMatcher.cs" />
+    <Compile Include="Matching\MatchRequest.cs" />
+    <Compile Include="Matching\MatchResult.cs" />
+    <Compile Include="Matching\MatchResultEventArgs.cs" />
+    <Compile Include="Matching\MatchResultCompletion.cs" />
+    <Compile Include="Matching\MatchFailureReason.cs" />
+    <Compile Include="Matching\MatcherKind.cs" />
+    <Compile Include="Matching\MatcherOptions.cs" />
+    <Compile Include="Matching\MatcherPreprocessOptions.cs" />
+    <Compile Include="Matching\NodeAlignmentTestContext.cs" />
+    <Compile Include="Matching\NodeAlignmentTestResult.cs" />
+    <Compile Include="Matching\NodeAlignmentTestRunner.cs" />
+    <Compile Include="Matching\OpenCv\MatcherGeometryValidator.cs" />
+    <Compile Include="Matching\OpenCv\OpenCvTransformConverter.cs" />
+    <Compile Include="Matching\MatcherFactory.cs" />
+    <Compile Include="Matching\MatcherPipeline.cs" />
+    <Compile Include="Matching\Interop\MatchImageOwnership.cs" />
+    <Compile Include="Matching\Interop\BitmapMatchImageAdapter.cs" />
+    <Compile Include="Matching\OpenCv\OpenCvMatchInputAdapter.cs" />
+    <Compile Include="Matching\OpenCv\PyramidPhaseCorrelationMatcher.cs" />
+    <Compile Include="Matching\OpenCv\PyramidEccMatcher.cs" />
+    <Compile Include="Matching\Halcon\HalconMatchInputAdapter.cs" />
+    <Compile Include="Matching\Halcon\HalconNccModelProvider.cs" />
+    <Compile Include="Matching\Halcon\HalconModelOrigin.cs" />
+    <Compile Include="Matching\Halcon\HalconModelPoseConverter.cs" />
+    <Compile Include="Matching\Halcon\HalconNccMatcher.cs" />
+    <Compile Include="Matching\Halcon\HalconShapeModel.cs" />
+    <Compile Include="Matching\Halcon\HalconShapeModelOptions.cs" />
+    <Compile Include="Matching\Halcon\HalconShapeModelProvider.cs" />
+    <Compile Include="Matching\Halcon\HalconShapeModelMatcher.cs" />
+    <Compile Include="Alignment\AlignStitchWorkflowService.cs" />
+    <Compile Include="Alignment\GlobalPoseValidator.cs" />
+    <Compile Include="Alignment\DirectPoseOutlierCorrector.cs" />
+    <Compile Include="Alignment\AlignmentPoseInterpolator.cs" />
+    <Compile Include="Alignment\Graph\PoseGraphOptions.cs" />
+    <Compile Include="Alignment\Graph\PoseGraphProblem.cs" />
+    <Compile Include="Alignment\Graph\PoseGraphSolver.cs" />
+    <Compile Include="Alignment\Graph\GlobalSimilarityFit.cs" />
+    <Compile Include="Alignment\Graph\SparseNormalEquationCg.cs" />
+    <Compile Include="Alignment\Graph\GlobalPoseGraphOptimizer.cs" />
+    <Compile Include="Alignment\Graph\PoseGraphReport.cs" />
+    <Compile Include="Comparison\ComparisonMode.cs" />
+    <Compile Include="Comparison\ComparisonMetrics.cs" />
+    <Compile Include="Comparison\SampleComparisonRequest.cs" />
+    <Compile Include="Comparison\SampleComparisonResult.cs" />
+    <Compile Include="Comparison\SampleComparisonService.cs" />
+    <Compile Include="Stitching\GlobalTransformStitcher.cs" />
+    <Compile Include="Stitching\HalconProjectiveMosaicRebasedEngine.cs" />
+    <Compile Include="Stitching\HalconWarpThenTileOffsetEngine.cs" />
+    <Compile Include="Stitching\RunOutputLifecycle.cs" />
+    <Compile Include="Stitching\WorkflowStitchingService.cs" />
+    <Compile Include="Arrangement\NaturalSortService.cs" />
+    <Compile Include="Arrangement\CapturedImageLoader.cs" />
+    <Compile Include="Configuration\AppPaths.cs" />
+    <Compile Include="Configuration\IndentedJson.cs" />
+    <Compile Include="Configuration\AlignStitchStageOptions.cs" />
+    <Compile Include="Configuration\AlignStitchConfigMapper.cs" />
+    <Compile Include="Configuration\EffectiveConfigSnapshot.cs" />
+    <Compile Include="Configuration\GerberSampleConfig.cs" />
+    <Compile Include="Configuration\SampleConfigStore.cs" />
+    <!-- #if DEBUG is enforced inside this file so Release builds contain no diagnostic type or behavior. -->
+    <Compile Include="Diagnostics\DebugHtmlReportWriter.cs" />
+    <Compile Include="Diagnostics\StitchedOverlayModel.cs" />
+    <Compile Include="Imaging\ImageInterop\IImageInteropService.cs" />
+    <Compile Include="Imaging\ImageInterop\ImageInteropService.cs" />
+    <Compile Include="Imaging\ImageInterop\ImagePixelFormatInfo.cs" />
+    <Compile Include="Transforms\Transform2D.cs" />
+    <Compile Include="Imaging\SampleGridGeometry.cs" />
+    <Compile Include="Imaging\PreparedSampleRun.cs" />
+    <Compile Include="Imaging\HalconImageFileValidator.cs" />
+    <Compile Include="Imaging\SampleTileGenerator.cs" />
+    <Compile Include="Imaging\SampleTileContentAnalyzer.cs" />
+    <Compile Include="Models\SampleManifest.cs" />
+    <Compile Include="Models\WorkflowModels.cs" />
+    <Compile Include="RobotManager\Domain.cs" />
+    <Compile Include="RobotManager\RobotArrange.cs" />
+    <Compile Include="RobotManager\TraversalGraph.cs" />
+    <Compile Include="Utils\ImageRead.cs" />
+    <Compile Include="Utils\StitchingConfig.cs" />
+    <Compile Include="Utils\TiffBigWriter.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="app.config" />
+    <None Include="packages.config" />
+  </ItemGroup>
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+  <Target Name="EnsureNuGetPackageBuildImports" BeforeTargets="PrepareForBuild">
+    <PropertyGroup>
+      <ErrorText>This project references NuGet package(s) that are missing on this computer. Use NuGet Package Restore to download them.  For more information, see http://go.microsoft.com/fwlink/?LinkID=322105. The missing file is {0}.</ErrorText>
+    </PropertyGroup>
+    <Error Condition="!Exists('..\packages\OpenCvSharp4.runtime.win.4.13.0.20260627\build\netstandard\OpenCvSharp4.runtime.win.props')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\OpenCvSharp4.runtime.win.4.13.0.20260627\build\netstandard\OpenCvSharp4.runtime.win.props'))" />
+    <Error Condition="!Exists('..\packages\OpenCvSharp4.runtime.win.4.13.0.20260627\build\netstandard\OpenCvSharp4.runtime.win.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\OpenCvSharp4.runtime.win.4.13.0.20260627\build\netstandard\OpenCvSharp4.runtime.win.targets'))" />
+  </Target>
+  <Import Project="..\packages\OpenCvSharp4.runtime.win.4.13.0.20260627\build\netstandard\OpenCvSharp4.runtime.win.targets" Condition="Exists('..\packages\OpenCvSharp4.runtime.win.4.13.0.20260627\build\netstandard\OpenCvSharp4.runtime.win.targets')" />
+</Project>
