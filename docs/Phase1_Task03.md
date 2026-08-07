@@ -14,6 +14,18 @@
 
 ---
 
+## ✅ Đã triển khai (2026-08-07, nhánh `Ver1_1`) — phần trong phạm vi repo
+
+Task này có 2 loại việc: (a) trong phạm vi repo — làm được ngay; (b) đụng 2 repo production khác (`RDL_Master3`, `RDL_WorkerNorthT...`) — chỉ ghi yêu cầu, không tự sửa (đã nêu rõ ở §1.1). Phần (a) đã xong:
+
+1. **§2 — `Private=False` cho HALCON:** đã áp dụng từ Task 1.1 (kiểm tra lại: cả `GerberStitching.Core.csproj` và `RDL.GerberStitch.csproj` đều có `<Private>False</Private>` cho `halcondotnetxl`/`hdevenginedotnetxl`). Xác nhận qua build thật: `bin\x64\Release\` không còn `halcondotnetxl.dll`.
+2. **§3.1 — kiểm chứng `opencv_videoio_ffmpeg4130_64.dll` có cần không:** đã test thật bằng cách xoá file khỏi thư mục chạy rồi chạy harness `alignstitch` (dataset 80 tile thật, dùng đủ `PyramidEccMatcher`) — xem `docs/Phase1_Task06.md` §6 để biết kết quả cụ thể.
+3. **§5 — `docs/deploy_deps.md`:** đã viết, dùng số liệu thật từ output build (`docs/deploy_deps.md`).
+
+**Vẫn ngoài phạm vi, chưa và sẽ không tự làm trong repo này** (§1.1, §4.1): nâng HALCON trên `RDL_Master3`/`RDL_WorkerNorthT...`, binding redirect trong `Master.exe.config`/`Worker.exe.config`, test hồi quy luồng AOI cũ với dataset AOI thật. Đây là việc của người có quyền trên 2 repo đó — `docs/deploy_deps.md` đã ghi rõ các bước cần làm khi tới lúc.
+
+---
+
 ## 0. Vấn đề
 
 Bản trước của doc này viết khi chưa biết version HALCON thật của Master/Worker, nên đưa ra 3 thông tin sai:

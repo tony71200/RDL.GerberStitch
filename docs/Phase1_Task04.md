@@ -14,6 +14,30 @@
 
 ---
 
+## ✅ Đã triển khai (2026-08-07, nhánh `Ver1_1`)
+
+Doc dưới đây (§1–§9) được viết **trước khi** Task 1.1/1.2 thực thi thật, nên còn dùng tên `RdlAlignStitchOptions` cho lớp config façade — tên thật sau khi thực thi là **`RDL.GerberStitch.Facade.AlignStitchConfig`** (giữ nguyên tên, không đổi — lý do ở `docs/Phase1_Task02.md` mục "Đã triển khai" #3). Đọc §1–§9 dưới đây, tự thay `RdlAlignStitchOptions` → `AlignStitchConfig` trong đầu.
+
+**3 điểm đã có sẵn từ Task 1.2, không cần làm lại ở task này:**
+
+1. **§4 (thân class) — đã có**, tại `Facade/AlignStitchConfig.cs`, đúng 6/8 trường đề xuất (`StitchingEngine`, `EnableBlending`, `NccMinScore`, `EccMinCorrelation`, `MaxTranslationPixels`, `MaxAbsRotationDeg`, `FallbackToLegacyMerge`). **Không có** `OutputFormat` — quyết định thực tế: tên file output do Core tự đặt cứng `"Stitched.tiff"` (`Stitching/WorkflowStitchingService.cs:19`), không cấu hình được qua façade nên bỏ trường này thay vì phơi ra một tuỳ chọn không có tác dụng.
+2. **§5 (`ToCore`) — đã có**, tên thật là `GerberStitchFacade.BuildCoreConfig` (private, trong `GerberStitchFacade.cs`) thay vì file `Internal/CoreConfigMapper.cs` riêng — gộp vào cùng file façade vì chỉ ~25 dòng, tách file riêng là dư thừa. Logic giống hệt §5: đặt `ConfigVersion=3` trước, `EnsureComposite`, rồi **`AlignStitchConfigMapper.CloneForRun`** (không tự `SyncLegacy` tay — `CloneForRun` đã làm, xác nhận qua đọc source).
+3. **§2 (bẫy `ConfigVersion`) — đã né đúng**, và có **bằng chứng gián tiếp từ dữ liệu thật**: harness `alignstitch` (`docs/Phase1_Task06.md` §4) cho `AlignedTiles=54`, khớp *chính xác* run tham chiếu Phase 0. Nếu bẫy đã xảy ra, `NccMinScore` hiệu lực sẽ là `0.13` (field phẳng) thay vì `0.10` (đúng, cấu trúc) — với ngưỡng cao hơn, số tile khớp qua HALCON NCC coarse matcher nhiều khả năng sẽ **thấp hơn** 54, không khớp tham chiếu. Số liệu khớp tuyệt đối là tín hiệu gián tiếp nhưng có ý nghĩa rằng bẫy không xảy ra trong lần chạy thật.
+
+**Việc thực sự còn thiếu và làm ở task này:** §6 (đọc config từ ini) — **chưa từng làm**, không có ở đâu trong façade tới trước task này. Đã thêm `Facade/AlignStitchConfigIniReader.cs`:
+
+```csharp
+public static AlignStitchConfig ReadFromIni(string iniFilePath)
+public static bool ReadEnableFlag(string iniFilePath, out string gerberFilePath)
+```
+
+**Khác với §6 dự kiến:**
+- Không tạo file `AlignStitchConfigValidator.cs` riêng — `AlignStitchConfig.Validate()` **đã tồn tại** (Task 1.2, `internal`), và **đã được `RunAlignStitch` tự gọi** trước khi build config Core (`GerberStitchFacade.cs`). `ReadFromIni` không tự gọi `Validate()` — key sai giá trị vẫn bị bắt, chỉ là bắt ở bước `RunAlignStitch` thay vì ngay lúc đọc ini. Hành vi cuối cùng giống §6 mô tả (ini sai → lỗi rõ ràng, không chạy tiếp), chỉ khác điểm bắt lỗi.
+- **Không đọc key grid** (`GridRows`, `GridColumns`, `OverlapValue`...) trong `ReadFromIni` — những key đó thuộc `GerberViewer.Stitching.Configuration.GerberSampleConfig` (dùng cho `GenerateSampleManifest`/`GenerateSampleManifestFromRaster`), **khác** class với `AlignStitchConfig` (dùng cho `RunAlignStitch`). Gộp 2 nhóm key khác class vào 1 hàm đọc sẽ mơ hồ giữa "config nào đọc key nào" — tách bạch theo đúng ranh giới 2 class hiện có. Đọc grid config từ ini (nếu Master cần) là việc riêng, chưa làm ở đây — chưa có yêu cầu cụ thể.
+- Parser ini tự viết tối giản (không NuGet), thêm hàm `ReadEnableFlag` tách riêng 2 key (`Enable`, `GerberFilePath`) không thuộc `AlignStitchConfig` — đúng ý "chỉ Master dùng để quyết định có chạy nhánh Gerber".
+
+---
+
 ## 0. Vấn đề
 
 Bản trước của doc này tự nhận *"Bảng trên là ước lượng dựa trên convention — có thể cần adjust"*. Đối chiếu source: mô hình config bị sai **tầng**, và các giá trị số sai đủ để làm hỏng pipeline.

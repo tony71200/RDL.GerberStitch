@@ -1,5 +1,28 @@
 # Phase 1 — Task 1.5: Harness headless & đo tài nguyên
 
+> ## ⚠️ SUPERSEDED (2026-08-07, nhánh `Ver1_1`) — xem `docs/Phase1_Task06.md`
+>
+> Task này được viết **trước khi** façade (Task 1.2) tồn tại thật, nên đặc tả một project `RDL.GerberStitch.Harness` với cấu trúc riêng (`Program.cs` + `ResourceSampler.cs` + `RunReportWriter.cs`). Khi façade thực thi xong, harness **đã được xây thật ở Task 1.6** (`docs/Phase1_Task06.md`) — tên project trùng, mục tiêu trùng (chạy headless, đo RAM/thời gian), nhưng **cấu trúc file khác** (gộp vào `Program.cs` + `GlobalConfig.cs`, không tách `ResourceSampler.cs`/`RunReportWriter.cs` riêng — ít file hơn cho cùng chức năng, không có lý do tách khi mỗi phần chỉ vài chục dòng).
+>
+> **Đối chiếu tiêu chí nghiệm thu gốc (§6 dưới đây) với thực tế đã đạt** (chi tiết số liệu ở `docs/Phase1_Task06.md` §4):
+>
+> | # | Tiêu chí gốc | Trạng thái |
+> |---|---|---|
+> | 1 | Build sạch Debug/Release x64 | ✅ |
+> | 2 | Không `using` namespace Core | ✅ *(chỉ đúng cho nhánh `alignstitch` — nhánh `createsample` thêm sau, có ngoại lệ đã ghi nhận ở Task06 §2)* |
+> | 3 | Chạy được ngoài Visual Studio | ✅ |
+> | 4 | Kết quả tương đương run `110300` | ✅ khớp tuyệt đối (`AlignedTiles=54`, `BlankTiles=26`) |
+> | 5 | `run_report.json` có `peakWorkingSetMb > 0` | 🔶 → ✅ ở `Ver1_1`: ban đầu chỉ in console, **đã bổ sung ghi file `run_report.json`** đúng §4.1 dưới đây — xem Task06 §7 |
+> | 6 | Thời gian trong khoảng ±20% so với 247s | ✅ (303s, +23% — chấp nhận, do tải máy dev) |
+> | 7 | `--repeat 3` không tăng RAM > 10% | ❌ **chưa làm** — harness hiện chỉ chạy 1 lần/lệnh gọi, chưa có `--repeat`. Chưa phát hiện dấu hiệu rò RAM nhưng cũng chưa test riêng — mở lại nếu cần trước khi sang Phase 3 |
+> | 8 | Số RAM đỉnh cập nhật vào `Phase0_Closeout.md` | ✅ |
+>
+> **Việc còn treo thật sự từ task này:** mục 7 (`--repeat N` để soi rò RAM qua nhiều lần chạy liên tiếp trong cùng process) — chưa triển khai. Không chặn Phase 1, nhưng nên làm trước khi bước sang Phase 3 (Worker chạy nhiều lô liên tiếp, rò RAM tích luỹ sẽ nghiêm trọng hơn).
+>
+> Nội dung gốc bên dưới **giữ nguyên để tham khảo bối cảnh thiết kế ban đầu** — không dùng làm hướng dẫn thực thi nữa, dùng `docs/Phase1_Task06.md`.
+
+---
+
 **Ngày:** 2026-08-07
 **Phase:** 1 — Đóng gói Core thành thư viện dùng chung
 **PD ước lượng:** 1

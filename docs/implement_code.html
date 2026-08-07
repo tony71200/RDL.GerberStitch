@@ -66,6 +66,7 @@
     <li><a href="#entry-2">2026-08-07 (nhánh <code>Ver1_0</code>) — Thực thi Task 1.1 + 1.2: façade thật</a></li>
     <li><a href="#entry-3">2026-08-07 (nhánh <code>Ver1_0</code>) — Task 1.6: harness + chạy thật <code>RunAlignStitch</code></a></li>
     <li><a href="#entry-4">2026-08-07 (nhánh <code>Ver1_0</code>) — Mở rộng façade + <code>global_config.json</code> + test <code>createsample</code></a></li>
+    <li><a href="#entry-5">2026-08-07 (nhánh <code>Ver1_1</code>) — Task 1.3/1.4/1.5/1.6: deploy checklist, ini reader, run_report.json, kiểm chứng ffmpeg</a></li>
     <li><a href="#pitfalls">Bảng tổng hợp lỗi &amp; cách fix (tra nhanh)</a></li>
   </ol>
 </div>
@@ -284,7 +285,39 @@ return AlignStitchConfigMapper.CloneForRun(baseConfig, outputPath); // tự đ�
 </div>
 
 <!-- ============================================================ -->
-<h2 id="pitfalls">5. Bảng tổng hợp lỗi &amp; cách fix (tra nhanh)</h2>
+<h2 id="entry-5">5. 2026-08-07 (nhánh <code>Ver1_1</code>) — Task 1.3/1.4/1.5/1.6: deploy checklist, ini reader, run_report.json, kiểm chứng ffmpeg</h2>
+<div class="entry">
+  <div class="entry-meta"><span class="badge ok">Docs</span> <span class="badge ok">Facade</span> <span class="badge ok">Harness</span> Phạm vi: <code>docs/deploy_deps.md</code> (mới), <code>Facade/AlignStitchConfigIniReader.cs</code> (mới), <code>Harness/RunReport.cs</code> (mới), cập nhật Task03/04/05/06.md</div>
+
+  <h4>Bối cảnh</h4>
+  <p><code>Phase1_Task03.md</code> và <code>Phase1_Task04.md</code> được viết <strong>trước khi</strong> Task 1.1/1.2 thực thi thật (entry 2) — <code>Task04.md</code> còn nguyên tên lớp <code>RdlAlignStitchOptions</code> chưa từng tồn tại (tên thật là <code>AlignStitchConfig</code>, giữ nguyên không đổi — xem entry 2). <code>Phase1_Task05.md</code> mô tả một harness khác cấu trúc với harness thật đã xây ở Task 1.6 (entry 3–4). Lượt này: đối chiếu lại 4 doc với code hiện tại, làm phần còn thiếu thật sự, đánh dấu phần đã trùng lặp/superseded.</p>
+
+  <h3>5.1. Task 1.3 — deploy checklist + kiểm chứng ffmpeg</h3>
+  <p><code>Private=False</code> cho HALCON đã áp dụng từ Task 1.1 (xác nhận lại, không đổi gì thêm). Việc thật sự làm mới:</p>
+  <ul class="filelist">
+    <li><code>docs/deploy_deps.md</code> (mới) — checklist deploy dùng số liệu thật từ output build (danh sách DLL managed + native, kích thước, ghi chú binding redirect cho Master).</li>
+    <li><strong>Kiểm chứng <code>opencv_videoio_ffmpeg4130_64.dll</code> có cần không</strong> — câu hỏi để ngỏ từ <code>Phase1_Task03.md</code> §3.1. Test thật: dời file khỏi thư mục chạy harness, chạy lại <code>alignstitch</code> full dataset 80 tile (bài test nặng nhất). Kết quả: <code>Success=True</code>, <code>AlignedTiles=54</code>/<code>BlankTiles=26</code>/<code>FailedTiles=0</code> — khớp tuyệt đối với lần chạy có đủ ffmpeg dll. <strong>Kết luận: không cần, bỏ được 28.6 MB mỗi lần deploy.</strong></li>
+  </ul>
+
+  <h3>5.2. Task 1.4 — <code>AlignStitchConfigIniReader</code></h3>
+  <p>Phần lớn nội dung kế hoạch gốc (thân class, mapper sang config Core, bẫy <code>ConfigVersion</code>) <strong>đã làm ở Task 1.2</strong> dưới tên khác — <code>Task04.md</code> được cập nhật lại để chỉ rõ tương ứng, không làm lại. Việc còn thiếu thật sự: <strong>đọc <code>AlignStitchConfig</code> từ file ini</strong> — chưa từng có trước lượt này.</p>
+  <p>Thêm <code>Facade/AlignStitchConfigIniReader.cs</code>: parser ini tối giản tự viết (không NuGet — đúng convention repo), đọc section <code>[GerberAlignStitch]</code> vào đúng 7 trường hiện có của <code>AlignStitchConfig</code> (bỏ <code>OutputFormat</code> — trường đó không tồn tại, xem entry 2/§4). <strong>Cố tình không</strong> đọc key grid (<code>GridRows</code>...) trong cùng hàm — những key đó thuộc <code>GerberSampleConfig</code> của Core, khác class với <code>AlignStitchConfig</code>, gộp vào sẽ mơ hồ ranh giới.</p>
+  <p>Không tạo file <code>Validator</code> riêng — <code>AlignStitchConfig.Validate()</code> đã có từ Task 1.2 và đã được <code>RunAlignStitch</code> tự gọi; <code>ReadFromIni</code> không tự validate, lỗi vẫn bị bắt ở bước gọi <code>RunAlignStitch</code> sau đó.</p>
+  <p><strong>Xác nhận gián tiếp bẫy <code>ConfigVersion</code> không xảy ra:</strong> nếu bẫy xảy ra, <code>NccMinScore</code> hiệu lực sẽ là <code>0.13</code> (field phẳng) thay vì <code>0.10</code> đúng — với ngưỡng cao hơn, số tile khớp coarse matcher nhiều khả năng thấp hơn. Số liệu khớp tuyệt đối (54 tile) ở mọi lần chạy thật là bằng chứng gián tiếp bẫy không xảy ra.</p>
+
+  <h3>5.3. Task 1.5 → đánh dấu SUPERSEDED, đóng nốt phần thiếu qua Task 1.6</h3>
+  <p><code>Phase1_Task05.md</code> được gắn banner SUPERSEDED ở đầu, trỏ về <code>Phase1_Task06.md</code>, kèm bảng đối chiếu 8 tiêu chí nghiệm thu gốc với thực tế đã đạt. Việc thật sự còn thiếu khi đối chiếu: <strong><code>run_report.json</code></strong> (harness ban đầu chỉ in console) và <strong><code>--repeat N</code></strong> để soi rò RAM (chưa làm, không chặn Phase 1).</p>
+  <p>Thêm <code>Harness/RunReport.cs</code> — ghi <code>run_report.json</code> cạnh output mỗi lần chạy (<code>DataContractJsonSerializer</code>, không thêm thư viện), best-effort (lỗi ghi không làm hỏng kết quả run thật). Đã kiểm chứng bằng 2 lần chạy thật — cả 2 mode đều ghi đúng vị trí, đúng nội dung.</p>
+
+  <h4>Sự cố ngoài ý muốn — xoá nhầm output cũ</h4>
+  <p>Trong lúc dọn đường cho lần chạy kiểm chứng ffmpeg, đã chạy <code>rm -rf result_20260807/AlignStitch_*</code> để "dọn chỗ" — <strong>không cần thiết</strong>, vì mỗi lần chạy tự tạo thư mục theo timestamp riêng, không đụng độ. Hệ quả: xoá mất thư mục kết quả <code>AlignStitch_20260807_145801</code> (~1.3 GB, từ entry 3) mà <strong>không hỏi user trước</strong>. Đã báo lại user ngay khi phát hiện. Không mất thông tin phân tích (mọi số liệu đã ghi trong doc), chỉ mất file TIFF thật. <strong>Bài học:</strong> trước khi chạy lệnh xoá, luôn hỏi nếu không chắc chắn 100% là cần thiết — kể cả với dữ liệu do chính mình tạo ra ở lượt trước.</p>
+
+  <h4>Build</h4>
+  <p><span class="badge ok">PASS</span> — <code>Debug|x64</code> + <code>Release|x64</code>, rebuild từ đầu, 0 error, 4 project.</p>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="pitfalls">6. Bảng tổng hợp lỗi &amp; cách fix (tra nhanh)</h2>
 <table>
   <tr><th>Triệu chứng</th><th>Nguyên nhân gốc</th><th>Fix</th><th>Entry</th></tr>
   <tr><td><code>CS0104</code> ambiguous <code>GerberSampleConfig</code></td><td>2 class trùng tên (<code>Configuration/</code> vs <code>Models/</code>)</td><td>Viết đủ tên namespace</td><td><a href="#entry-2">2</a></td></tr>
@@ -293,6 +326,7 @@ return AlignStitchConfigMapper.CloneForRun(baseConfig, outputPath); // tự đ�
   <tr><td>Thiếu DLL ở output khi build project cuối chuỗi (harness)</td><td>MSBuild không copy-local đủ xuyên 2 tầng <code>ProjectReference</code> kiểu cũ</td><td>Khai trực tiếp từng <code>&lt;Reference&gt;</code>, không phó mặc copy-local xuyên tầng</td><td><a href="#entry-3">3</a></td></tr>
   <tr><td>Chữ tiếng Việt lỗi font trong console</td><td>Codepage mặc định không phải UTF-8</td><td><code>Console.OutputEncoding = Encoding.UTF8;</code></td><td><a href="#entry-3">3</a></td></tr>
   <tr><td><code>CS0012</code> dù chỉ truyền <code>null</code></td><td>C# vẫn cần reference assembly định nghĩa type trong signature, bất kể giá trị truyền vào</td><td>Thêm <code>ProjectReference</code> trực tiếp tới assembly đó</td><td><a href="#entry-4">4</a></td></tr>
+  <tr><td><code>CS1061: 'AlignStitchConfig' does not contain 'OutputFormat'</code></td><td>Doc kế hoạch cũ (<code>Phase1_Task04.md</code>) có trường này, nhưng lớp thật (Task 1.2) không giữ nó — tên file output do Core tự đặt cứng, không cấu hình được</td><td>Bỏ dòng đọc <code>OutputFormat</code> khỏi ini reader; đối chiếu doc kế hoạch với code thật <strong>trước</strong> khi viết, không tin doc cũ nguyên văn</td><td><a href="#entry-5">5</a></td></tr>
 </table>
 
 <footer>

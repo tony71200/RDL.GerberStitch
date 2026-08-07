@@ -118,6 +118,26 @@ namespace RDL.GerberStitch.Harness
                     Console.WriteLine("  - " + w);
                 Console.WriteLine("PeakWorkingSet : " + (peakWorkingSetBytes / 1024 / 1024) + " MB (tại stage: " + peakAtStage + ")");
 
+                var reportFolder = !string.IsNullOrWhiteSpace(result.TiffPath) ? Path.GetDirectoryName(result.TiffPath) : outputRoot;
+                RunReport.WriteTo(reportFolder, new RunReport
+                {
+                    Mode = "alignstitch",
+                    RunUtc = DateTime.UtcNow.ToString("O"),
+                    ElapsedMs = result.ElapsedMs,
+                    WallClockMs = stopwatch.ElapsedMilliseconds,
+                    PeakWorkingSetMb = peakWorkingSetBytes / 1024 / 1024,
+                    PeakAtStage = peakAtStage,
+                    Success = result.Success,
+                    TiffPath = result.TiffPath,
+                    TileCount = result.TileCount,
+                    AlignedTileCount = result.AlignedTileCount,
+                    BlankTileCount = result.BlankTileCount,
+                    FailedTileCount = result.FailedTiles.Count,
+                    ErrorCode = result.ErrorCode,
+                    WarningCount = result.Warnings.Count,
+                    ErrorMessage = result.ErrorMessage
+                });
+
                 return result.Success ? 0 : 1;
             }
         }
@@ -183,6 +203,19 @@ namespace RDL.GerberStitch.Harness
             Console.WriteLine("ElapsedMs        : " + stopwatch.ElapsedMilliseconds);
             if (!string.IsNullOrEmpty(result.ErrorMessage))
                 Console.WriteLine("ErrorMessage     : " + result.ErrorMessage);
+
+            var reportFolder = !string.IsNullOrWhiteSpace(result.OutputDirectory) ? result.OutputDirectory : outputRoot;
+            RunReport.WriteTo(reportFolder, new RunReport
+            {
+                Mode = "createsample",
+                RunUtc = DateTime.UtcNow.ToString("O"),
+                ElapsedMs = stopwatch.ElapsedMilliseconds,
+                WallClockMs = stopwatch.ElapsedMilliseconds,
+                Success = result.Success,
+                ManifestPath = result.ManifestPath,
+                OutputDirectory = result.OutputDirectory,
+                ErrorMessage = result.ErrorMessage
+            });
 
             return result.Success ? 0 : 1;
         }

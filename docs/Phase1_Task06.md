@@ -203,19 +203,78 @@ Không có "run tham chiếu" cho riêng bước tạo sample (Phase 0 chỉ có
 
 ---
 
-## 6. Tiêu chí nghiệm thu
+## 6. Kiểm chứng `opencv_videoio_ffmpeg4130_64.dll` (2026-08-07, nhánh `Ver1_1`)
+
+`docs/Phase1_Task03.md` §3.1 đặt câu hỏi: pipeline chỉ xử lý ảnh tĩnh, có cần native ffmpeg (28.6 MB) hay không.
+
+**Cách test:** dời `dll\x64\opencv_videoio_ffmpeg4130_64.dll` ra khỏi thư mục chạy của harness, chạy lại `alignstitch` với đúng dataset 80 tile thật (bài test nặng nhất, dùng đủ `PyramidEccMatcher`/OpenCvSharp cho mọi tile).
+
+```
+manifest = H:\005_Project\AOI_2026_07_imp\data\GerberSample_20260806_084849\sample_manifest.json
+images   = H:\005_Project\AOI_2026_07_imp\20260720_Gerber_Align\20260725 Q168 2-1 org
+output   = H:\005_Project\AOI_2026_07_imp\result_20260807
+
+=== RESULT (không có ffmpeg dll) ===
+Success        : True
+ElapsedMs      : 284723 (wall clock 285862 ms)
+TileCount      : 80
+AlignedTiles   : 54
+BlankTiles     : 26
+FailedTiles    : 0
+ErrorCode      : 0
+PeakWorkingSet : 6536 MB
+```
+
+**Kết luận: `opencv_videoio_ffmpeg4130_64.dll` KHÔNG cần cho pipeline align/stitch.** Run hoàn tất, số liệu khớp tuyệt đối với cả run tham chiếu Phase 0 lẫn lần chạy `alignstitch` có đủ ffmpeg dll ở §4 (54/26/0 cả hai lần). `OpenCvSharpExtern` nạp ffmpeg theo kiểu lazy — không gọi `VideoCapture`/`VideoWriter` thì không đụng tới, đúng như dự đoán ban đầu.
+
+**Đã cập nhật `docs/deploy_deps.md` §5** với kết quả này — bỏ được 28.6 MB mỗi lần deploy Master/Worker.
+
+> File dll đã được khôi phục lại vị trí cũ sau khi test xong (không xoá vĩnh viễn khỏi repo/output — chỉ không copy khi deploy production, theo đúng khuyến nghị §3.1 gốc).
+
+---
+
+## 7. `run_report.json` — đóng nốt mục tiêu của Task 1.5 (superseded)
+
+`docs/Phase1_Task05.md` (nay đã đánh dấu SUPERSEDED, trỏ về file này) đặt mục tiêu ghi `run_report.json` cạnh output mỗi lần chạy. Harness ban đầu (§4/§5) chỉ in ra console — đã bổ sung `RunReport.cs`, ghi file JSON (qua `DataContractJsonSerializer`, không thêm thư viện) vào:
+
+- **`alignstitch`:** cùng thư mục với `Stitched.tiff` (`<output>\AlignStitch_<timestamp>\run_report.json`)
+- **`createsample`:** cùng thư mục sample (`<output>\Sample_<tên file>\run_report.json`)
+
+Đã kiểm chứng bằng 2 lần chạy thật (2026-08-07):
+
+```json
+// alignstitch — H:\...\AlignStitch_20260807_163430\run_report.json
+{"AlignedTileCount":54,"BlankTileCount":26,"ElapsedMs":284723,"ErrorCode":0,
+ "FailedTileCount":0,"Mode":"alignstitch","PeakAtStage":"GlobalPose summary: valid=True; tiles=80; outliers=0",
+ "PeakWorkingSetMb":6536,"Success":true,"TileCount":80,"WallClockMs":285862,"WarningCount":3}
+```
+
+```json
+// createsample — H:\...\Sample_q168_Gerber2-1 to 2-4\run_report.json
+{"ElapsedMs":22951,"Mode":"createsample","Success":true,"WallClockMs":22951}
+```
+
+Ghi file là **best-effort** — lỗi ghi (vd ổ đầy) chỉ in cảnh báo ra console, không làm hỏng kết quả run thật đã có (`RunReport.WriteTo`, `try/catch` bao quanh).
+
+**Chưa làm** (đã ghi nhận trong `docs/Phase1_Task05.md` phần SUPERSEDED, mục 7 của bảng đối chiếu): `--repeat N` để soi rò RAM qua nhiều lần chạy liên tiếp. Không chặn Phase 1.
+
+---
+
+## 8. Tiêu chí nghiệm thu
 
 1. ✅ Build sạch `Debug|x64` và `Release|x64` — solution 4 project.
 2. ✅ Nhánh `alignstitch`: `RunAlignStitch(...)` không cần bất kỳ kiểu nào của Core trong `Program.cs`. Nhánh `createsample`: cần `GerberSampleConfig` của Core — đã ghi nhận là đánh đổi chấp nhận được, không phải lỗi (xem §2).
 3. ✅ Chạy được trực tiếp từ dòng lệnh (`.exe`), ngoài Visual Studio, cả 2 mode.
 4. ✅ Đọc được tham số từ CLI arg **hoặc** từ `global_config.json`, arg luôn thắng khi cả hai cùng có.
-5. ✅ `alignstitch`: `Stitched.tiff` sinh ra, `AlignedTileCount=54`/`BlankTileCount=26` khớp chính xác run tham chiếu Phase 0 (§4.1).
-6. ✅ `alignstitch`: `PeakWorkingSet` in ra **6616 MB**; tổng thời gian 303s, cùng bậc độ lớn 247s tham chiếu.
+5. ✅ `alignstitch`: `Stitched.tiff` sinh ra, `AlignedTileCount=54`/`BlankTileCount=26` khớp chính xác run tham chiếu Phase 0 (§4.1) — và khớp lại lần nữa ở lần chạy không-ffmpeg (§6), 2/2 lần.
+6. ✅ `alignstitch`: `PeakWorkingSet` in ra **6616 MB** (lần 1) / **6536 MB** (lần 2, không ffmpeg — chênh 1.2%, hợp lý); tổng thời gian cùng bậc độ lớn 247s tham chiếu cả 2 lần.
 7. ✅ `createsample`: sinh đúng 80 tile + manifest hợp lệ, tên thư mục đúng format `Sample_<tên file không đuôi>`.
+8. ✅ `run_report.json` ghi đúng vị trí, đúng nội dung, cả 2 mode (§7).
+9. ✅ `opencv_videoio_ffmpeg4130_64.dll` xác nhận không cần thiết (§6).
 
 ---
 
-## 7. Rủi ro
+## 9. Rủi ro
 
 | Rủi ro | Giảm thiểu |
 |---|---|
