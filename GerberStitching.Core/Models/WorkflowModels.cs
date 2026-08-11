@@ -224,18 +224,29 @@ namespace GerberViewer.Stitching.Models
 
         // [Claude] [Change time: 2026-08-06] [Purpose: Mang kết quả từng tile về UI để orderPathCanvas tô màu ngay trong lúc chạy, không chỉ sau khi run xong.]
         public WorkflowProgress(int current, int total, CapturedImageInfo image, string stage, OrderNodeState? tileState)
+            : this(current, total, image, stage, tileState, 0L) { }
+
+        // [Claude] [Change time: 2026-08-10] [Purpose: Carry the elapsed time of THIS tile's stage so the host UI can
+        // show a per-image duration. The existing swDirect/swRecover stopwatches only expose a running total, so the
+        // delta has to be captured at the report site. Additive overload - the two ctors above keep working unchanged.]
+        public WorkflowProgress(int current, int total, CapturedImageInfo image, string stage, OrderNodeState? tileState, long elapsedMs)
         {
             Current = current;
             Total = total;
             Image = image;
             Stage = stage;
             TileState = tileState;
+            ElapsedMs = elapsedMs;
         }
         public int Current { get; private set; }
         public int Total { get; private set; }
         public CapturedImageInfo Image { get; private set; }
         public string Stage { get; private set; }
         public OrderNodeState? TileState { get; private set; }
+
+        /// <summary>Elapsed milliseconds of the stage this report belongs to, for the current tile only
+        /// (0 when the report is batch-level rather than per-tile).</summary>
+        public long ElapsedMs { get; private set; }
     }
 
     public sealed class AlignStitchWorkflowResult 

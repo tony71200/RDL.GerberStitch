@@ -38,6 +38,26 @@ namespace RDL.GerberStitch.Facade
         public int Current { get; set; }
         public int Total { get; set; }
         public string Stage { get; set; }
+
+        // [Claude] [Change time: 2026-08-10] [Purpose: Core already reports which tile a progress event belongs to and
+        // what state it ended in; the old shape dropped all of it, leaving hosts with only "n/N stage". Carrying the
+        // tile identity, state and per-stage duration lets a host show real per-image progress. TileState is a string
+        // so hosts do not have to reference GerberStitching.Core just to read the enum. Additive - existing consumers
+        // that only read Current/Total/Stage keep working.]
+
+        /// <summary>Tile order index; -1 for batch-level reports that belong to no single tile.</summary>
+        public int OrderIndex { get; set; } = -1;
+        public int Row { get; set; } = -1;
+        public int Column { get; set; } = -1;
+
+        /// <summary>Captured image file name for this tile; null on batch-level reports.</summary>
+        public string FileName { get; set; }
+
+        /// <summary>Core OrderNodeState name (Processing, SampleAlignOk, NeighborAlignOk, Failed, ...); null when absent.</summary>
+        public string TileState { get; set; }
+
+        /// <summary>Elapsed milliseconds of this stage for this tile only; 0 on batch-level reports.</summary>
+        public long ElapsedMs { get; set; }
     }
 
     public sealed class FailedTileInfo
@@ -348,11 +368,21 @@ namespace RDL.GerberStitch.Facade
                 IProgress<WorkflowProgress> coreProgress = null;
                 if (progress != null)
                 {
+                    // [Claude] [Change time: 2026-08-10] [Purpose: Forward the per-tile fields Core already fills in.
+                    // p.Image is null on batch-level reports (stitching, pose graph, ...), so every access is guarded
+                    // and the defaults on AlignStitchProgress mark those reports as "no tile".]
                     coreProgress = new Progress<WorkflowProgress>(p => progress.Report(new AlignStitchProgress
                     {
                         Current = p.Current,
                         Total = p.Total,
-                        Stage = p.Stage
+                        Stage = p.Stage,
+                        OrderIndex = p.Image == null ? -1 : p.Image.OrderIndex,
+                        Row = p.Image == null ? -1 : p.Image.Row,
+                        Column = p.Image == null ? -1 : p.Image.Column,
+                        FileName = p.Image == null || string.IsNullOrEmpty(p.Image.FilePath)
+                            ? null : Path.GetFileName(p.Image.FilePath),
+                        TileState = p.TileState == null ? null : p.TileState.Value.ToString(),
+                        ElapsedMs = p.ElapsedMs
                     }));
                 }
 

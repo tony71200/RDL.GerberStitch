@@ -35,3 +35,12 @@ Bối cảnh tích hợp đầy đủ (vì sao có façade này, Master/Worker s
 - **Test:** không tự thêm project test hoặc tự chạy test trừ khi được yêu cầu rõ. Vai trò khi review là bắt lỗi flow/logic (thứ tự gọi sai, dispose `HObject`/tài nguyên HALCON, race condition trong `Task`/`async`), không phải xác nhận "đã test pass".
 - **Build:** giả định target **x64** khi đề xuất lệnh build/cấu hình.
 - **Ghi log triển khai — BẮT BUỘC:** mỗi khi thực thi một task Phase (sửa `.cs`/`.csproj` thật, không phải chỉ viết doc kế hoạch), phải cập nhật `docs/implement_code.html` — thêm 1 entry mới (không ghi đè entry cũ) gồm: ngày, task/phạm vi, danh sách file đã đổi, các điểm cần lưu ý khi đọc lại code (đánh đổi thiết kế, lý do chọn cách làm A thay vì B), và mọi lỗi gặp phải trong lúc build/chạy kèm cách fix (kể cả lỗi tưởng nhỏ như CS0104/CS0012 — đây chính là loại thông tin dễ mất nhất giữa các phiên làm việc). Không cần hỏi trước khi thêm entry; chỉ hỏi nếu cần **sửa** một entry cũ đã sai.
+
+# Codebase Intelligence Rules
+Before answering structural questions, use codebase-memory MCP tools:
+- Use index_repository if project not indexed yet
+- Use get_architecture for high-level structural questions
+- Use trace_path for call chain questions
+- Use search_graph to find specific functions/classes
+- Use detect_changes before suggesting refactors
+- Prefer MCP tools over reading individual files
