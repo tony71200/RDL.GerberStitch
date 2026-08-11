@@ -17,7 +17,7 @@ namespace GerberEngine
         public int Dpi = 600;                            // 150/300/600/1200
         public ColorMode Mode = ColorMode.Realistic;
         public double MarginMm = 2.0;
-        public bool InvertBinary = false;                // Binary: false = net trang/nen den
+        public bool InvertBinary = false;                // Binary: false = white trace on black background
         public Color? BackgroundOverride = null;
 
         public Color ResolveBackground()

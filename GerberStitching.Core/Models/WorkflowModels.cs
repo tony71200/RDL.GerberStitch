@@ -46,13 +46,13 @@ namespace GerberViewer.Stitching.Models
         public double MaxMatrixResidual { get; set; }
         public IList<string> MatrixDiagnostics { get; set; } = new List<string>();
         public long ElapsedMilliseconds { get; set; }
-        // [Claude] [Change time: 2026-08-06] [Purpose: Tách riêng thời gian ghi ảnh (Save Image) khỏi thời gian dựng mosaic (Stitching) cho tab Execute Time.]
+        // [Claude] [Change time: 2026-08-06] [Purpose: Separate image-writing time (Save Image) from mosaic construction time (Stitching) on the Execute Time tab.]
         public long SaveElapsedMilliseconds { get; set; }
         public double EstimatedPeakPatchMegapixels { get; set; }
         public string OverlapPolicy { get; set; }
         public IList<int> DrawOrder { get; set; } = new List<int>();
     }
-    // [Claude] [Change time: 2026-08-06] [Purpose: Đo thời gian từng giai đoạn của workflow Tab 3 để hiển thị trên tab Execute Time.]
+    // [Claude] [Change time: 2026-08-06] [Purpose: Measure each Tab 3 workflow stage for display on the Execute Time tab.]
     public sealed class StageTimingReport
     {
         public string Stage { get; set; }
@@ -142,7 +142,7 @@ namespace GerberViewer.Stitching.Models
         Excluded,
         ExpectedOffset
     }
-    // [Claude] [Change time: 2026-08-06] [Purpose: Một nguồn sự thật duy nhất cho ánh xạ PoseSource -> OrderNodeState; trước đây bị copy ở 2 nơi (PathCanvasControl, AlignStitchingControl) và sắp thành 3.]
+    // [Claude] [Change time: 2026-08-06] [Purpose: Provide one source of truth for PoseSource-to-OrderNodeState mapping, which was previously duplicated in PathCanvasControl and AlignStitchingControl.]
     public static class OrderNodeStateMapper
     {
         public static OrderNodeState FromPoseSource(PoseSource source)
@@ -198,7 +198,7 @@ namespace GerberViewer.Stitching.Models
         public GerberViewer.Stitching.Alignment.Graph.PoseGraphReport PoseGraph { get; set; }
         public GlobalPoseValidationReport GlobalPoseValidation { get; set; }
         public StitchingExecutionReport StitchingExecution { get; set; }
-        // [Claude] [Change time: 2026-08-06] [Purpose: Đo thời gian từng giai đoạn của workflow Tab 3 để hiển thị trên tab Execute Time.]
+        // [Claude] [Change time: 2026-08-06] [Purpose: Measure each Tab 3 workflow stage for display on the Execute Time tab.]
         public IList<StageTimingReport> StageTimings { get; set; } = new List<StageTimingReport>();
         public string FinalOutputPath { get; set; }
         public static ProcessingReport Create(AlignStitchConfig config, SampleManifest manifest)
@@ -222,7 +222,7 @@ namespace GerberViewer.Stitching.Models
         public WorkflowProgress(int current, int total, CapturedImageInfo image, string stage)
             : this(current, total, image, stage, null) { }
 
-        // [Claude] [Change time: 2026-08-06] [Purpose: Mang kết quả từng tile về UI để orderPathCanvas tô màu ngay trong lúc chạy, không chỉ sau khi run xong.]
+        // [Claude] [Change time: 2026-08-06] [Purpose: Return each tile result to the UI so orderPathCanvas updates colors during execution, not only after completion.]
         public WorkflowProgress(int current, int total, CapturedImageInfo image, string stage, OrderNodeState? tileState)
             : this(current, total, image, stage, tileState, 0L) { }
 

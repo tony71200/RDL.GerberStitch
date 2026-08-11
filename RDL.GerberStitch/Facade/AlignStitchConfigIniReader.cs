@@ -7,17 +7,15 @@ using System.Text;
 namespace RDL.GerberStitch.Facade
 {
     /// <summary>
-    /// Đọc <see cref="AlignStitchConfig"/> từ file ini kiểu RDL, section [GerberAlignStitch].
-    /// Không dùng thư viện ini ngoài (không thêm NuGet package — AGENTS.md §4) — parser tối giản,
-    /// đủ cho định dạng "Key=Value" một dòng, dấu ";" đầu dòng là comment, khớp quy ước ini
-    /// đơn giản mà Master/Worker RDL đang dùng (xem docs/Phase1_Task04.md §6).
+    /// Reads <see cref="AlignStitchConfig"/> from the [GerberAlignStitch] section of an RDL-style INI file.
+    /// This minimal parser avoids an external INI dependency and supports one-line Key=Value entries
+    /// with semicolon-prefixed comments, matching the simple RDL Master/Worker convention.
     /// </summary>
     public static class AlignStitchConfigIniReader
     {
         /// <summary>
-        /// Đọc config từ section [GerberAlignStitch] của file ini. Key thiếu → giữ default của
-        /// <see cref="AlignStitchConfig"/>, không crash. File/section không tồn tại → trả về
-        /// config mặc định nguyên bản (không phải lỗi — Master/Worker có thể chưa bật option Gerber).
+        /// Reads configuration from [GerberAlignStitch]. Missing keys retain AlignStitchConfig defaults.
+        /// A missing file or section returns the unchanged default configuration because Gerber may not be enabled.
         /// </summary>
         public static AlignStitchConfig ReadFromIni(string iniFilePath)
         {
@@ -49,9 +47,8 @@ namespace RDL.GerberStitch.Facade
         }
 
         /// <summary>
-        /// Đọc riêng cờ Enable + đường dẫn Gerber của section [GerberAlignStitch] — 2 key
-        /// không thuộc AlignStitchConfig (chỉ RDL Master dùng để quyết định có chạy nhánh
-        /// Gerber hay không), tách khỏi ReadFromIni để không lẫn vào config align/stitch.
+        /// Reads the Enable flag and Gerber path separately. These Master-only keys determine whether
+        /// the Gerber branch runs and do not belong in AlignStitchConfig.
         /// </summary>
         public static bool ReadEnableFlag(string iniFilePath, out string gerberFilePath)
         {

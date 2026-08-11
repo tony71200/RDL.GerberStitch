@@ -27,8 +27,8 @@ namespace GerberViewer.Stitching.Models
         [DataMember(Order = 14, EmitDefaultValue = false)] public string PreprocessMode { get; set; }
         [DataMember(Order = 15)] public int ProcessedChannelCount { get; set; }
         [DataMember(Order = 16)] public int ProcessedBitDepth { get; set; }
-        // [Claude] [Change time: 2026-08-07] [Purpose: Ghi lại chế độ sinh model đã dùng; Worker đọc để biết manifest có kèm .ncm/.shm hay phải tạo model tại chỗ.]
-        // Giá trị: "OnTheFly" | "Pregenerate". Manifest cũ không có trường này -> null, hiểu là OnTheFly.
+        // [Claude] [Change time: 2026-08-07] [Purpose: Record the model generation mode so Worker knows whether the manifest includes .ncm/.shm files or requires runtime model creation.]
+        // Values: "OnTheFly" or "Pregenerate". Older manifests omit this field; treat null as OnTheFly.
         [DataMember(Order = 17, EmitDefaultValue = false)] public string ModelGeneration { get; set; }
     }
 

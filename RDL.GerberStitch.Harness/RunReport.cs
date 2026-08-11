@@ -5,7 +5,7 @@ using System.Runtime.Serialization.Json;
 
 namespace RDL.GerberStitch.Harness
 {
-    // [Claude] [Change time: 2026-08-07] [Purpose: Ghi run_report.json cạnh output mỗi lần chạy — đóng nốt mục tiêu run_report.json của docs/Phase1_Task05.md §4.1 (superseded), giờ thực hiện qua harness thật ở Task 1.6.]
+    // [Claude] [Change time: 2026-08-07] [Purpose: Write run_report.json beside each run output, completing the superseded Phase1 Task05 reporting goal through the Task 1.6 harness.]
     [DataContract]
     internal sealed class RunReport
     {
@@ -27,8 +27,7 @@ namespace RDL.GerberStitch.Harness
         [DataMember(EmitDefaultValue = false)] public int? WarningCount { get; set; }
         [DataMember(EmitDefaultValue = false)] public string ErrorMessage { get; set; }
 
-        /// <summary>Ghi report ra "&lt;folder&gt;\run_report.json". Best-effort — lỗi ghi (vd ổ đầy)
-        /// không được che giấu kết quả run thật, chỉ in cảnh báo ra console.</summary>
+        /// <summary>Writes the report to &lt;folder&gt;\run_report.json on a best-effort basis. Write failures must not hide the run result and are reported only as console warnings.</summary>
         public static void WriteTo(string folder, RunReport report)
         {
             if (string.IsNullOrWhiteSpace(folder)) return;
@@ -42,7 +41,7 @@ namespace RDL.GerberStitch.Harness
             }
             catch (Exception ex)
             {
-                Console.Error.WriteLine("Không ghi được run_report.json: " + ex.Message);
+                Console.Error.WriteLine("Could not write run_report.json: " + ex.Message);
             }
         }
     }

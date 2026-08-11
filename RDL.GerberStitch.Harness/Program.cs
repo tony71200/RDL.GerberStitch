@@ -7,13 +7,12 @@ using RDL.GerberStitch.Facade;
 
 namespace RDL.GerberStitch.Harness
 {
-    // [Claude] [Change time: 2026-08-07] [Purpose: Console harness chạy thử GerberStitchFacade với dữ liệu thật — 2 mode: alignstitch (mặc định) và createsample. Xem docs/Phase1_Task06.md.]
+    // [Claude] [Change time: 2026-08-07] [Purpose: Console harness for exercising GerberStitchFacade with real data in two modes: alignstitch (default) and createsample. See docs/Phase1_Task06.md.]
     internal static class Program
     {
         private static int Main(string[] args)
         {
-            // Console mặc định dùng codepage hệ thống (vd CP1252/CP437) -> chữ có dấu tiếng Việt
-            // (message log của Core) hiển thị sai. Ép UTF-8.
+            // The default system code page can corrupt non-ASCII Core log messages, so force UTF-8.
             Console.OutputEncoding = System.Text.Encoding.UTF8;
 
             AppDomain.CurrentDomain.AssemblyResolve += ResolveHalconFromEnvironment;
@@ -23,7 +22,7 @@ namespace RDL.GerberStitch.Harness
             var config = GlobalConfig.ReadOrNull(configPath);
 
             if (config == null && !File.Exists(configPath))
-                Console.WriteLine("(global_config.json không tồn tại tại " + configPath + " — chỉ dùng CLI arg)");
+                Console.WriteLine("(global_config.json was not found at " + configPath + " — using command-line arguments only)");
             Console.WriteLine();
 
             if (string.Equals(mode, "createsample", StringComparison.OrdinalIgnoreCase))
@@ -32,7 +31,7 @@ namespace RDL.GerberStitch.Harness
             return RunAlignStitch(args, config);
         }
 
-        // ── Mode: alignstitch (mặc định) ──────────────────────────────────────
+        // ── Mode: alignstitch (default) ──────────────────────────────────────
 
         private static int RunAlignStitch(string[] args, GlobalConfig config)
         {
@@ -43,7 +42,7 @@ namespace RDL.GerberStitch.Harness
 
             if (string.IsNullOrWhiteSpace(manifestPath) || string.IsNullOrWhiteSpace(imagesFolder) || string.IsNullOrWhiteSpace(outputRoot))
             {
-                Console.Error.WriteLine("Thiếu tham số. Truyền --manifest/--images/--out, hoặc đặt section \"AlignStitch\" trong global_config.json.");
+                Console.Error.WriteLine("Missing arguments. Pass --manifest/--images/--out, or configure the \"AlignStitch\" section in global_config.json.");
                 return 2;
             }
 
@@ -116,7 +115,7 @@ namespace RDL.GerberStitch.Harness
                 Console.WriteLine("Warnings       : " + result.Warnings.Count);
                 foreach (var w in result.Warnings)
                     Console.WriteLine("  - " + w);
-                Console.WriteLine("PeakWorkingSet : " + (peakWorkingSetBytes / 1024 / 1024) + " MB (tại stage: " + peakAtStage + ")");
+                Console.WriteLine("PeakWorkingSet : " + (peakWorkingSetBytes / 1024 / 1024) + " MB (at stage: " + peakAtStage + ")");
 
                 var reportFolder = !string.IsNullOrWhiteSpace(result.TiffPath) ? Path.GetDirectoryName(result.TiffPath) : outputRoot;
                 RunReport.WriteTo(reportFolder, new RunReport
@@ -155,7 +154,7 @@ namespace RDL.GerberStitch.Harness
 
             if (string.IsNullOrWhiteSpace(rasterPath) || string.IsNullOrWhiteSpace(outputRoot))
             {
-                Console.Error.WriteLine("Thiếu tham số. Truyền --raster/--out, hoặc đặt section \"CreateSample\" trong global_config.json.");
+                Console.Error.WriteLine("Missing arguments. Pass --raster/--out, or configure the \"CreateSample\" section in global_config.json.");
                 return 2;
             }
 
@@ -177,12 +176,10 @@ namespace RDL.GerberStitch.Harness
             GenerateManifestResult result;
             try
             {
-                // Khác với nhánh alignstitch, nhánh này CẦN reference GerberStitching.Core: tham số
-                // gridConfig của GenerateSampleManifestFromRaster có kiểu Configuration.GerberSampleConfig
-                // của Core (đánh đổi có chủ đích của Task 1.2 — xem docs/Phase1_Task02.md "Đã triển khai"
-                // mục 2). C# đòi hỏi assembly định nghĩa type trong signature phải được reference để
-                // compile, ngay cả khi chỉ truyền null — nên harness không tránh được việc này, và ở
-                // đây tạo tường minh thay vì giả vờ "ẩn" bằng null. Dùng default của Core (Rows=8,
+                // Unlike alignstitch, this branch must reference GerberStitching.Core because the
+                // GenerateSampleManifestFromRaster signature exposes Configuration.GerberSampleConfig.
+                // C# requires the defining assembly even when passing null, so instantiate the Core type
+                // explicitly and use its defaults (Rows=8,
                 // Columns=10, ProcessedWidth/Height=4096, OverlapValue=70px, Zigzag/TopLeftDown).
                 var gridConfig = new GerberViewer.Stitching.Configuration.GerberSampleConfig();
                 result = facade.GenerateSampleManifestFromRaster(rasterPath, gridConfig, outputRoot, folderName, cts.Token)
@@ -230,7 +227,7 @@ namespace RDL.GerberStitch.Harness
             return defaultValue;
         }
 
-        // [Claude] [Change time: 2026-08-07] [Purpose: Harness là project tự do, không có folder deploy Master/Worker sẵn halcondotnetxl.dll như production; RDL.GerberStitch/GerberStitching.Core cố ý để Private=False (không copy local) nên phải tự resolve từ HALCONROOT lúc runtime.]
+        // [Claude] [Change time: 2026-08-07] [Purpose: The standalone harness has no production Master/Worker deployment folder containing HALCON assemblies. Because the library references intentionally use Private=False, resolve them from HALCONROOT at runtime.]
         private static Assembly ResolveHalconFromEnvironment(object sender, ResolveEventArgs e)
         {
             var simpleName = new AssemblyName(e.Name).Name;

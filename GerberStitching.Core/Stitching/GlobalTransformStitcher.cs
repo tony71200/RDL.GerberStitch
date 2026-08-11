@@ -205,7 +205,7 @@ namespace GerberViewer.Stitching.Stitching
                     }
                 }
                 cancellationToken.ThrowIfCancellationRequested();
-                // [Claude] [Change time: 2026-08-06] [Purpose: Bước .creating -> final cũng thuộc "Save Image" theo nghĩa người dùng hiểu.]
+                // [Claude] [Change time: 2026-08-06] [Purpose: Treat the .creating-to-final publish step as part of Save Image from the user perspective.]
                 var swPublish = System.Diagnostics.Stopwatch.StartNew();
                 Publish(creatingPath, output);
                 swPublish.Stop();
@@ -448,7 +448,7 @@ namespace GerberViewer.Stitching.Stitching
             return path; 
         }
 
-        // [Claude] [Change time: 2026-08-06] [Purpose: Đo riêng thời gian ghi file TIFF (Save Image) cho tab Execute Time.]
+        // [Claude] [Change time: 2026-08-06] [Purpose: Measure TIFF writing separately as Save Image for the Execute Time tab.]
         private static void SaveStandardTiff(Mat image, string path, StitchingExecutionReport report)
         {
             var sw = System.Diagnostics.Stopwatch.StartNew();

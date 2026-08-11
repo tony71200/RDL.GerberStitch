@@ -4,7 +4,7 @@ using System.Runtime.Serialization.Json;
 
 namespace RDL.GerberStitch.Harness
 {
-    // [Claude] [Change time: 2026-08-07] [Purpose: Cho phép người test đặt sẵn đường dẫn trong file thay vì gõ --arg mỗi lần; CLI arg vẫn được ưu tiên hơn nếu có truyền.]
+    // [Claude] [Change time: 2026-08-07] [Purpose: Allow testers to store paths in a file instead of entering arguments on every run; command-line arguments still take precedence.]
     [DataContract]
     internal sealed class AlignStitchTestConfig
     {
@@ -26,8 +26,7 @@ namespace RDL.GerberStitch.Harness
         [DataMember] public AlignStitchTestConfig AlignStitch { get; set; }
         [DataMember] public CreateSampleTestConfig CreateSample { get; set; }
 
-        /// <summary>Đọc global_config.json nếu tồn tại; trả null nếu không có file (không phải lỗi —
-        /// tester có thể chọn nhập toàn bộ qua CLI arg, không bắt buộc phải có file này).</summary>
+        /// <summary>Reads global_config.json when present; returns null when absent because callers may supply every value through command-line arguments.</summary>
         public static GlobalConfig ReadOrNull(string path)
         {
             if (string.IsNullOrWhiteSpace(path) || !File.Exists(path)) return null;
