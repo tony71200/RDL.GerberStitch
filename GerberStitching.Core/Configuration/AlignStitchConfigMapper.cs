@@ -229,7 +229,8 @@ namespace GerberViewer.Stitching.Configuration
                 MaxPreviewMegapixels = source.Output.MaxPreviewMegapixels 
             };
             c.ConfigVersion = 3;
-            SyncLegacy(c); 
+            c.CalculateTimeDetail = source.CalculateTimeDetail;
+            SyncLegacy(c);
             return c;
         }
         private static DirectAlignmentOptions Clone(DirectAlignmentOptions d) 

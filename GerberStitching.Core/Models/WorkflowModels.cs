@@ -122,6 +122,9 @@ namespace GerberViewer.Stitching.Models
         public double LowTextureStdDevThreshold { get; set; } = 7.0;
         public bool AutoPlaceLowTextureSample { get; set; }
         public BlankFallbackOverlapPolicy BlankFallbackOverlapPolicy { get; set; } = BlankFallbackOverlapPolicy.PreserveExistingOverlap;
+        // [Claude] [Change time: 2026-08-11] [Purpose: Let callers skip per-tile timing computation (WorkflowProgress.ElapsedMs)
+        // when only stage-level totals (ProcessingReport.StageTimings) are needed. Default true preserves existing behavior.]
+        public bool CalculateTimeDetail { get; set; } = true;
     }
     public sealed class GerberWorkflowConfig 
     { 

@@ -67,6 +67,9 @@
     <li><a href="#entry-3">2026-08-07 (nhánh <code>Ver1_0</code>) — Task 1.6: harness + chạy thật <code>RunAlignStitch</code></a></li>
     <li><a href="#entry-4">2026-08-07 (nhánh <code>Ver1_0</code>) — Mở rộng façade + <code>global_config.json</code> + test <code>createsample</code></a></li>
     <li><a href="#entry-5">2026-08-07 (nhánh <code>Ver1_1</code>) — Task 1.3/1.4/1.5/1.6: deploy checklist, ini reader, run_report.json, kiểm chứng ffmpeg</a></li>
+    <li><a href="#entry-6">2026-08-11 (nhánh <code>Ver1_2</code>) — Thêm cờ <code>CalculateTimeDetail</code> (Detail/Non-Detail)</a></li>
+    <li><a href="#entry-7">2026-08-11 (nhánh <code>Ver1_2</code>) — Harness đọc <code>align_stitch.ini</code> để cấu hình <code>AlignStitchConfig</code></a></li>
+    <li><a href="#entry-8">2026-08-11 (nhánh <code>Ver1_2</code>) — Thêm <code>MaxAbsRotationDeg</code>/Policy (<code>AllowCoarseOnlyAcceptance</code>, <code>AllowRefinementFromExpectedWhenCoarseFails</code>) vào façade + ini</a></li>
     <li><a href="#pitfalls">Bảng tổng hợp lỗi &amp; cách fix (tra nhanh)</a></li>
   </ol>
 </div>
@@ -316,6 +319,74 @@ return AlignStitchConfigMapper.CloneForRun(baseConfig, outputPath); // tự đ�
   <p><span class="badge ok">PASS</span> — <code>Debug|x64</code> + <code>Release|x64</code>, rebuild từ đầu, 0 error, 4 project.</p>
 </div>
 
+<div class="entry" id="entry-6">
+  <div class="entry-meta"><span class="badge ok">Core</span> <span class="badge ok">Facade</span> Phạm vi: <code>GerberStitching.Core/Models/WorkflowModels.cs</code>, <code>GerberStitching.Core/Alignment/AlignStitchWorkflowService.cs</code>, <code>GerberStitching.Core/Configuration/AlignStitchConfigMapper.cs</code>, <code>RDL.GerberStitch/Facade/AlignStitchConfig.cs</code>, <code>RDL.GerberStitch/Facade/GerberStitchFacade.cs</code>, <code>RDL.GerberStitch/Facade/AlignStitchConfigIniReader.cs</code></div>
+
+  <h4>Yêu cầu</h4>
+  <p>Hiện tại pipeline luôn tính thời gian <strong>per-tile</strong> (từng ảnh) ở Direct Alignment/Failure Recovery, báo qua <code>WorkflowProgress.ElapsedMs</code>, bên cạnh thời gian tổng theo giai đoạn (<code>ProcessingReport.StageTimings</code>, đã có từ trước — xem comment <code>[Claude] 2026-08-06</code>). User muốn thêm 1 cờ bool để tắt phần tính per-tile khi không cần độ chi tiết đó, chỉ giữ lại thời gian theo giai đoạn.</p>
+
+  <h3>6.1. Thiết kế đã chốt (qua brainstorming ngắn với user)</h3>
+  <p>Thêm 1 field duy nhất <code>AlignStitchConfig.CalculateTimeDetail</code> (bool, default <code>true</code> — giữ nguyên hành vi cũ). <code>true</code> = Detail (per-tile, hành vi hiện có). <code>false</code> = Non-Detail: bỏ qua các lần đọc <code>Stopwatch.ElapsedMilliseconds</code> trước/sau mỗi tile và luôn báo <code>ElapsedMs = 0</code> trong <code>WorkflowProgress</code> cho các event per-tile; <code>Mark(...)</code> (tổng theo giai đoạn) không đổi vì nó không phụ thuộc cờ này.</p>
+  <p><strong>Không</strong> thêm enum riêng (<code>Detail</code>/<code>NonDetail</code>) — user chọn phương án bool đơn giản hơn cho 1 cờ 2 trạng thái.</p>
+
+  <h3>6.2. Các điểm sửa cụ thể</h3>
+  <ul class="filelist">
+    <li><code>WorkflowModels.cs</code> — thêm <code>public bool CalculateTimeDetail { get; set; } = true;</code> vào <code>AlignStitchConfig</code>.</li>
+    <li><code>AlignStitchWorkflowService.cs</code> — bọc 4 điểm đọc/tính delta per-tile (<code>directBeforeMs</code>/<code>recoverBeforeMs</code>, <code>tileDirectMs</code>, 2 report Neighbor Recovery pass 1 &amp; pass 2) bằng <code>config.CalculateTimeDetail ? ... : 0L</code>. Bản thân <code>swDirect</code>/<code>swRecover</code> vẫn chạy bình thường vì <code>Mark(...)</code> cần tổng tích luỹ.</li>
+    <li><code>AlignStitchConfigMapper.CloneForRun</code> — <strong>lỗi suýt xảy ra</strong>: hàm này build lại 1 <code>AlignStitchConfig</code> mới hoàn toàn từ các stage options (<code>Recovery</code>/<code>Stitching</code>/<code>Output</code>...), không copy các field phẳng không có bản sao ở stage options. <code>CalculateTimeDetail</code> không có field tương ứng ở stage options nào (không giống <code>BlankFallbackOverlapPolicy</code> có bản trong <code>StitchingOptions</code>) → nếu không thêm dòng copy tay, giá trị <code>false</code> user set sẽ bị reset về default <code>true</code> ngay tại <code>GerberStitchFacade.BuildCoreConfig</code> (hàm này luôn gọi <code>CloneForRun</code> ở bước cuối). Đã thêm <code>c.CalculateTimeDetail = source.CalculateTimeDetail;</code> trước <code>SyncLegacy(c)</code>.</li>
+    <li><code>Facade/AlignStitchConfig.cs</code> (DTO tối giản cho Master/Worker) — thêm cùng field <code>CalculateTimeDetail</code> (default <code>true</code>) để Worker/Harness (qua <code>global_config.json</code>) điều khiển được, không chỉ Core nội bộ.</li>
+    <li><code>GerberStitchFacade.BuildCoreConfig</code> — thêm <code>baseConfig.CalculateTimeDetail = options.CalculateTimeDetail;</code>.</li>
+    <li><code>AlignStitchConfigIniReader.cs</code> — thêm đọc key <code>CalculateTimeDetail</code> từ section <code>[GerberAlignStitch]</code>, theo đúng convention các field bool khác trong file.</li>
+  </ul>
+
+  <h4>Build</h4>
+  <p><span class="badge ok">PASS</span> — <code>Debug|x64</code>, full solution, 0 error (chỉ còn các warning <code>CS0618</code>/<code>CS0162</code>/<code>CS0067</code> đã tồn tại từ trước, không liên quan thay đổi này).</p>
+</div>
+
+<div class="entry" id="entry-7">
+  <div class="entry-meta"><span class="badge ok">Harness</span> Phạm vi: <code>RDL.GerberStitch.Harness/align_stitch.ini</code> (mới), <code>RDL.GerberStitch.Harness/RDL.GerberStitch.Harness.csproj</code>, <code>RDL.GerberStitch.Harness/Program.cs</code></div>
+
+  <h4>Yêu cầu</h4>
+  <p>User hỏi có thể thêm file ini trong <code>RDL.GerberStitch.Harness</code> và cho chương trình đọc file đó để "setup chương trình" (tức cấu hình <code>AlignStitchConfig</code> — engine, ngưỡng NCC/ECC, <code>CalculateTimeDetail</code> ở entry 6...) hay không.</p>
+
+  <h4>Phát hiện trước khi sửa</h4>
+  <p><code>RDL.GerberStitch.Facade.AlignStitchConfigIniReader</code> (đã có sẵn từ entry 5, phục vụ Master/Worker đọc section <code>[GerberAlignStitch]</code> từ ini RDL) <strong>chưa từng được harness dùng</strong>. <code>Program.cs</code> dòng cũ luôn tạo <code>var options = new AlignStitchConfig();</code> — nghĩa là mọi lần chạy harness từ trước tới nay đều dùng nguyên default của <code>AlignStitchConfig</code> (kể cả <code>NccMinScore</code>/<code>StitchingEngine</code>...), <code>global_config.json</code> trước giờ chỉ cấu hình đường dẫn (<code>ManifestPath</code>/<code>ImagesPath</code>/<code>OutputPath</code>), không cấu hình được tuning option nào. Vì reader đã có sẵn và đúng đối tượng cần đọc (<code>AlignStitchConfig</code>), quyết định <strong>tái dùng thẳng</strong>, không viết reader ini riêng cho harness.</p>
+
+  <h3>7.1. Các điểm sửa cụ thể</h3>
+  <ul class="filelist">
+    <li><code>align_stitch.ini</code> (mới) — file mẫu tại thư mục project, section <code>[GerberAlignStitch]</code> với đủ 8 key mà <code>AlignStitchConfigIniReader</code> hỗ trợ (<code>StitchingEngine</code>, <code>EnableBlending</code>, <code>CalculateTimeDetail</code>, <code>NccMinScore</code>, <code>EccMinCorrelation</code>, <code>MaxTranslationPixels</code>, <code>MaxAbsRotationDeg</code>, <code>FallbackToLegacyMerge</code>), giá trị = default hiện tại của <code>AlignStitchConfig</code>, kèm comment giải thích nguồn gốc reader.</li>
+    <li><code>RDL.GerberStitch.Harness.csproj</code> — thêm <code>&lt;None Include="align_stitch.ini"&gt;</code> với <code>CopyToOutputDirectory=PreserveNewest</code>, giống hệt cách <code>global_config.json</code> đã khai — đảm bảo file luôn nằm cạnh <code>.exe</code> sau build.</li>
+    <li><code>Program.cs</code> — thêm hàm <code>ReadAlignStitchOptions(args)</code>: đọc <code>--ini</code> (default <code>&lt;thư mục exe&gt;\align_stitch.ini</code>), thiếu file thì in cảnh báo và trả <code>new AlignStitchConfig()</code> (không lỗi — giữ đúng convention "file config không bắt buộc" như <code>global_config.json</code>), có file thì gọi thẳng <code>AlignStitchConfigIniReader.ReadFromIni</code>. Thay dòng <code>var options = new AlignStitchConfig();</code> trong <code>RunAlignStitch</code> bằng lời gọi hàm này, in thêm dòng <code>engine = ... (CalculateTimeDetail=...)</code> để người chạy thấy ngay giá trị hiệu lực.</li>
+    <li><strong>Không</strong> đổi <code>RunCreateSample</code> — nhánh đó không dùng <code>AlignStitchConfig</code> (dùng <code>GerberSampleConfig</code> của Core cho lưới sample, khác hẳn phạm vi ini này).</li>
+    <li><strong>Không</strong> tự gọi <code>options.Validate()</code> trong harness — <code>GerberStitchFacade.RunAlignStitch</code> đã tự gọi <code>opts.Validate()</code> (xác nhận qua đọc source, dòng 328), gọi thêm là dư thừa; giá trị ini sai vẫn được bắt lỗi rõ ràng ở bước đó.</li>
+  </ul>
+
+  <h4>Xác nhận</h4>
+  <p>Build project harness riêng lẻ (<code>Debug|x64</code>) — 0 error. Kiểm tra output <code>bin\x64\Debug\</code>: <code>align_stitch.ini</code> đã được copy cạnh <code>global_config.json</code>.</p>
+</div>
+
+<div class="entry" id="entry-8">
+  <div class="entry-meta"><span class="badge ok">Facade</span> <span class="badge ok">Harness</span> Phạm vi: <code>RDL.GerberStitch/Facade/AlignStitchConfig.cs</code>, <code>RDL.GerberStitch/Facade/GerberStitchFacade.cs</code>, <code>RDL.GerberStitch/Facade/AlignStitchConfigIniReader.cs</code>, <code>RDL.GerberStitch.Harness/align_stitch.ini</code></div>
+
+  <h4>Yêu cầu</h4>
+  <p>User yêu cầu đọc lại code rồi thêm vào ini: <code>MaxAbsRotationDeg</code> (thuộc <code>Geometry</code>) và 2 biến ở <code>Policy</code> — <code>AllowCoarseOnlyAcceptance</code> và <code>AllowRefinementFromExpectedWhenCoarseFails</code>.</p>
+
+  <h4>Đối chiếu với code thật trước khi sửa</h4>
+  <p><code>MaxAbsRotationDeg</code> ở façade <strong>đã tồn tại và đã map đúng vào Geometry</strong> từ trước (<code>GerberStitchFacade.BuildCoreConfig</code>: <code>baseConfig.DirectAlignment.Geometry.MaxAbsRotationDeg = options.MaxAbsRotationDeg;</code>, entry 7 đã thêm vào ini) — không có gì phải sửa cho phần này, chỉ nhóm lại trong ini kèm comment cho rõ đây là Geometry.</p>
+  <p>2 biến Policy <strong>chưa hề được façade expose</strong> — đọc <code>GerberStitching.Core/Configuration/AlignStitchStageOptions.cs</code> xác nhận tên thật + default đúng ở <code>DirectPipelinePolicy</code> (dòng 95-100): <code>AllowCoarseOnlyAcceptance=true</code>, <code>AllowRefinementFromExpectedWhenCoarseFails=true</code>. Đọc thêm <code>AlignStitchConfigMapper.cs</code> dòng 44-45 (<code>if (c.ConfigVersion >= 3) return;</code>) xác nhận: vì <code>BuildCoreConfig</code> luôn set <code>ConfigVersion=3</code> trước khi gọi <code>EnsureComposite</code>, <strong>bước đồng bộ flat→structured (dòng 60-61, cho field cũ <code>AllowNccOnlyAcceptance</code>/<code>AllowEccFromExpectedWhenNccFails</code>) sẽ không bao giờ chạy</strong> — đúng lý do <code>MaxAbsRotationDeg</code> cũng phải set thẳng vào structured <code>Geometry</code> thay vì field phẳng ở entry 7. Áp dụng đúng pattern đó cho 2 field Policy mới: set thẳng <code>baseConfig.DirectAlignment.Policy.*</code>, không dùng field phẳng <code>AllowNccOnlyAcceptance</code>/<code>AllowEccFromExpectedWhenNccFails</code> của Core (default flat của 2 field đó lệch nhau — <code>AllowNccOnlyAcceptance</code> flat default <code>false</code> trong khi Policy structured default <code>true</code> — dùng nhầm field phẳng sẽ đổi hành vi hiệu lực).</p>
+
+  <h3>8.1. Các điểm sửa cụ thể</h3>
+  <ul class="filelist">
+    <li><code>Facade/AlignStitchConfig.cs</code> — thêm <code>AllowCoarseOnlyAcceptance</code> và <code>AllowRefinementFromExpectedWhenCoarseFails</code> (bool, default <code>true</code> cả hai — khớp default structured của Core, giữ nguyên hành vi hiện tại khi field chưa từng được set).</li>
+    <li><code>GerberStitchFacade.BuildCoreConfig</code> — thêm 2 dòng map thẳng vào <code>baseConfig.DirectAlignment.Policy.AllowCoarseOnlyAcceptance</code>/<code>.AllowRefinementFromExpectedWhenCoarseFails</code>, đặt cạnh dòng map <code>Geometry.MaxAbsRotationDeg</code> đã có.</li>
+    <li><code>AlignStitchConfigIniReader.cs</code> — thêm đọc 2 key cùng tên, theo đúng convention <code>ParseBool</code> các field bool khác.</li>
+    <li><code>align_stitch.ini</code> — thêm 2 key Policy, nhóm lại 2 comment section <code>; Geometry (...)</code> và <code>; Policy (...)</code> quanh <code>MaxAbsRotationDeg</code> và 2 key mới, đúng như user yêu cầu nhóm theo Geometry/Policy.</li>
+  </ul>
+
+  <h4>Build</h4>
+  <p><span class="badge ok">PASS</span> — <code>Debug|x64</code>, full solution, 0 error.</p>
+</div>
+
 <!-- ============================================================ -->
 <h2 id="pitfalls">6. Bảng tổng hợp lỗi &amp; cách fix (tra nhanh)</h2>
 <table>
@@ -327,6 +398,7 @@ return AlignStitchConfigMapper.CloneForRun(baseConfig, outputPath); // tự đ�
   <tr><td>Chữ tiếng Việt lỗi font trong console</td><td>Codepage mặc định không phải UTF-8</td><td><code>Console.OutputEncoding = Encoding.UTF8;</code></td><td><a href="#entry-3">3</a></td></tr>
   <tr><td><code>CS0012</code> dù chỉ truyền <code>null</code></td><td>C# vẫn cần reference assembly định nghĩa type trong signature, bất kể giá trị truyền vào</td><td>Thêm <code>ProjectReference</code> trực tiếp tới assembly đó</td><td><a href="#entry-4">4</a></td></tr>
   <tr><td><code>CS1061: 'AlignStitchConfig' does not contain 'OutputFormat'</code></td><td>Doc kế hoạch cũ (<code>Phase1_Task04.md</code>) có trường này, nhưng lớp thật (Task 1.2) không giữ nó — tên file output do Core tự đặt cứng, không cấu hình được</td><td>Bỏ dòng đọc <code>OutputFormat</code> khỏi ini reader; đối chiếu doc kế hoạch với code thật <strong>trước</strong> khi viết, không tin doc cũ nguyên văn</td><td><a href="#entry-5">5</a></td></tr>
+  <tr><td>Field mới trên <code>AlignStitchConfig</code> âm thầm bị reset về default khi chạy thật</td><td><code>AlignStitchConfigMapper.CloneForRun</code> build lại config mới từ stage options, không copy field phẳng nào không có bản sao ở stage options — trong khi <code>BuildCoreConfig</code> (façade) luôn gọi <code>CloneForRun</code> ở bước cuối</td><td>Khi thêm field phẳng mới không thuộc stage nào, phải copy tay trong <code>CloneForRun</code>; kiểm tra ngay chỗ này mỗi khi thêm field mới vào <code>AlignStitchConfig</code></td><td><a href="#entry-6">6</a></td></tr>
 </table>
 
 <footer>

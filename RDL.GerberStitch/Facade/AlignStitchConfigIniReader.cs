@@ -32,6 +32,8 @@ namespace RDL.GerberStitch.Facade
                 config.StitchingEngine = value.Trim();
             if (section.TryGetValue("EnableBlending", out value))
                 config.EnableBlending = ParseBool(value, config.EnableBlending);
+            if (section.TryGetValue("CalculateTimeDetail", out value))
+                config.CalculateTimeDetail = ParseBool(value, config.CalculateTimeDetail);
             if (section.TryGetValue("NccMinScore", out value))
                 config.NccMinScore = ParseDouble(value, config.NccMinScore);
             if (section.TryGetValue("EccMinCorrelation", out value))
@@ -40,6 +42,10 @@ namespace RDL.GerberStitch.Facade
                 config.MaxTranslationPixels = ParseDouble(value, config.MaxTranslationPixels);
             if (section.TryGetValue("MaxAbsRotationDeg", out value))
                 config.MaxAbsRotationDeg = ParseDouble(value, config.MaxAbsRotationDeg);
+            if (section.TryGetValue("AllowCoarseOnlyAcceptance", out value))
+                config.AllowCoarseOnlyAcceptance = ParseBool(value, config.AllowCoarseOnlyAcceptance);
+            if (section.TryGetValue("AllowRefinementFromExpectedWhenCoarseFails", out value))
+                config.AllowRefinementFromExpectedWhenCoarseFails = ParseBool(value, config.AllowRefinementFromExpectedWhenCoarseFails);
             if (section.TryGetValue("FallbackToLegacyMerge", out value))
                 config.FallbackToLegacyMerge = ParseBool(value, config.FallbackToLegacyMerge);
 

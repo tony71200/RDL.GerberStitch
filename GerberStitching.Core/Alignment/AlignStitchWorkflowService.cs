@@ -145,12 +145,14 @@ namespace GerberViewer.Stitching.Alignment
                     // [Claude] [Change time: 2026-08-10] [Purpose: swDirect/swRecover accumulate across every tile, so
                     // read them before and after this tile to get the duration of THIS tile alone for the host UI.
                     // The accumulated totals reported by Mark(...) below are unaffected.]
-                    var directBeforeMs = swDirect.ElapsedMilliseconds;
-                    var recoverBeforeMs = swRecover.ElapsedMilliseconds;
+                    // [Claude] [Change time: 2026-08-11] [Purpose: Skip the per-tile before/after reads when
+                    // CalculateTimeDetail=false; only stage-level totals are needed in that mode.]
+                    var directBeforeMs = config.CalculateTimeDetail ? swDirect.ElapsedMilliseconds : 0L;
+                    var recoverBeforeMs = config.CalculateTimeDetail ? swRecover.ElapsedMilliseconds : 0L;
                     swDirect.Start();
                     var state = SolveDirect(config, tile, cap, aligner, report, ct, !simpleWorkflow);
                     swDirect.Stop();
-                    var tileDirectMs = swDirect.ElapsedMilliseconds - directBeforeMs;
+                    var tileDirectMs = config.CalculateTimeDetail ? swDirect.ElapsedMilliseconds - directBeforeMs : 0L;
 #if DEBUG
                     var directAlignmentTransform = state.Alignment == null || state.Alignment.CapturedToSampleTransform == null
                         ? null : (double[,])state.Alignment.CapturedToSampleTransform.Clone();
@@ -176,7 +178,7 @@ namespace GerberViewer.Stitching.Alignment
                         // [Claude] [Change time: 2026-08-10] [Purpose: Surface this tile's recovery duration separately from
                         // its direct-alignment duration so the host UI can show the two phases on their own labels.]
                         progress?.Report(new WorkflowProgress(i, ordered.Count, cap, "Neighbor Recovery", MapToNodeState(state),
-                            swRecover.ElapsedMilliseconds - recoverBeforeMs));
+                            config.CalculateTimeDetail ? swRecover.ElapsedMilliseconds - recoverBeforeMs : 0L));
                     }
                     else if (!state.IsStitchable)
                         state = ResolveFailedWithoutNeighbor(config, tile, cap, report, ct);
@@ -195,7 +197,7 @@ namespace GerberViewer.Stitching.Alignment
                     TileWorkflowState state;
                     if (config.Recovery.RecoverFailedTiles && solved.TryGetValue(cap.OrderIndex, out state) && !state.IsStitchable)
                     {
-                        var recoverBeforeMs2 = swRecover.ElapsedMilliseconds;
+                        var recoverBeforeMs2 = config.CalculateTimeDetail ? swRecover.ElapsedMilliseconds : 0L;
                         swRecover.Start();
                         var recovered = Recover(config, tileByOrder[cap.OrderIndex], cap, solved, ordered, capturedByOrder, tileByOrder, report, ct, true);
                         swRecover.Stop();
@@ -208,7 +210,7 @@ namespace GerberViewer.Stitching.Alignment
                         // [Claude] [Change time: 2026-08-06] [Purpose: Cập nhật màu canvas sau pass Recovery thứ hai.]
                         // [Claude] [Change time: 2026-08-10] [Purpose: Carry this tile's second-pass recovery duration too.]
                         progress?.Report(new WorkflowProgress(cap.OrderIndex, ordered.Count, cap, "Neighbor Recovery (second pass)", MapToNodeState(solved[cap.OrderIndex]),
-                            swRecover.ElapsedMilliseconds - recoverBeforeMs2));
+                            config.CalculateTimeDetail ? swRecover.ElapsedMilliseconds - recoverBeforeMs2 : 0L));
                     }
                 }
                 // [Claude] [Change time: 2026-08-06] [Purpose: Record Direct Alignment and Failure Recovery timing after both passes finish.]

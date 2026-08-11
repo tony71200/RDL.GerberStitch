@@ -28,6 +28,14 @@ namespace RDL.GerberStitch.Facade
         /// </summary>
         public bool EnableBlending { get; set; } = false;
 
+        /// <summary>
+        /// true (default) computes and reports per-tile alignment/recovery duration (Detail mode) —
+        /// matches existing behavior. false skips the per-tile timing reads and only reports
+        /// stage-level totals (Mapping, Direct Alignment, Failure Recovery, Neighbor Graph, Stitching)
+        /// on ProcessingReport.StageTimings — use when per-image granularity is not needed.
+        /// </summary>
+        public bool CalculateTimeDetail { get; set; } = true;
+
         // ── Direct Alignment thresholds ──
 
         /// <summary>
@@ -52,6 +60,21 @@ namespace RDL.GerberStitch.Facade
         /// places tiles with very little real rotational deviation.
         /// </summary>
         public double MaxAbsRotationDeg { get; set; } = 0.1;
+
+        // ── Direct Alignment policy (Core DirectAlignmentOptions.Policy / DirectPipelinePolicy) ──
+
+        /// <summary>
+        /// true (default) accepts a direct-alignment pose from the coarse matcher alone when the
+        /// refinement matcher is unavailable or skipped. Matches Core DirectPipelinePolicy default.
+        /// </summary>
+        public bool AllowCoarseOnlyAcceptance { get; set; } = true;
+
+        /// <summary>
+        /// true (default) lets the refinement matcher run from the tile's expected pose when the
+        /// coarse matcher fails, instead of leaving the tile unaligned. Matches Core
+        /// DirectPipelinePolicy default.
+        /// </summary>
+        public bool AllowRefinementFromExpectedWhenCoarseFails { get; set; } = true;
 
         // ── Fallback RDL ──
 

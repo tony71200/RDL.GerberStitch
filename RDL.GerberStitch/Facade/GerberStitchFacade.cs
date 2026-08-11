@@ -431,11 +431,14 @@ namespace RDL.GerberStitch.Facade
             var engine = AlignStitchConfig.ParseEngine(options.StitchingEngine);
             if (engine.HasValue) baseConfig.Stitching.Engine = engine.Value;
             baseConfig.Stitching.EnableBlending = options.EnableBlending;
+            baseConfig.CalculateTimeDetail = options.CalculateTimeDetail;
 
             baseConfig.DirectAlignment.Ncc.MinScore = options.NccMinScore;
             baseConfig.DirectAlignment.Ecc.MinCorrelation = options.EccMinCorrelation;
             baseConfig.DirectAlignment.Geometry.MaxTranslationPixels = options.MaxTranslationPixels;
             baseConfig.DirectAlignment.Geometry.MaxAbsRotationDeg = options.MaxAbsRotationDeg;
+            baseConfig.DirectAlignment.Policy.AllowCoarseOnlyAcceptance = options.AllowCoarseOnlyAcceptance;
+            baseConfig.DirectAlignment.Policy.AllowRefinementFromExpectedWhenCoarseFails = options.AllowRefinementFromExpectedWhenCoarseFails;
 
             AlignStitchConfigMapper.EnsureComposite(baseConfig);
 

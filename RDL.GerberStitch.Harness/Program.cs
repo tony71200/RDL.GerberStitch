@@ -31,6 +31,21 @@ namespace RDL.GerberStitch.Harness
             return RunAlignStitch(args, config);
         }
 
+        // [Claude] [Change time: 2026-08-11] [Purpose: Let testers tune AlignStitchConfig (NccMinScore,
+        // StitchingEngine, CalculateTimeDetail, ...) from a file instead of editing source, reusing the
+        // same AlignStitchConfigIniReader Master/Worker uses so the harness stays representative of production.]
+        private static AlignStitchConfig ReadAlignStitchOptions(string[] args)
+        {
+            var iniPath = GetArg(args, "--ini", Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "align_stitch.ini"));
+            if (!File.Exists(iniPath))
+            {
+                Console.WriteLine("(align_stitch.ini was not found at " + iniPath + " — using AlignStitchConfig defaults)");
+                return new AlignStitchConfig();
+            }
+            Console.WriteLine("ini      = " + iniPath);
+            return AlignStitchConfigIniReader.ReadFromIni(iniPath);
+        }
+
         // ── Mode: alignstitch (default) ──────────────────────────────────────
 
         private static int RunAlignStitch(string[] args, GlobalConfig config)
@@ -57,7 +72,9 @@ namespace RDL.GerberStitch.Harness
             Directory.CreateDirectory(outputRoot);
 
             var facade = new GerberStitchFacade();
-            var options = new AlignStitchConfig();
+            var options = ReadAlignStitchOptions(args);
+            Console.WriteLine("engine   = " + options.StitchingEngine + " (CalculateTimeDetail=" + options.CalculateTimeDetail + ")");
+            Console.WriteLine();
 
             var cts = new CancellationTokenSource();
             Console.CancelKeyPress += (s, e) => { e.Cancel = true; cts.Cancel(); };
