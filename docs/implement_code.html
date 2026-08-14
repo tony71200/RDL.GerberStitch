@@ -758,6 +758,10 @@ else if (requireFiles &amp;&amp; !string.IsNullOrWhiteSpace(t.ExpectedPath) &amp
 
   <h4>Build</h4>
   <p><span class="badge ok">PASS</span> <code>msbuild RDL.GerberStitch.sln /p:Configuration=Debug /p:Platform=x64</code>, 0 error (1 warning <code>CS0618</code> có từ trước ở <code>MatcherRegistry.cs</code>, không liên quan task này). Không build <code>RDL_Worker.sln</code> — đang tạm dừng vì lý do ở mục (c) trên, không liên quan đúng/sai thay đổi của task này.</p>
+
+  <div class="note">
+    <strong>Fix sau review: bổ sung 2 khoá còn thiếu trong <code>sourceByKey</code> bookkeeping.</strong> Review phát hiện <code>baseConfig.EmitDebugPreview = options.EmitDebugPreview;</code> và <code>baseConfig.CalculateTimeDetail = options.CalculateTimeDetail;</code> gán từ <code>options</code> vô điều kiện (đúng như thiết kế — không đổi) nhưng KHÔNG được ghi vào mảng <code>sourceByKey[key] = "ini"</code>, nên <code>ConfigLayerLog.Dump</code> báo 2 khoá này là "không rõ" thay vì "ini" dù giá trị thật sự luôn đến từ ini/Master. Riêng <code>Stitching.EnableBlending</code> mà review cũng nêu tên hoá ra đã có sẵn trong mảng từ bản gốc — kiểm tra lại thấy không thiếu, chỉ 2 khoá kia thực sự thiếu. Đã thêm <code>"EmitDebugPreview"</code> và <code>"CalculateTimeDetail"</code> vào đầu mảng khoá trong <code>BuildCoreConfig</code> (path dạng tên property trần vì đây là property top-level trên <code>AlignStitchConfig</code> của Core, không lồng trong sub-object — khớp cách <code>ConfigLayerLog.Walk</code> dựng path khi <code>prefix</code> rỗng). <strong>Không đổi logic ưu tiên</strong> — <code>options.*</code> vẫn thắng vô điều kiện với 2 khoá này như trước, chỉ sửa phần ghi log cho đúng tầng nguồn.
+  </div>
 </div>
 
 <!-- ============================================================ -->

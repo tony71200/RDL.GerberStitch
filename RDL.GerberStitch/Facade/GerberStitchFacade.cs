@@ -756,7 +756,8 @@ namespace RDL.GerberStitch.Facade
             baseConfig.DirectAlignment.Policy.AllowRefinementFromExpectedWhenCoarseFails =
                 options.AllowRefinementFromExpectedWhenCoarseFails;
 
-            foreach (var key in new[] { "Stitching.EnableBlending", "DirectAlignment.Ncc.MinScore",
+            foreach (var key in new[] { "EmitDebugPreview", "Stitching.EnableBlending", "CalculateTimeDetail",
+                                        "DirectAlignment.Ncc.MinScore",
                                         "DirectAlignment.Shape.MinScore", "DirectAlignment.Ecc.MinCorrelation",
                                         "DirectAlignment.Geometry.MaxTranslationPixels",
                                         "DirectAlignment.Geometry.MaxAbsRotationDeg",
