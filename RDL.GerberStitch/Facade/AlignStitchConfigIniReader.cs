@@ -47,7 +47,20 @@ namespace RDL.GerberStitch.Facade
         /// </param>
         public static AlignStitchConfig ReadFromIni(string iniFilePath, Action<string> logWarning)
         {
-            var config = new AlignStitchConfig();
+            return ReadFromIni(iniFilePath, null, logWarning);
+        }
+
+        /// <param name="baseConfig">Values already applied by lower layers (settings files). Null starts from
+        /// the code defaults. INI keys override whatever is here, matching the documented precedence: code
+        /// default &lt; global settings file &lt; recipe override &lt; ini &lt; Master payload.</param>
+        /// <param name="logWarning">
+        /// Optional. Called once per key in the section that this reader does not understand. Passing null keeps
+        /// the historical silent behaviour, which is why the two-argument overload still exists.
+        /// </param>
+        public static AlignStitchConfig ReadFromIni(string iniFilePath, AlignStitchConfig baseConfig,
+                                                     Action<string> logWarning)
+        {
+            var config = baseConfig ?? new AlignStitchConfig();
             if (string.IsNullOrWhiteSpace(iniFilePath) || !File.Exists(iniFilePath))
                 return config;
 
