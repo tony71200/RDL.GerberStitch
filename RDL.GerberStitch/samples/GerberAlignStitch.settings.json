@@ -1,0 +1,933 @@
+{
+  // Pinned to 3. Do not change: ConfigVersion 0/1 triggers a legacy migration
+  // that overwrites the structured groups below with flat legacy defaults.
+  "ConfigVersion": 3,
+
+  // ==== Commonly tuned ====================================================
+  // The handful of values that get adjusted on the line. Anything set here
+  // overrides the same key path in the Advanced block below (AlignStitchSettingsReader
+  // merges Advanced first, then CommonlyTuned on top). Every key here is also fully
+  // defined, at its normal position, in Advanced -- that duplication is intentional:
+  // Advanced stays the single complete reference, CommonlyTuned is just a shortlist
+  // pointer to the subset worth touching without hunting through the full file.
+  "CommonlyTuned": {
+    "Matchers": {
+      "HalconShapeModel": {
+        // Minimum HALCON shape-model match score, 0..1, for the coarse (first-pass)
+        // match on every tile. Raise it to reject weak/ambiguous matches sooner;
+        // lower it if sparse-copper tiles stop matching at all. 0.10 is also Core's
+        // coded default -- shown here because it is the single most commonly
+        // re-tuned value on a new panel, not because RDL differs from Core.
+        "MinScore": 0.10
+      },
+      "PyramidEcc": {
+        // Minimum ECC correlation, 0..1, for the refinement stage that runs after
+        // the coarse match. Raise it to demand a tighter refined fit before
+        // accepting; lower it if refinement keeps failing on legitimately
+        // low-contrast tiles. 0.13 matches Core's coded default.
+        "MinCorrelation": 0.13
+      },
+      "PyramidPhaseCorrelation": {
+        // Minimum phase-correlation peak response, 0..1, required to accept a
+        // neighbor match. Also drives PoseGraph edge weighting (see the full
+        // comment on this key under Advanced.Matchers.PyramidPhaseCorrelation).
+        // Raise it to reject weak neighbor correlation peaks; lower it if
+        // legitimate low-contrast tiles keep failing neighbor matching. 0.15
+        // matches Core's coded default.
+        "MinResponse": 0.15
+      }
+    },
+    "DirectAlignment": {
+      "Geometry": {
+        // Minimum standard deviation of gray levels a captured tile must have
+        // before a direct match is even attempted. Raise it to reject more
+        // near-blank tiles up front; lower it to attempt matching on flatter
+        // tiles. 2 matches Core's coded default.
+        "MinTextureStdDev": 2,
+
+        // Reject a direct match whose translation exceeds this many pixels from the
+        // expected grid position. Raise it if stage placement repeatability is loose
+        // (matches keep getting rejected as "too far"); lower it to reject
+        // wrong-but-high-score matches earlier. 300 matches Core's coded default.
+        "MaxTranslationPixels": 300,
+
+        // Reject a direct match whose absolute rotation exceeds this many degrees.
+        // RDL production value. Core's coded default is 0.5 -- the RDL line has
+        // almost no real rotational deviation between tiles, so 0.1 tightens the
+        // gate and rejects bad matches earlier instead of silently accepting a
+        // rotated false positive.
+        "MaxAbsRotationDeg": 0.1
+      },
+      "Policy": {
+        // Allows a tile to be accepted from the coarse match alone when
+        // refinement is skipped/unavailable/fails but the coarse score is
+        // otherwise good. Disabling it forces every tile through refinement to be
+        // accepted. true matches Core's coded default.
+        "AllowCoarseOnlyAcceptance": true,
+
+        // Allows refinement to run from the tile's expected grid position when
+        // the coarse match itself fails, instead of giving up on the tile
+        // outright. Disabling it means a failed coarse match always fails the
+        // tile. true matches Core's coded default.
+        "AllowRefinementFromExpectedWhenCoarseFails": true
+      }
+    },
+    "NeighborAlignment": {
+      "Acceptance": {
+        // Reject a neighbor (tile-to-tile) match whose translation exceeds this
+        // many pixels from the expected relative grid offset. Neighbor tiles sit
+        // farther apart than a direct sample-to-tile match, so this is looser
+        // than DirectAlignment.Geometry.MaxTranslationPixels above. 500 matches
+        // Core's coded default.
+        "MaxTranslationPixels": 500,
+
+        // Reject a neighbor match whose absolute rotation exceeds this many
+        // degrees. 0.5 matches Core's coded default.
+        "MaxAbsRotationDeg": 0.5
+      }
+    },
+    "Recovery": {
+      // Runs neighbor matching for tiles whose direct match failed/was rejected,
+      // giving them a second chance via a neighbor pose instead of staying
+      // unplaced. true matches Core's coded default.
+      "RecoverFailedTiles": true,
+
+      // Builds the full neighbor graph and may adjust already-succeeded direct
+      // poses when residual thresholds allow it -- the more expensive recovery
+      // mode. Disable to only ever recover failed tiles, never touch accepted
+      // ones. true matches Core's coded default.
+      "ReconcileAllMatchedTiles": true,
+
+      // Standard deviation threshold, in gray levels, below which a tile's captured
+      // image is classified as low-texture (near-blank copper/silkscreen area).
+      // Raise it to classify more tiles as low-texture (more get the low-texture
+      // fallback path); lower it to require an image be closer to truly flat before
+      // treating it as low-texture. 7 matches Core's coded default.
+      "LowTextureStdDevThreshold": 7,
+
+      // Allows a tile that exhausts every other recovery path to fall back to
+      // its expected grid offset as a last resort, with no supporting match
+      // evidence. false matches Core's coded default (off); the standard first
+      // thing to flip when a stubborn tile keeps ending up unplaced.
+      "AllowExpectedGridFallback": false
+    },
+    "PoseGraph": {
+      // Master switch for the global pose-graph least-squares optimizer that
+      // reconciles all tile poses jointly. Disabling it falls back to legacy
+      // single-path neighbor propagation / DirectPoseOutlierCorrector behavior.
+      // true matches Core's coded default; kept here because it is the first
+      // thing to flip when diagnosing a stitching regression.
+      "Enabled": true,
+
+      // Huber robust-loss threshold, in pixels, for edge translation residuals in
+      // the joint solve. Raise it to let the solver treat larger residuals as
+      // still-inlier (less aggressive downweighting); lower it to downweight
+      // outlier edges sooner. 8.0 matches Core's coded default.
+      "HuberPixels": 8.0,
+
+      // Maximum translation deviation, in pixels, from the expected grid step
+      // before a neighbor edge is discarded outright as a period slip. Must stay
+      // below the capture overlap of 60 pixels. 40.0 matches Core's coded
+      // default.
+      "MaxEdgeResidualPixels": 40.0
+    },
+    "Stitching": {
+      // Overall stitching engine used to assemble the final mosaic from posed
+      // tiles. HalconProjectiveMosaicRebased matches Core's coded default and is
+      // the production engine; surfaced here because switching to OpenCv (the
+      // only engine that honors EnableBlending) is the standard remedy when real
+      // seam blending is needed, at roughly 17x slower stitching.
+      "Engine": "HalconProjectiveMosaicRebased",
+
+      // RDL production value. Core's coded default is true. HOperatorSet.GenProjectiveMosaic
+      // (the HALCON engine above) has no blending parameter, so with that engine this flag
+      // only produces a HALCON warning and overlapping regions stay hard-overwritten by
+      // whichever tile paints last. For real seam blending, switch Engine to OpenCv, at
+      // roughly 17x slower stitching.
+      "EnableBlending": false,
+
+      // Blend mode used where tiles overlap, when EnableBlending is honored by
+      // the active Engine (only OpenCv currently honors it). Feather ramps the
+      // blend weight across the overlap region. "Feather" matches Core's coded
+      // default.
+      "BlendMode": "Feather"
+    },
+    "Output": {
+      // TIFF container mode for the mosaic file. Auto lets Core pick
+      // StandardTiff or BigTiff based on output size. "Auto" matches Core's
+      // coded default; the usual override is forcing "BigTiff" for panels known
+      // to exceed the standard TIFF 4 GB offset limit.
+      "TiffMode": "Auto"
+    }
+  },
+
+  // ==== Advanced ==========================================================
+  // Full definitions for every stage. Stage matcher references (CoarseMatcher /
+  // RefinementMatcher) live here and must name a kind declared in Matchers below,
+  // from the legal set for that slot (DirectCoarseMatcherKind / DirectRefinementMatcherKind /
+  // NeighborCoarseMatcherKind in GerberStitching.Core/Configuration/AlignStitchStageOptions.cs).
+  // Matcher parameter objects (Ncc/Shape/Ecc/Phase) are declared ONLY in Matchers -- they are
+  // deliberately absent from DirectAlignment/NeighborAlignment below, because
+  // MatcherRegistry.ApplyTo copies each declared kind into every Core slot that uses it
+  // AFTER the stage sections are populated, so any copy left here would be silently
+  // overwritten anyway.
+  "Advanced": {
+    "Matchers": {
+      // Matcher kinds are declared once here, keyed by kind name, and referenced by
+      // name from CoarseMatcher/RefinementMatcher below. All four kinds are declared
+      // even though the shipped defaults only reference HalconShapeModel and
+      // PyramidEcc/PyramidPhaseCorrelation -- AlignStitchSettingsReader validates
+      // every stage matcher reference against this block whenever the merged file
+      // has any content at all, so a partial Matchers block would fail validation
+      // the moment any DirectAlignment/NeighborAlignment reference is present.
+      "HalconNcc": {
+        // Minimum NCC match score, 0..1. Raise it to reject weak matches; lower it
+        // if valid tiles are being rejected as no-match. 0.10 matches Core's coded
+        // default. HalconNcc is not referenced by any shipped default slot; declared
+        // here so it is available as a drop-in alternative CoarseMatcher.
+        "MinScore": 0.10,
+
+        // Number of image pyramid levels HALCON searches across before refining at
+        // full resolution. Raise it to search a wider net for a larger/rougher
+        // initial displacement at higher cost; lower it for a faster, narrower
+        // search. 3 matches Core's coded default.
+        "NumLevels": 3,
+
+        // Start of the rotation search range, in radians, for the NCC model
+        // (paired with AngleExtentRad below). About -0.2 degrees. Widen the range
+        // (more negative) to tolerate more expected rotation; narrow it to speed
+        // up the search when rotation is known to be near zero. Matches Core's
+        // coded default of -0.0034906585.
+        "AngleStartRad": -0.0034906585,
+
+        // Width of the rotation search range, in radians, starting at
+        // AngleStartRad. About 0.2 degrees total. Widen it to tolerate more
+        // expected rotation; narrow it to speed up the search. Matches Core's
+        // coded default of 0.0034906585.
+        "AngleExtentRad": 0.0034906585,
+
+        // Step size, in radians, between angles sampled within the rotation search
+        // range. About 0.05 degrees. Smaller steps give finer angular resolution
+        // at higher search cost; larger steps search faster but coarser. Matches
+        // Core's coded default of 0.00087266463.
+        "AngleStepRad": 0.00087266463,
+
+        // HALCON find_ncc_model metric. "use_polarity" only accepts matches with
+        // the same contrast polarity as the model (faster, fewer false positives on
+        // PCB copper); "ignore_local_polarity"/"ignore_global_polarity" tolerate
+        // polarity-inverted regions at extra cost. Matches Core's coded default.
+        "Metric": "use_polarity",
+
+        // Maximum number of match candidates HALCON returns per search. Raising it
+        // above 1 only matters if downstream code inspects more than the best
+        // match, which it currently does not. Matches Core's coded default.
+        "MaxMatches": 1,
+
+        // Maximum allowed overlap, 0..1, between returned match candidates when
+        // MaxMatches > 1. Irrelevant while MaxMatches stays at 1. Matches Core's
+        // coded default.
+        "MaxOverlap": 1,
+
+        // HALCON find_ncc_model subpixel-refinement flag. "true" enables subpixel
+        // accuracy for the returned pose (slower, more precise); "false" returns
+        // pixel-accurate poses only. Matches Core's coded default.
+        "SubPixel": "true",
+
+        // Pixel margin trimmed from the edges of the reference image domain when
+        // building the NCC model, so model features never sit exactly on the tile
+        // border. Raise it if models keep including unreliable edge pixels; lower
+        // it if the usable model region becomes too small on small tiles. Matches
+        // Core's coded default.
+        "ModelRoiMarginPixels": 16
+      },
+      "HalconShapeModel": {
+        // Shape-model creation mode. Rigid searches translation+rotation only,
+        // matching the proven AlignByShapeModel HDevelop profile this pipeline
+        // ports from; IsotropicScaled additionally searches a uniform scale range
+        // (ScaleMin/ScaleMax/ScaleStep below), at higher cost. Matches Core's
+        // coded default.
+        "Mode": "Rigid",
+
+        // Number of image pyramid levels for the shape model. 0 maps to HALCON's
+        // "auto" (HALCON picks a level count from image size). Set an explicit
+        // level count to force a specific search cost/robustness tradeoff instead
+        // of letting HALCON choose. Matches Core's coded default.
+        "NumLevels": 0,
+
+        // Start of the rotation search range, in radians (-10 degrees). Widen the
+        // range (more negative) to tolerate more expected rotation at higher
+        // search cost; narrow it when rotation is known to be small. Matches
+        // Core's coded default of -0.17453292519943295.
+        "AngleStartRad": -0.17453292519943295,
+
+        // Width of the rotation search range, in radians, starting at
+        // AngleStartRad (20 degrees total). Widen it to tolerate more expected
+        // rotation; narrow it to search faster. Matches Core's coded default of
+        // 0.3490658503988659.
+        "AngleExtentRad": 0.3490658503988659,
+
+        // Step size, in radians, between sampled angles. 0.0 maps to HALCON's
+        // "auto" (HALCON derives a step from the model's angular sensitivity).
+        // Set an explicit step to force finer/coarser angular sampling instead of
+        // letting HALCON choose. Matches Core's coded default.
+        "AngleStepRad": 0.0,
+
+        // HALCON create_shape_model optimization level. "auto" lets HALCON pick a
+        // model-compilation strategy balancing setup time vs. search speed.
+        // Matches Core's coded default.
+        "Optimization": "auto",
+
+        // HALCON create_shape_model metric. "use_polarity" only accepts matches
+        // with the same contrast polarity as the model; the other HALCON values
+        // tolerate polarity-inverted regions at extra search cost. Matches Core's
+        // coded default.
+        "Metric": "use_polarity",
+
+        // Minimum contour contrast used when extracting shape-model edges. A value
+        // <= 0 is mapped to HALCON's "auto" (HALCON derives a contrast threshold
+        // from the reference image). Set a positive value to force a fixed
+        // threshold instead. Matches Core's coded default.
+        "Contrast": 0,
+
+        // Minimum contrast for low-contrast contour segments retained in the
+        // model. A value <= 0 maps to HALCON's "auto", same as Contrast above.
+        // Matches Core's coded default.
+        "MinContrast": 0,
+
+        // Lower bound of the uniform scale search range (only used when Mode is
+        // IsotropicScaled). Lower it to tolerate more shrinkage; irrelevant in
+        // Rigid mode. Matches Core's coded default.
+        "ScaleMin": 0.95,
+
+        // Upper bound of the uniform scale search range (only used when Mode is
+        // IsotropicScaled). Raise it to tolerate more magnification; irrelevant in
+        // Rigid mode. Matches Core's coded default.
+        "ScaleMax": 1.05,
+
+        // Step size for the scale search between ScaleMin and ScaleMax (only used
+        // when Mode is IsotropicScaled). Smaller steps give finer scale resolution
+        // at higher search cost. Matches Core's coded default.
+        "ScaleStep": 0.01,
+
+        // Minimum HALCON shape-model match score, 0..1, for this model's coarse
+        // search. Raise it to reject weak/ambiguous matches sooner; lower it if
+        // sparse-copper tiles stop matching at all. Matches Core's coded default
+        // (also elevated to CommonlyTuned above since it is the most frequently
+        // re-tuned parameter in the file).
+        "MinScore": 0.10,
+
+        // Maximum number of match candidates HALCON returns per search. Matches
+        // Core's coded default; downstream code only inspects the best match.
+        "NumMatches": 1,
+
+        // Maximum allowed overlap, 0..1, between returned match candidates when
+        // NumMatches > 1. Irrelevant while NumMatches stays at 1. Matches Core's
+        // coded default.
+        "MaxOverlap": 1.0,
+
+        // HALCON find_shape_model subpixel-refinement mode. "least_squares" fits a
+        // subpixel pose via least-squares residual minimization (slower, most
+        // precise); other HALCON values ("interpolation", "none") trade precision
+        // for speed. Matches Core's coded default.
+        "SubPixel": "least_squares",
+
+        // Number of pyramid levels HALCON actually searches at runtime (distinct
+        // from NumLevels, which controls model creation). Raise it to search a
+        // wider net for a larger initial displacement at higher cost; lower it to
+        // search faster. Matches Core's coded default.
+        "SearchNumLevels": 5,
+
+        // HALCON find_shape_model greediness, 0..1. Higher values prune the search
+        // tree more aggressively for speed at some risk of missing the true best
+        // match; lower values search more exhaustively at higher cost. Matches
+        // Core's coded default.
+        "Greediness": 0.95,
+
+        // Pixel margin trimmed from the edges of the reference image domain when
+        // building the shape model, kept for backward-compatible configuration
+        // loading -- the current HDevelop-compatible rigid matcher creates the
+        // model from the complete reference image domain regardless of this
+        // value. Matches Core's coded default.
+        "ModelRoiMarginPixels": 32,
+
+        // Minimum width, in pixels, the model region-of-interest must have (legacy
+        // safety floor, see ModelRoiMarginPixels note above). Matches Core's
+        // coded default.
+        "MinModelRoiWidth": 32,
+
+        // Minimum height, in pixels, the model region-of-interest must have
+        // (legacy safety floor, see ModelRoiMarginPixels note above). Matches
+        // Core's coded default.
+        "MinModelRoiHeight": 32
+      },
+      "PyramidEcc": {
+        // Warp model the ECC refinement solves for. Euclidean solves
+        // translation+rotation (matches this pipeline's rigid-tile assumption);
+        // Translation solves translation only (cheapest, no rotation
+        // correction); Affine also solves shear/anisotropic scale (most
+        // expensive, rarely needed for PCB tiles). Matches Core's coded default.
+        "MotionModel": "Euclidean",
+
+        // Number of image pyramid levels the ECC solver climbs down through,
+        // coarse to fine. Raise it to converge from a larger initial
+        // misalignment at higher cost; lower it if refinement is too slow and the
+        // coarse match is already close. Matches Core's coded default. NOTE: this
+        // single declaration is applied by MatcherRegistry.ApplyTo to BOTH
+        // DirectAlignment.Ecc and NeighborAlignment.Ecc.
+        "PyramidLevels": 3,
+
+        // Maximum ECC solver iterations per pyramid level before giving up on
+        // convergence. Raise it to allow more time to converge on a difficult
+        // tile; lower it to fail fast on tiles that will not converge anyway.
+        // Matches Core's coded default.
+        "MaxIterations": 80,
+
+        // ECC solver convergence tolerance -- iteration stops early once the
+        // correlation improvement between steps drops below this value. Raise it
+        // (looser) to stop earlier/faster; lower it (tighter) to keep refining
+        // longer for marginal precision gains. Matches Core's coded default.
+        "Epsilon": 1e-5,
+
+        // Minimum ECC correlation, 0..1, required to accept the refined pose.
+        // Raise it to demand a tighter refined fit before accepting; lower it if
+        // refinement keeps failing on legitimately low-contrast tiles. Matches
+        // Core's coded default (also elevated to CommonlyTuned above).
+        "MinCorrelation": 0.13
+      },
+      "PyramidPhaseCorrelation": {
+        // Minimum phase-correlation peak response, 0..1, required to accept a
+        // match. Raise it to reject weak/ambiguous correlation peaks; lower it if
+        // legitimate low-contrast tiles keep failing. Also set in CommonlyTuned
+        // above (same value). Matches Core's coded default. NOTE: PoseGraph also
+        // reads the response of the matcher that NeighborAlignment.CoarseMatcher
+        // points at (this one, by default) to weight its edges -- changing this
+        // value affects both neighbor matching acceptance and pose-graph edge
+        // weighting.
+        "MinResponse": 0.15,
+
+        // Number of image pyramid levels the phase-correlation search climbs
+        // down through, coarse to fine. Raise it to search a wider net for a
+        // larger initial displacement at higher cost; lower it to search faster.
+        // Matches Core's coded default.
+        "PyramidLevels": 3
+      }
+    },
+    "DirectAlignment": {
+      // Which declared Matchers kind runs the coarse (first-pass) match for
+      // every tile. Legal values: HalconNcc, HalconShapeModel, PyramidEcc,
+      // PyramidPhaseCorrelation, None. Must name a kind declared above. Matches
+      // Core's coded default.
+      "CoarseMatcher": "HalconShapeModel",
+
+      // Which declared Matchers kind runs the refinement pass after the coarse
+      // match succeeds. Legal values: PyramidEcc, PyramidPhaseCorrelation, None.
+      // Must name a kind declared above. Matches Core's coded default.
+      "RefinementMatcher": "PyramidEcc",
+
+      // Enables the outlier-correction pass over the batch of accepted direct
+      // poses (uses RotationOutlierMadK/AngleBandFloorDeg/SignFlipGuardDeg below).
+      // Disabling it accepts every direct pose that passed its own gates without
+      // any cross-tile rotation-outlier check. Matches Core's coded default.
+      // NOTE: with PoseGraph.Enabled = true this correction is superseded by the
+      // pose-graph solve; it still runs as an earlier, independent pass.
+      "EnableDirectPoseOutlierCorrection": true,
+
+      // Median-absolute-deviation multiplier used to flag a tile's rotation as a
+      // statistical outlier relative to the batch. Raise it to flag fewer tiles
+      // as outliers (more tolerant); lower it to flag more tiles as outliers
+      // (stricter). Matches Core's coded default.
+      "RotationOutlierMadK": 3.0,
+
+      // Minimum rotation band, in degrees, below which outlier detection is not
+      // applied (guards against flagging noise on a batch with near-zero real
+      // rotation spread). Raise it to widen the "no outlier check" band; lower it
+      // to apply outlier detection even on very tight rotation spreads. Matches
+      // Core's coded default.
+      "AngleBandFloorDeg": 0.02,
+
+      // Minimum rotation magnitude, in degrees, below which a sign flip between a
+      // tile's rotation and its neighbors is not treated as a correction target
+      // (guards against flipping the sign of near-zero noise). Matches Core's
+      // coded default.
+      "SignFlipGuardDeg": 0.01,
+
+      "Preprocessing": {
+        // Linear contrast percentage applied only to the Direct Alignment
+        // moving/request image before OpenCV or HALCON matching (100 keeps the
+        // original contrast). Raise it above 100 to boost contrast on low-contrast
+        // captures before matching; lower it below 100 to reduce contrast. Matches
+        // Core's coded default.
+        "Contrast": 100
+      },
+
+      // X translation, in pixels, composed into every accepted direct-alignment
+      // pose. Use a nonzero value only to correct a known constant rig offset;
+      // leave at 0 otherwise. Matches Core's coded default.
+      "ManualOffsetX": 0,
+
+      // Y translation, in pixels, composed into every accepted direct-alignment
+      // pose. Use a nonzero value only to correct a known constant rig offset;
+      // leave at 0 otherwise. Matches Core's coded default.
+      "ManualOffsetY": 0,
+
+      "Geometry": {
+        // Minimum standard deviation of gray levels a captured tile must have to
+        // be considered textured enough to attempt matching at all. Raise it to
+        // reject more near-blank tiles before matching; lower it to attempt
+        // matching on flatter tiles. Also set in CommonlyTuned above (same
+        // value). Matches Core's coded default.
+        "MinTextureStdDev": 2,
+
+        // Minimum fraction, 0..1, of the tile that must overlap the sample image
+        // for a match to be geometrically plausible. Raise it to require more
+        // overlap before accepting; lower it to tolerate edge tiles with less
+        // overlap. Matches Core's coded default.
+        "MinOverlapRatio": 0.01,
+
+        // Reject a direct match whose translation exceeds this many pixels from
+        // the expected grid position. Also set in CommonlyTuned above (same
+        // value; duplicated there because it is a frequently re-tuned key).
+        // Matches Core's coded default.
+        "MaxTranslationPixels": 300,
+
+        // Reject a direct match whose absolute rotation exceeds this many
+        // degrees. RDL production value -- Core's coded default is 0.5. Also set
+        // in CommonlyTuned above (same value); see the CommonlyTuned comment for
+        // the full rationale.
+        "MaxAbsRotationDeg": 0.1,
+
+        // Reject a direct match whose recovered scale is below this value.
+        // Lower it to tolerate more apparent shrinkage (e.g. lens/rig drift);
+        // raise it to reject more aggressively. Matches Core's coded default.
+        "MinScale": 0.95,
+
+        // Reject a direct match whose recovered scale is above this value.
+        // Raise it to tolerate more apparent magnification; lower it to reject
+        // more aggressively. Matches Core's coded default.
+        "MaxScale": 1.05
+      },
+
+      "Policy": {
+        // Allows a tile to be accepted from the coarse match alone when
+        // refinement is skipped/unavailable/fails but the coarse score is
+        // otherwise good. Disabling it means every tile must pass refinement to
+        // be accepted. Also set in CommonlyTuned above (same value). Matches
+        // Core's coded default.
+        "AllowCoarseOnlyAcceptance": true,
+
+        // Allows refinement to run from the tile's expected grid position when
+        // the coarse match itself fails, instead of giving up on the tile
+        // outright. Disabling it means a failed coarse match always fails the
+        // tile. Also set in CommonlyTuned above (same value). Matches Core's
+        // coded default.
+        "AllowRefinementFromExpectedWhenCoarseFails": true
+      },
+
+      "Evaluation": {
+        // Report-only mode: computes and logs the combined coarse-vs-refinement
+        // evaluation score without letting it override which candidate (coarse or
+        // refined) is actually selected. Disable it to let the evaluation score
+        // drive candidate selection instead of being purely diagnostic. Matches
+        // Core's coded default.
+        "ReportOnlyEnabled": true,
+
+        // Strategy used to pick between the coarse and refined candidate when
+        // evaluation is not report-only. WeightedCommonMetric combines the
+        // weighted sub-metrics below into one score. Matches Core's coded
+        // default; see DirectSelectionPolicy in
+        // Alignment/Evaluation/DirectCandidateEvaluator.cs for other values.
+        "SelectionPolicy": "WeightedCommonMetric",
+
+        // Minimum combined-score improvement the refined candidate must show over
+        // the coarse candidate to be preferred, when evaluation drives selection.
+        // Raise it to require a bigger improvement before switching away from the
+        // coarse result; lower it to prefer refinement more readily. Matches
+        // Core's coded default.
+        "MinRefinementGain": 0.01,
+
+        // Maximum translation delta, in pixels, the refined candidate may
+        // introduce relative to the coarse candidate before it is treated as
+        // suspect. Raise it to tolerate bigger refinement corrections; lower it
+        // to flag smaller corrections as suspicious. Matches Core's coded
+        // default.
+        "MaxRefinementDeltaTranslationPixels": 20.0,
+
+        // Maximum rotation delta, in degrees, the refined candidate may introduce
+        // relative to the coarse candidate before it is treated as suspect.
+        // Matches Core's coded default.
+        "MaxRefinementDeltaRotationDeg": 1.0,
+
+        // Maximum image side length, in pixels, used for the fastest ("tier 1")
+        // evaluation pass; larger images are downsampled to this size for
+        // scoring. Raise it for more accurate but slower tier-1 scoring; lower it
+        // for faster but coarser scoring. Matches Core's coded default.
+        "Tier1MaximumSide": 1024,
+
+        // Maximum image side length, in pixels, used for the more expensive
+        // ("tier 2") evaluation pass that only runs when tier 1 is ambiguous
+        // (see AmbiguousScoreGap below). Matches Core's coded default.
+        "Tier2MaximumSide": 2048,
+
+        // Score-gap threshold below which tier 1 evaluation is considered
+        // ambiguous and escalates to the more expensive tier 2 pass. Raise it to
+        // escalate to tier 2 more often (more accurate, slower); lower it to
+        // escalate less often (faster, relies more on tier 1). Matches Core's
+        // coded default.
+        "AmbiguousScoreGap": 0.03,
+
+        // Relative weight of the symmetric-edge-proximity sub-metric in the
+        // combined evaluation score. The four *Weight values below should sum to
+        // 1.0 for the combined score to stay in a 0..1 range. Matches Core's
+        // coded default.
+        "EdgeWeight": 0.50,
+
+        // Relative weight of the gradient-NCC sub-metric in the combined
+        // evaluation score. Matches Core's coded default.
+        "GradientNccWeight": 0.30,
+
+        // Relative weight of the valid-overlap-ratio sub-metric in the combined
+        // evaluation score. Matches Core's coded default.
+        "ValidOverlapWeight": 0.20,
+
+        // Relative weight of the border-penalty sub-metric (penalizes matches
+        // that push content toward the tile border) in the combined evaluation
+        // score. Matches Core's coded default.
+        "BorderPenaltyWeight": 0.10,
+
+        // Tolerance, in pixels, for the symmetric-edge-proximity sub-metric --
+        // how close two edge features must land to count as aligned. Raise it to
+        // be more forgiving of small edge misalignment; lower it to demand
+        // tighter edge agreement. Matches Core's coded default.
+        "EdgeDistanceTolerancePixels": 4.0,
+
+        // Minimum gradient standard deviation below which the gradient-NCC
+        // sub-metric is treated as undefined/unreliable rather than computed on
+        // near-flat image content. Matches Core's coded default.
+        "MinimumGradientStdDev": 1e-3
+      }
+    },
+    "NeighborAlignment": {
+      // Which declared Matchers kind runs neighbor (tile-to-tile) coarse
+      // matching for recovery/reconciliation. Legal values:
+      // PyramidPhaseCorrelation, None -- neighbor production is phase-only in
+      // Core (RefinementMatcher/Ecc for this stage are obsolete and intentionally
+      // omitted from this file). Must name a kind declared in Matchers above.
+      // Matches Core's coded default.
+      "CoarseMatcher": "PyramidPhaseCorrelation",
+
+      "Acceptance": {
+        // Minimum fraction, 0..1, of overlap required between two neighbor tiles
+        // for their match to be geometrically plausible. Matches Core's coded
+        // default.
+        "MinOverlapRatio": 0.01,
+
+        // Reject a neighbor match whose translation exceeds this many pixels from
+        // the expected relative grid offset. Neighbor tiles are farther apart
+        // than a direct sample-to-tile match, so this is intentionally looser
+        // than DirectAlignment.Geometry.MaxTranslationPixels. Also set in
+        // CommonlyTuned above (same value). Matches Core's coded default.
+        "MaxTranslationPixels": 500,
+
+        // Reject a neighbor match whose absolute rotation exceeds this many
+        // degrees. Also set in CommonlyTuned above (same value). Matches Core's
+        // coded default.
+        "MaxAbsRotationDeg": 0.5,
+
+        // Reject a neighbor match whose recovered scale is below this value.
+        // Matches Core's coded default.
+        "MinScale": 0.95,
+
+        // Reject a neighbor match whose recovered scale is above this value.
+        // Matches Core's coded default.
+        "MaxScale": 1.05
+      },
+
+      // Maximum translation residual, in pixels, a neighbor-graph pose may apply
+      // to adjust an already-posed direct-alignment tile. Raise it to allow the
+      // graph to correct direct poses more aggressively; lower it to trust direct
+      // poses more and let the graph adjust them less. Matches Core's coded
+      // default.
+      "MaxDirectPoseAdjustmentPixels": 8,
+
+      // Maximum rotation residual, in degrees, a neighbor-graph pose may apply to
+      // adjust an already-posed direct-alignment tile. Matches Core's coded
+      // default.
+      "MaxDirectPoseAdjustmentRotationDeg": 0.5,
+
+      // Maximum closure translation error, in pixels, allowed for a neighbor edge
+      // joining two tiles that are both already posed, before the edge is
+      // rejected as inconsistent. Raise it to tolerate looser cycle closure;
+      // lower it to reject inconsistent edges more aggressively. Matches Core's
+      // coded default.
+      "MaxCycleClosureErrorPixels": 12,
+
+      // Diagnostic-only translation disagreement threshold, in pixels, between
+      // accepted recovery candidates -- logged when exceeded, never changes which
+      // candidate is selected or fuses results. Matches Core's coded default.
+      "MaxCandidateDisagreementPixels": 12,
+
+      // Diagnostic-only rotation disagreement threshold, in degrees, between
+      // accepted recovery candidates -- logged when exceeded, never changes which
+      // candidate is selected or fuses results. Matches Core's coded default.
+      "MaxCandidateDisagreementRotationDeg": 0.5
+    },
+    "Recovery": {
+      // Runs neighbor matching for tiles whose direct match failed/was rejected
+      // or that are otherwise not stitchable. Adds matching cost only for failed
+      // tiles and may replace a failed pose with an accepted neighbor pose. Also
+      // set in CommonlyTuned above (same value). Matches Core's coded default.
+      "RecoverFailedTiles": true,
+
+      // Builds the full eligible captured-image neighbor graph and may adjust
+      // EXISTING (already-succeeded) poses when translation/rotation residual
+      // thresholds allow it (see NeighborAlignment.MaxDirectPoseAdjustment*
+      // above). This is the more expensive recovery mode -- disable it to only
+      // ever recover failed tiles, never touch already-accepted ones. Also set
+      // in CommonlyTuned above (same value). Matches Core's coded default.
+      "ReconcileAllMatchedTiles": true,
+
+      // Master switch gating the whole neighbor-recovery subsystem
+      // (RecoverFailedTiles / ReconcileAllMatchedTiles above only take effect
+      // while this stays true). Disabling it means a tile whose direct match
+      // fails stays failed, with no neighbor-based recovery attempt at all.
+      // Matches Core's coded default.
+      "EnableNeighborRecovery": true,
+
+      // Allows an isolated tile with no usable neighbor or direct pose to have
+      // its position interpolated from surrounding anchored tiles, instead of
+      // being left unplaced/excluded. Matches Core's coded default.
+      "EnableAnchorInterpolation": true,
+
+      // Allows a human operator to manually place/accept a tile's pose through
+      // the review UI as a last-resort recovery path. Matches Core's coded
+      // default.
+      "EnableManualAlignment": true,
+
+      // Automatically places a tile whose captured image is exact-zero (fully
+      // blank/no data) at its expected grid pose rather than leaving it
+      // unplaced. Matches Core's coded default.
+      "AutoPlaceExactZeroSample": true,
+
+      // Automatically places a tile classified as low-texture (see
+      // Recovery.LowTextureStdDevThreshold in CommonlyTuned above) at its
+      // expected grid pose rather than routing it through matching/recovery.
+      // Enable it if low-texture tiles (e.g. large open copper pours) should be
+      // auto-placed instead of attempted-and-failed through matching. Matches
+      // Core's coded default (false = off).
+      "AutoPlaceLowTextureSample": false,
+
+      // Allows a tile that exhausts every other recovery path to fall back to
+      // its expected grid offset as a last resort. Enable it only if you want
+      // recovery to always place every tile somewhere, even with no supporting
+      // match evidence. Also set in CommonlyTuned above (same value). Matches
+      // Core's coded default (false = off).
+      "AllowExpectedGridFallback": false,
+
+      // When AllowExpectedGridFallback is enabled, requires an operator to
+      // manually confirm each expected-grid fallback placement rather than
+      // applying it automatically. Has no effect while AllowExpectedGridFallback
+      // stays false. Matches Core's coded default.
+      "RequireManualConfirmationForExpectedGrid": true,
+
+      // Re-validates that a tile's captured sample content is still consistent
+      // (not stale/mismatched) before accepting a recovered pose for it. Disable
+      // only for controlled debugging -- disabling it in production risks
+      // accepting a recovered pose against stale/wrong sample content. Matches
+      // Core's coded default.
+      "RevalidateSampleContent": true,
+
+      // See CommonlyTuned.Recovery.LowTextureStdDevThreshold above for the full
+      // comment; this is the same key, duplicated here as part of the complete
+      // Recovery definition. Matches Core's coded default.
+      "LowTextureStdDevThreshold": 7
+    },
+    "PoseGraph": {
+      // Master switch for the global pose-graph least-squares optimizer. Also set
+      // in CommonlyTuned above (same value; duplicated there because it is the
+      // first thing to flip when diagnosing a stitching regression). Matches
+      // Core's coded default.
+      "Enabled": true,
+
+      // Prior weight, scaled by the direct match's selected common score, pulling
+      // a normally-aligned (SampleAlignment) tile toward its own direct pose in
+      // the joint solve. Raise it to trust direct poses more (graph moves them
+      // less); lower it to let the graph correct them more freely. Matches
+      // Core's coded default.
+      "LambdaDirect": 0.30,
+
+      // Prior weight pulling a weakly-evidenced tile toward its direct pose in
+      // the joint solve. Deliberately much smaller than LambdaDirect so weak
+      // tiles are mostly positioned by their neighbor edges instead. Matches
+      // Core's coded default.
+      "LambdaWeak": 0.02,
+
+      // Prior weight for exact-zero (blank) sample tiles. Kept non-zero so
+      // isolated blank tiles still land on the pose-graph-corrected grid instead
+      // of drifting free. Matches Core's coded default.
+      "LambdaBlank": 0.02,
+
+      // Prior weight for manually accepted poses. Deliberately very large so a
+      // manually placed tile stays effectively pinned through the joint solve.
+      // Matches Core's coded default.
+      "LambdaPinned": 100.0,
+
+      // Radian-to-pixel conversion factor used to put rotation residuals and
+      // translation residuals into the same solver units. Guideline: use about
+      // half the tile side length. Matches Core's coded default.
+      "RotationScalePixels": 4000.0,
+
+      // Huber robust-loss threshold, in pixels, for edge translation residuals in
+      // the joint solve. Raise it to let the solver treat larger residuals as
+      // still-inlier (less aggressive downweighting); lower it to downweight
+      // outlier edges sooner. Also set in CommonlyTuned above (same value).
+      // Matches Core's coded default.
+      "HuberPixels": 8.0,
+
+      // Maximum outer solver iterations for the joint least-squares pose-graph
+      // solve. Raise it to allow more time to converge on a large/difficult
+      // graph; lower it to fail/stop faster. Matches Core's coded default.
+      "MaxIterations": 8,
+
+      // Maximum inner conjugate-gradient iterations per outer solver step.
+      // Matches Core's coded default.
+      "MaxCgIterations": 500,
+
+      // Conjugate-gradient convergence tolerance for the inner solve. Matches
+      // Core's coded default.
+      "CgTolerance": 1e-10,
+
+      // Estimates one shared global scale factor between the sample grid frame
+      // and the measured mosaic frame, instead of assuming scale is exactly 1.
+      // Disable it to force scale to 1 and skip this estimation. Matches Core's
+      // coded default.
+      "EstimateGlobalScale": true,
+
+      // Lower bound clamp on the estimated global scale (only relevant when
+      // EstimateGlobalScale is true). Matches Core's coded default.
+      "MinGlobalScale": 0.99,
+
+      // Upper bound clamp on the estimated global scale (only relevant when
+      // EstimateGlobalScale is true). Matches Core's coded default.
+      "MaxGlobalScale": 1.01,
+
+      // Maximum global rotation, in degrees, the pose graph may attribute to the
+      // shared similarity transform between sample and mosaic frames. Matches
+      // Core's coded default.
+      "MaxGlobalRotationDeg": 0.5,
+
+      // Loads neighbor edges that the legacy cycle-closure check would have
+      // rejected outright, letting the robust (Huber) loss handle genuine
+      // outliers instead of discarding the edge before the solve even runs.
+      // Disable it to keep the stricter legacy pre-filter behavior. Matches
+      // Core's coded default.
+      "UseRejectedEdges": true,
+
+      // Maximum translation deviation, in pixels, from the expected grid step
+      // before a neighbor edge is discarded outright as a period slip (not just
+      // downweighted). Must stay below the capture overlap of 60 pixels, or
+      // legitimate edges near the overlap boundary start getting discarded. Also
+      // set in CommonlyTuned above (same value). Matches Core's coded default.
+      "MaxEdgeResidualPixels": 40.0,
+
+      // Maximum rotation deviation, in degrees, before a neighbor edge is
+      // discarded outright. Matches Core's coded default.
+      "MaxEdgeRotationDeg": 0.1,
+
+      // Safety guard: aborts the pose-graph result and keeps the pre-graph
+      // (legacy) poses if any tile would be moved more than this many pixels by
+      // the solve. 0 disables the guard entirely. Lower it to be more
+      // conservative about trusting large pose-graph corrections; raise it (or
+      // set 0) to let the graph move tiles further. Matches Core's coded default.
+      "MaxPoseCorrectionPixels": 351.0,
+
+      // Diagnostics only: emits a report warning for any used edge whose
+      // post-solve translation residual still exceeds this many pixels, so an
+      // unresolved seam gap is flagged in the report instead of only being
+      // visible by inspecting the stitched image. 0 disables the check. Matches
+      // Core's coded default.
+      "EdgeResidualWarningPixels": 5.0
+    },
+    "Stitching": {
+      // See CommonlyTuned.Stitching.Engine above for the full comment; this is
+      // the same key, duplicated here as part of the complete Stitching
+      // definition. Matches Core's coded default.
+      "Engine": "HalconProjectiveMosaicRebased",
+
+      // Explicitly permits the pre-Task-02 all-to-root HALCON mosaic path. Its
+      // output coordinate contract is not verified against the current pipeline
+      // and it must remain disabled for production. Do not enable this without
+      // separately re-verifying that coordinate contract. Matches Core's coded
+      // default (false = disabled).
+      "AllowUnsafeLegacyHalconProjectiveMosaic": false,
+
+      // X translation, in pixels, composed into the final mosaic placement.
+      // Use a nonzero value only to correct a known constant output offset;
+      // leave at 0 otherwise. Matches Core's coded default.
+      "ManualOffsetX": 0,
+
+      // Y translation, in pixels, composed into the final mosaic placement.
+      // Use a nonzero value only to correct a known constant output offset;
+      // leave at 0 otherwise. Matches Core's coded default.
+      "ManualOffsetY": 0,
+
+      // See CommonlyTuned.Stitching.EnableBlending above for the full comment on
+      // the RDL-vs-Core default delta; this is the same key, duplicated here as
+      // part of the complete Stitching definition. RDL production value: false
+      // (Core's coded default is true).
+      "EnableBlending": false,
+
+      // Blend mode used where tiles overlap, when EnableBlending is honored by
+      // the active Engine (only the OpenCv engine currently honors it -- see the
+      // EnableBlending comment above). Feather ramps the blend weight across the
+      // overlap region; other values are NoBlend (hard overwrite) and
+      // WeightedAverage (flat 50/50 average, no ramp). Also set in CommonlyTuned
+      // above (same value). Matches Core's coded default.
+      "BlendMode": "Feather",
+
+      // Policy for how a tile that fell back to a blank/expected placement
+      // interacts with overlapping real content during stitching.
+      // PreserveExistingOverlap keeps already-painted real content instead of
+      // letting the blank fallback tile overwrite it. Matches Core's coded
+      // default; see BlankFallbackOverlapPolicy in Models/WorkflowModels.cs for
+      // the other values (Normal, WeightedBlend).
+      "BlankFallbackOverlapPolicy": "PreserveExistingOverlap",
+
+      // Forces the final mosaic TIFF to 8-bit grayscale output regardless of the
+      // captured tile bit depth/color mode. Disable it to preserve the native
+      // captured format in the output TIFF instead. Matches Core's coded
+      // default.
+      "ForceGray8Output": true
+    },
+    "Output": {
+      // TIFF container mode for the mosaic file. Auto lets Core pick
+      // StandardTiff or BigTiff based on output size; StandardTiff/BigTiff force
+      // a specific container regardless of size. Also set in CommonlyTuned
+      // above (same value). Matches Core's coded default.
+      "TiffMode": "Auto",
+
+      // Tile width, in pixels, used when writing the output as a tiled BigTIFF.
+      // Must be a multiple of 16 per the TIFF tiling spec. Raise it to use fewer,
+      // larger tiles (bigger sequential reads, more memory per tile write); lower
+      // it for the opposite tradeoff. Matches Core's coded default.
+      "BigTiffTileWidth": 512,
+
+      // Tile height, in pixels, used when writing the output as a tiled BigTIFF.
+      // Must be a multiple of 16 per the TIFF tiling spec. Matches Core's coded
+      // default.
+      "BigTiffTileHeight": 512,
+
+      // Number of tiles processed between preview-image refresh events during
+      // stitching. Raise it to refresh the live preview less often (less UI/IO
+      // overhead); lower it for a more responsive live preview at higher
+      // overhead. Matches Core's coded default.
+      "PreviewUpdateInterval": 4,
+
+      // Maximum size, in megapixels, of the live preview image generated during
+      // stitching (the preview is downsampled to stay under this cap regardless
+      // of the final mosaic's real size). Raise it for a sharper preview at
+      // higher memory/CPU cost; lower it for a cheaper, coarser preview. Matches
+      // Core's coded default.
+      "MaxPreviewMegapixels": 32
+    }
+  }
+}
