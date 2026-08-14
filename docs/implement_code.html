@@ -73,6 +73,8 @@
     <li><a href="#entry-9">2026-08-14 (nhánh <code>Ver2_0</code>) — Task 0: hợp nhất bản Worker (<code>GenerateSampleManifestFromRects</code>, <code>DebugPreviewWriter</code>) vào lại repo, khôi phục <code>CalculateTimeDetail</code></a></li>
     <li><a href="#entry-10">2026-08-14 (nhánh <code>Ver2_0</code>) — Task 1: Bỏ ghi <code>processed_sample.tiff</code> khi <code>PreprocessMode=None</code></a></li>
     <li><a href="#entry-11">2026-08-14 (nhánh <code>Ver2_0</code>) — Task 2: <code>ISampleTileSource</code> + <code>DiskSampleTileSource</code> (refactor không đổi hành vi)</a></li>
+    <li><a href="#entry-12">2026-08-14 (nhánh <code>Ver2_0</code>) — Task 3: <code>InMemorySampleTileSource</code> (crop trực tiếp từ raster HALCON)</a></li>
+    <li><a href="#entry-13">2026-08-14 (nhánh <code>Ver2_0</code>) — Task 4: Overload <code>RunAlignStitch</code> nhận ảnh sample + rect; 2 bug <code>requireFiles</code> hardcoded phát hiện giữa chừng</a></li>
     <li><a href="#pitfalls">Bảng tổng hợp lỗi &amp; cách fix (tra nhanh)</a></li>
   </ol>
 </div>
@@ -596,6 +598,75 @@ return AlignStitchConfigMapper.CloneForRun(baseConfig, outputPath); // tự đ�
   </div>
 </div>
 
+<h2 id="entry-13">13. 2026-08-14 (nhánh <code>Ver2_0</code>) — Task 4: Overload <code>RunAlignStitch</code> nhận ảnh sample + rect; 2 bug <code>requireFiles</code> hardcoded phát hiện giữa chừng</h2>
+<div class="entry">
+  <div class="entry-meta"><span class="badge warn">Core + Façade</span> Phạm vi: <code>RDL.GerberStitch/Facade/GerberStitchFacade.cs</code>, <code>GerberStitching.Core/Arrangement/CapturedImageLoader.cs</code>, <code>GerberStitching.Core/Models/SampleManifest.cs</code>, <code>GerberStitching.Core/Mapping/WorkflowImageMap.cs</code>, <code>GerberStitching.Core/Alignment/AlignStitchWorkflowService.cs</code></div>
+
+  <h4>Bối cảnh</h4>
+  <p>Task 4 của plan <code>2026-08-14-in-memory-sample-crop-and-settings-file</code>, tiếp theo Task 2 (entry 11) và Task 3 (entry 12). Đây là chỗ đầu tiên <code>InMemorySampleTileSource</code> thực sự được dùng: thêm overload mới <code>GerberStitchFacade.RunAlignStitch(string sampleImagePath, IList&lt;TileRect&gt; tiles, string capturedImagesFolder, AlignStitchConfig options, string outputRoot, IProgress&lt;AlignStitchProgress&gt; progress, CancellationToken)</code> — dựng <code>SampleManifest</code> <strong>trong bộ nhớ</strong> từ raster + rect tường minh (không đọc/ghi manifest ra đĩa), rồi chạy qua <code>InMemorySampleTileSource</code> thay vì <code>DiskSampleTileSource</code>. Overload cũ nhận <code>manifestPath</code> phải giữ nguyên hành vi tuyệt đối — không đổi observable behavior, không đổi caller nào.</p>
+
+  <div class="note">
+    <strong>Task này mất 3 lượt (2 lần dừng lại xin xác nhận trước khi sửa) vì phát hiện cùng một loại bug 2 lần ở 2 vị trí khác nhau trong Core.</strong> Cả 2 lần đều KHÔNG tự quyết định sửa — đã dừng, báo cáo phát hiện, và chỉ sửa sau khi có xác nhận rõ ràng từ người dùng (ghi log chi tiết trong file report của task, không chỉ tóm tắt ở đây). Mục ghi lại toàn bộ 2 bug + fix để không ai lặp lại việc "hardcode true rồi quên gate theo requireFiles" ở vị trí thứ 3 trong tương lai.
+  </div>
+
+  <h3>13.1. Cấu trúc chính: tách <code>RunCoreAsync</code> dùng chung cho 2 overload</h3>
+  <p>Phần thân từ <code>var runId = DateTime.Now...</code> đến hết của overload <code>manifestPath</code> cũ được tách thành <code>private async Task&lt;AlignStitchResult&gt; RunCoreAsync(SampleManifest manifest, IList&lt;CapturedImageInfo&gt; images, string manifestPathForConfig, string capturedImagesFolder, AlignStitchConfig opts, string outputRoot, GerberViewer.Stitching.Alignment.ISampleTileSource tileSource, IProgress&lt;AlignStitchProgress&gt; progress, CancellationToken cancellationToken)</code>. Đúng 1 dòng đổi bên trong: <code>var service = new AlignStitchWorkflowService(null, null, tileSource);</code> (thay vì ctor 2 tham số cũ). Overload <code>manifestPath</code> cũ gọi <code>RunCoreAsync(..., tileSource: null, ...)</code> — <code>_externalTileSource == null</code> bên trong <code>AlignStitchWorkflowService</code>, rơi về <code>DiskSampleTileSource</code> y hệt trước khi tách. Đã đọc lại toàn bộ thân hàm cũ một lượt để xác nhận không có gì khác bị đổi ngoài dòng constructor này.</p>
+
+  <h3>13.2. Overload mới + <code>BuildInMemoryManifest</code></h3>
+  <p>Overload mới validate input (raster tồn tại, <code>tiles</code> không rỗng, thư mục ảnh chụp tồn tại), đọc kích thước raster bằng HALCON (<code>ReadImage</code> + <code>GetImageSize</code>, dispose trong <code>finally</code>) qua hàm riêng <code>ReadRasterSize</code>, dựng <code>SampleManifest</code> bằng <code>BuildInMemoryManifest</code> (mọi tile có <code>ExpectedPath = null</code> — không có file nào trên đĩa, <code>ModelGeneration = SampleModelGenerationMode.OnTheFly.ToString()</code>), map ảnh chụp qua <code>CapturedImageLoader().Load(capturedImagesFolder, manifest)</code> (overload nhận thẳng object, không đọc từ đĩa), dựng <code>InMemorySampleTileSource.CreateFromRaster(...)</code> trong khối <code>using</code>, rồi gọi <code>RunCoreAsync</code> với tile source đó. Khi <code>options.EmitDebugPreview</code>, ghi thêm tile + <code>sample_manifest.json</code> ra <code>DebugSampleTiles_&lt;timestamp&gt;/</code> (dùng <code>WriteValidated(..., false)</code>) để có thể replay lại run qua <code>DiskSampleTileSource</code> sau này.</p>
+
+  <h3>13.3. Bug #1 (đã sửa, có xác nhận): <code>SampleManifest.cs</code> — kiểm tra <code>ExpectedPath</code> không gate theo <code>requireFiles</code></h3>
+  <p><strong>Phát hiện:</strong> trước khi viết bất kỳ dòng code nào, đã trace toàn bộ call chain <code>SampleManifestValidator.Validate</code> theo đúng yêu cầu Step 5 của brief. <code>CapturedImageLoader.Load</code> gọi <code>Validate(manifest, true)</code> hardcoded. Đọc kỹ thân <code>Validate</code> (<code>SampleManifest.cs:158-260</code>) phát hiện dòng kiểm tra "có <code>ExpectedPath</code> hay không" <strong>không hề</strong> được gate bởi <code>requireFiles</code> — khác với 3 kiểm tra anh em cùng hàm (<code>ProcessedSamplePath</code>, <code>NccModelPath</code>, <code>ShapeModelPath</code> đều đúng dạng <code>requireFiles &amp;&amp; ...</code>):</p>
+  <pre><code>// TRƯỚC (bug)
+if (string.IsNullOrWhiteSpace(t.ExpectedPath))
+    result.Errors.Add("ExpectedPath missing at order " + t.OrderIndex + ".");
+else if (requireFiles &amp;&amp; !File.Exists(t.ExpectedPath))
+    result.Errors.Add(...);
+
+// SAU (fix)
+if (requireFiles &amp;&amp; string.IsNullOrWhiteSpace(t.ExpectedPath))
+    result.Errors.Add("ExpectedPath missing at order " + t.OrderIndex + ".");
+else if (requireFiles &amp;&amp; !string.IsNullOrWhiteSpace(t.ExpectedPath) &amp;&amp; !File.Exists(t.ExpectedPath))
+    result.Errors.Add(...);</code></pre>
+  <p>Nghĩa là <code>BuildInMemoryManifest</code> (mọi tile <code>ExpectedPath = null</code> theo đúng thiết kế của plan) sẽ <strong>luôn luôn</strong> fail validate bất kể giá trị <code>requireFiles</code> truyền vào là gì — dừng lại xin xác nhận thay vì tự sửa, vì file này (<code>Models/SampleManifest.cs</code>) nằm ngoài phạm vi file được giao ban đầu của task (chỉ <code>GerberStitchFacade.cs</code> + <code>CapturedImageLoader.cs</code>), và theo AGENTS.md §3.1 đổi hành vi pipeline trong <code>GerberStitching.Core</code> cần xác nhận trước.</p>
+  <p><strong>Được duyệt:</strong> vì (1) đúng dạng bug/inconsistency so với 3 check anh em cùng hàm, không phải chủ ý thiết kế, và (2) không có caller nào hiện có truyền <code>requireFiles: false</code> — grep xác nhận trước khi sửa — nên fix này <strong>trung tính hành vi tuyệt đối</strong> với mọi call path đang tồn tại, chỉ bắt đầu có tác dụng quan sát được trên đường đi mới do Task 4 thêm vào.</p>
+
+  <h3>13.4. Sửa <code>CapturedImageLoader.cs</code> — tách <code>Load(imageFolder, manifestPath)</code> / <code>Load(imageFolder, manifest)</code></h3>
+  <p>Thêm overload <code>public CapturedImageLoadResult Load(string imageFolder, SampleManifest manifest, ...)</code> chia sẻ logic mapping theo vị trí sort với overload đọc từ đĩa cũ, qua 1 private core 3-way: <code>Load(imageFolder, manifest, result, requireFiles, ...)</code>. Overload <code>manifestPath</code> cũ gọi core với <code>requireFiles: true</code> (không đổi hành vi cũ); overload <code>manifest</code> object mới gọi core với <code>requireFiles: false</code> — bắt buộc vì manifest do <code>BuildInMemoryManifest</code> tạo ra không có <code>ExpectedPath</code>. Overload mới hiện chỉ có đúng 1 caller (façade Task 4), không phải công tắc "nới lỏng validate" chung.</p>
+
+  <h3>13.5. Bug #2 (đã sửa, có xác nhận): <code>WorkflowImageMap.cs</code>/<code>AlignStitchWorkflowService.cs</code> — cùng loại bug, sâu hơn trong Core</h3>
+  <p><strong>Phát hiện:</strong> sau khi bug #1 được duyệt và sửa, chạy lại grep Step 5 mở rộng (<code>Validate(.*true)\|Validate(.*false)\|WriteValidated(.*true)\|WriteValidated(.*false)</code>) để đối chiếu <strong>mọi</strong> hit, không chỉ hit trong phạm vi file được giao. Phát hiện <code>WorkflowImageMap.cs:31</code>: <code>WorkflowImageMappingService.ValidateAndMap</code> cũng hardcode <code>SampleManifestValidator.Validate(manifest, true)</code> — và hàm này được <code>AlignStitchWorkflowService.RunCore</code> gọi <strong>vô điều kiện</strong> ở dòng đầu tiên (<code>:131</code>, trước cả <code>_tileSource = _externalTileSource ?? new DiskSampleTileSource(...)</code> — tức trước khi biết đang chạy disk hay in-memory). Vì <code>requireFiles</code> ở đây luôn <code>true</code>, fix ở 13.3 không đủ — overload mới vẫn sẽ ném <code>InvalidOperationException("Invalid sample manifest: ExpectedPath missing at order 0...")</code> ngay khi gọi <code>service.RunAsync(...)</code>, trước khi align bắt đầu.</p>
+  <p>Đây là vị trí thứ 2 của cùng 1 loại bug (hardcode <code>requireFiles:true</code> có từ trước khái niệm in-memory manifest, không được cập nhật). Lại dừng lại xin xác nhận vì fix đòi hỏi sửa <code>AlignStitchWorkflowService.cs</code> — file mà chính brief của task này đã cảnh báo phải cẩn trọng ("nếu thân hàm cũ đã lệch theo cách khó refactor sạch — dừng lại").</p>
+  <p><strong>Được duyệt:</strong> thread tham số <code>requireFiles</code> xuyên suốt, lấy giá trị từ đúng tín hiệu disk-vs-in-memory đã có sẵn 1 dòng dưới trong cùng hàm:</p>
+  <ul class="filelist">
+    <li><code>IWorkflowImageMappingService.ValidateAndMap</code> thêm tham số <code>bool requireFiles</code>: <code>WorkflowImageMap ValidateAndMap(SampleManifest manifest, IList&lt;CapturedImageInfo&gt; captured, bool requireFiles, CancellationToken cancellationToken)</code>.</li>
+    <li><code>WorkflowImageMappingService.ValidateAndMap</code> truyền thẳng <code>requireFiles</code> vào <code>SampleManifestValidator.Validate(manifest, requireFiles)</code> thay vì hardcode <code>true</code>.</li>
+    <li><code>AlignStitchWorkflowService.cs:137</code> (sau khi thêm comment, số dòng dịch): <code>var imageMap = _mappingService.ValidateAndMap(manifest, captured, _externalTileSource == null, ct);</code> — khớp đúng mẫu đã có ở dòng <code>_tileSource = _externalTileSource ?? new DiskSampleTileSource(...)</code> ngay bên dưới, và đúng tinh thần comment Task 3 đã ghi cạnh đó (guard <code>ModelGeneration=Pregenerate</code>) — cùng 1 tín hiệu <code>_externalTileSource == null/!= null</code> được dùng nhất quán cho cả 3 quyết định (tile source nào, có cho phép Pregenerate không, có yêu cầu file trên đĩa không).</li>
+    <li>Grep xác nhận <code>ValidateAndMap</code> chỉ có đúng 1 call site trong toàn bộ code (<code>AlignStitchWorkflowService.cs:137</code>) — không có nơi khác cần audit thêm.</li>
+  </ul>
+  <p><strong>Phạm vi sửa chỉ đúng 1 tham số này</strong> — không đổi gì khác trong <code>AlignStitchWorkflowService.cs</code>, theo đúng giới hạn được duyệt.</p>
+
+  <h3>13.6. Bài học chung cho 2 bug</h3>
+  <p>Cả 2 bug đều là cùng 1 pattern: <code>requireFiles</code> được hardcode <code>true</code> ở những chỗ được viết <strong>trước khi</strong> khái niệm "manifest không có file trên đĩa" (in-memory manifest, Task 3/4) tồn tại trong codebase, và không ai quay lại rà soát các call site cũ khi thêm khái niệm mới. Cả 2 lần fix đều theo đúng 1 công thức: (a) xác nhận đây là bug/inconsistency chứ không phải chủ ý (so với các check anh em cùng hàm), (b) xác nhận không caller nào hiện có bị ảnh hưởng (grep trước khi sửa), (c) chỉ sửa sau khi có xác nhận rõ ràng bằng lời từ người dùng — không tự quyết định dựa trên suy luận riêng, dù đã tự tin vào chẩn đoán. Toàn bộ quá trình trace + đề xuất + xác nhận của cả 2 bug được ghi chi tiết trong <code>.superpowers/sdd/2026-08-14-in-memory-sample-crop-and-settings-file/task-4-report.md</code> (không lặp lại toàn văn ở đây).</p>
+
+  <h4>Build gate</h4>
+  <p><span class="badge ok">PASS</span> — <code>msbuild RDL.GerberStitch.sln /p:Configuration=Debug /p:Platform=x64</code>, 4/4 project build thành công, <strong>0 error</strong> (chạy lại sau mỗi lần sửa, kể cả sau khi thread <code>requireFiles</code> qua <code>AlignStitchWorkflowService.cs</code>). Chỉ còn các warning <code>CS0618</code>/<code>CS0162</code>/<code>CS0067</code> đã tồn tại từ trước, không liên quan thay đổi này.</p>
+
+  <h3>13.7. Bảng đối chiếu <code>requireFiles</code> cuối cùng (Step 5 của brief, mở rộng)</h3>
+  <table>
+    <tr><th>Vị trí</th><th>Call</th><th>Có nằm trên đường overload mới không?</th><th>Trạng thái</th></tr>
+    <tr><td><code>GerberStitchFacade.cs</code> (debug manifest)</td><td><code>WriteValidated(..., debugManifest, false)</code></td><td>Có, khi <code>EmitDebugPreview</code></td><td>OK — đã <code>false</code></td></tr>
+    <tr><td><code>Imaging/SampleTileGenerator.cs:138,144</code></td><td><code>WriteValidated(..., false)</code> / <code>Validate(..., true)</code></td><td>Không — chỉ trên đường <code>GenerateSampleManifest*</code></td><td>Ngoài phạm vi, không ảnh hưởng</td></tr>
+    <tr><td><code>Stitching/HalconProjectiveMosaicRebasedEngine.cs:29,72</code></td><td><code>Validate(inputs, ...)</code></td><td>Không — <code>Validate</code> khác, không liên quan <code>SampleManifestValidator</code></td><td>False positive của grep pattern</td></tr>
+    <tr><td><code>Arrangement/CapturedImageLoader.cs</code> (sau fix)</td><td><code>Validate(manifest, requireFiles)</code> — <code>true</code> từ nhánh <code>manifestPath</code>, <code>false</code> từ nhánh <code>manifest</code> object</td><td>Có</td><td>OK — đã reconcile (13.4)</td></tr>
+    <tr><td><code>Mapping/WorkflowImageMap.cs:31</code></td><td><code>Validate(manifest, requireFiles)</code> — trước là hardcode <code>true</code></td><td>Có, cả 2 overload qua <code>RunCoreAsync</code> → <code>service.RunAsync</code></td><td>OK — đã reconcile (13.5), lấy từ <code>_externalTileSource == null</code></td></tr>
+  </table>
+
+  <div class="note">
+    <strong>Verification gate thật (user tự chạy, chưa thực hiện trong lượt này).</strong> Chạy overload mới qua <code>RDL.GerberStitch.Harness.exe</code> trên lô tham chiếu, kỳ vọng pose từng tile trùng bit-by-bit với <code>AlignStitch_20260813_154108</code>, <code>aligned=54, blank=26, failed=0</code>, <code>PeakWorkingSetMB</code> ≤ 7185. Build gate ở trên chỉ chứng minh code biên dịch đúng và (qua đọc lại thủ công) logic không còn ném exception ở bước validate — <strong>không</strong> chứng minh pose không lệch hay ngân sách bộ nhớ đạt.
+  </div>
+</div>
+
 <!-- ============================================================ -->
 <h2 id="pitfalls">6. Bảng tổng hợp lỗi &amp; cách fix (tra nhanh)</h2>
 <table>
@@ -609,6 +680,7 @@ return AlignStitchConfigMapper.CloneForRun(baseConfig, outputPath); // tự đ�
   <tr><td><code>CS1061: 'AlignStitchConfig' does not contain 'OutputFormat'</code></td><td>Doc kế hoạch cũ (<code>Phase1_Task04.md</code>) có trường này, nhưng lớp thật (Task 1.2) không giữ nó — tên file output do Core tự đặt cứng, không cấu hình được</td><td>Bỏ dòng đọc <code>OutputFormat</code> khỏi ini reader; đối chiếu doc kế hoạch với code thật <strong>trước</strong> khi viết, không tin doc cũ nguyên văn</td><td><a href="#entry-5">5</a></td></tr>
   <tr><td>Field mới trên <code>AlignStitchConfig</code> âm thầm bị reset về default khi chạy thật</td><td><code>AlignStitchConfigMapper.CloneForRun</code> build lại config mới từ stage options, không copy field phẳng nào không có bản sao ở stage options — trong khi <code>BuildCoreConfig</code> (façade) luôn gọi <code>CloneForRun</code> ở bước cuối</td><td>Khi thêm field phẳng mới không thuộc stage nào, phải copy tay trong <code>CloneForRun</code>; kiểm tra ngay chỗ này mỗi khi thêm field mới vào <code>AlignStitchConfig</code></td><td><a href="#entry-6">6</a></td></tr>
   <tr><td><code>CS0246: type or namespace 'ISampleTileSource' could not be found</code> dù file/namespace đúng</td><td>Old-style <code>.csproj</code> liệt kê tường minh từng file qua <code>&lt;Compile Include&gt;</code> — không tự glob thư mục, file mới tạo không tự được biên dịch</td><td>Thêm dòng <code>&lt;Compile Include="..." /&gt;</code> cho mọi file <code>.cs</code> mới trong <code>GerberStitching.Core.csproj</code>/<code>RDL.GerberStitch.csproj</code></td><td><a href="#entry-11">11</a></td></tr>
+  <tr><td><code>InvalidOperationException: Invalid sample manifest: ExpectedPath missing at order N</code> khi chạy manifest dựng trong bộ nhớ (không có file trên đĩa)</td><td><code>SampleManifestValidator.Validate</code> có nhiều call site hardcode <code>requireFiles: true</code> viết từ trước khi khái niệm in-memory manifest tồn tại; riêng dòng kiểm tra "<code>ExpectedPath</code> có rỗng không" còn không hề gate theo <code>requireFiles</code> (khác 3 check anh em cùng hàm) — 2 vị trí phát hiện: <code>SampleManifest.cs:221-222</code> và <code>WorkflowImageMap.cs:31</code> (gọi từ <code>AlignStitchWorkflowService.cs</code> vô điều kiện)</td><td>Gate check theo <code>requireFiles</code>; thread <code>requireFiles</code> xuyên <code>ValidateAndMap</code>, lấy giá trị từ <code>_externalTileSource == null</code> (disk giữ <code>true</code>, in-memory dùng <code>false</code>) — cả 2 fix đều xin xác nhận người dùng trước khi sửa vì ngoài phạm vi file ban đầu của task</td><td><a href="#entry-13">13</a></td></tr>
 </table>
 
 <footer>

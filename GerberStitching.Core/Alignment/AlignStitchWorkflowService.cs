@@ -128,7 +128,13 @@ namespace GerberViewer.Stitching.Alignment
             var swValidate = new System.Diagnostics.Stopwatch();
             var recoveredCount = 0;
             ct.ThrowIfCancellationRequested();
-            var imageMap = _mappingService.ValidateAndMap(manifest, captured, ct);
+            // [Claude] [Change time: 2026-08-14] [Purpose: requireFiles mirrors the disk-vs-in-memory split made one
+            // line below for the tile source itself (_externalTileSource ?? new DiskSampleTileSource(...)). The disk
+            // path (_externalTileSource == null) keeps requireFiles:true, unchanged from before this parameter
+            // existed. The in-memory path (_externalTileSource != null) needs requireFiles:false because its
+            // SampleManifest tiles never have ExpectedPath set - see InMemorySampleTileSource / GerberStitchFacade's
+            // BuildInMemoryManifest.]
+            var imageMap = _mappingService.ValidateAndMap(manifest, captured, _externalTileSource == null, ct);
             var report = ProcessingReport.Create(config, manifest);
             report.EffectiveConfig = AlignStitchConfigMapper.CreateSnapshot(config);
             report.Messages.Add("Neighbor graph modes: FailureRecovery=" +

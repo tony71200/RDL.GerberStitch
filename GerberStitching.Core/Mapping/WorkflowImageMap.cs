@@ -16,8 +16,13 @@ namespace GerberViewer.Stitching.Mapping
 
     public interface IWorkflowImageMappingService
     {
+        // [Claude] [Change time: 2026-08-14] [Purpose: requireFiles used to be hardcoded true, which predates the
+        // in-memory-manifest concept (InMemorySampleTileSource, Task 3/4) and unconditionally rejected any manifest
+        // whose tiles have no ExpectedPath on disk. Threading the flag through lets AlignStitchWorkflowService
+        // derive it from _externalTileSource == null, mirroring the same disk-vs-in-memory split it already makes
+        // one line below for DiskSampleTileSource.]
         WorkflowImageMap ValidateAndMap(SampleManifest manifest, IList<CapturedImageInfo> captured,
-                                        CancellationToken cancellationToken);
+                                        bool requireFiles, CancellationToken cancellationToken);
     }
 
     // [Tony] [Change time: 2026-07-26] [Purpose: Keep validation and the canonical OrderIndex mapping out of workflow
@@ -25,10 +30,10 @@ namespace GerberViewer.Stitching.Mapping
     public sealed class WorkflowImageMappingService : IWorkflowImageMappingService
     {
         public WorkflowImageMap ValidateAndMap(SampleManifest manifest, IList<CapturedImageInfo> captured,
-                                               CancellationToken cancellationToken)
+                                               bool requireFiles, CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var validation = SampleManifestValidator.Validate(manifest, true);
+            var validation = SampleManifestValidator.Validate(manifest, requireFiles);
             if (!validation.IsValid)
                 throw new InvalidOperationException("Invalid sample manifest: " + string.Join("; ", validation.Errors));
             if (captured == null || captured.Count != manifest.Tiles.Count)

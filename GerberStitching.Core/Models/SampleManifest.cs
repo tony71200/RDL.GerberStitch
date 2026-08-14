@@ -218,9 +218,16 @@ namespace GerberViewer.Stitching.Models
                 if (t.ExpectedX + t.Width > manifest.ProcessedWidth ||
                     t.ExpectedY + t.Height > manifest.ProcessedHeight)
                     result.Errors.Add("Tile outside processed image at order " + t.OrderIndex + ".");
-                if (string.IsNullOrWhiteSpace(t.ExpectedPath))
+                // [Claude] [Change time: 2026-08-14] [Purpose: Gate the presence check on requireFiles too, matching
+                // the three sibling checks in this method (ProcessedSamplePath, NccModelPath, ShapeModelPath), which
+                // all correctly skip when requireFiles is false. This check alone was unconditional, so a manifest
+                // built in memory (ExpectedPath intentionally null - see InMemorySampleTileSource) could never pass
+                // validation regardless of requireFiles. No existing caller passes requireFiles:false, so this is
+                // behavior-neutral for every call path that exists today; it only becomes observable on the new
+                // in-memory manifest path added in Task 4 of the in-memory-sample-crop-and-settings-file plan.]
+                if (requireFiles && string.IsNullOrWhiteSpace(t.ExpectedPath))
                     result.Errors.Add("ExpectedPath missing at order " + t.OrderIndex + ".");
-                else if (requireFiles && !File.Exists(t.ExpectedPath))
+                else if (requireFiles && !string.IsNullOrWhiteSpace(t.ExpectedPath) && !File.Exists(t.ExpectedPath))
                     result.Errors.Add("ExpectedPath unreadable/missing at order " + t.OrderIndex + ": " +
                                       t.ExpectedPath);
                 var exactZero = string.Equals(t.SampleContentClass, "ExactZero", StringComparison.Ordinal);

@@ -482,6 +482,160 @@ namespace RDL.GerberStitch.Facade
             if (!loadResult.Succeeded)
                 return AlignStitchResult.Fail("Captured image mapping failed: " + string.Join("; ", loadResult.Errors));
 
+            // tileSource: null -> RunCoreAsync builds a plain AlignStitchWorkflowService(null, null), which falls
+            // back to DiskSampleTileSource internally (_externalTileSource == null). Behavior is unchanged from
+            // before this helper was extracted.
+            return await RunCoreAsync(manifest, loadResult.Images, manifestPath, capturedImagesFolder, opts,
+                                      outputRoot, null, progress, cancellationToken);
+        }
+
+        /// <summary>
+        /// Runs Align -> Pose Graph -> Stitch for a whole lot, cropping the sample tiles from the sample raster in
+        /// memory. No sample tiles or manifest are written to disk unless options.EmitDebugPreview is set.
+        /// </summary>
+        /// <param name="sampleImagePath">Sample raster (.tif/.tiff/.png/.bmp/.jpg). Gerber source files are rejected.</param>
+        /// <param name="tiles">Explicit crop rectangles from the Master, one per captured image.</param>
+        public async Task<AlignStitchResult> RunAlignStitch(
+            string sampleImagePath, IList<TileRect> tiles, string capturedImagesFolder,
+            AlignStitchConfig options, string outputRoot,
+            IProgress<AlignStitchProgress> progress = null,
+            CancellationToken cancellationToken = default(CancellationToken))
+        {
+            var opts = options ?? new AlignStitchConfig();
+            try { opts.Validate(); }
+            catch (Exception ex) { return AlignStitchResult.Fail("Invalid options: " + ex.Message); }
+
+            if (string.IsNullOrWhiteSpace(sampleImagePath) || !File.Exists(sampleImagePath))
+                return AlignStitchResult.Fail("Sample image not found: " + sampleImagePath);
+            if (tiles == null || tiles.Count == 0)
+                return AlignStitchResult.Fail("Tile rect list is empty.");
+            if (string.IsNullOrWhiteSpace(capturedImagesFolder) || !Directory.Exists(capturedImagesFolder))
+                return AlignStitchResult.Fail("Captured images folder not found: " + capturedImagesFolder);
+            if (string.IsNullOrWhiteSpace(outputRoot))
+                return AlignStitchResult.Fail("Output root is required.");
+
+            int sourceWidth, sourceHeight;
+            try
+            {
+                ReadRasterSize(sampleImagePath, out sourceWidth, out sourceHeight);
+            }
+            catch (Exception ex)
+            {
+                return AlignStitchResult.Fail("Sample image unreadable: " + ex.Message);
+            }
+
+            var manifest = BuildInMemoryManifest(sampleImagePath, tiles, sourceWidth, sourceHeight);
+
+            // Load(imageFolder, manifest) validates with requireFiles:false internally -- this manifest's tiles
+            // have ExpectedPath == null by design (see BuildInMemoryManifest), and nothing on this path reads it.
+            var loadResult = new CapturedImageLoader().Load(capturedImagesFolder, manifest);
+            if (!loadResult.Succeeded)
+                return AlignStitchResult.Fail("Captured image mapping failed: " +
+                                              string.Join("; ", loadResult.Errors));
+
+            var coreRects = tiles.OrderBy(t => t.OrderIndex)
+                                 .Select(t => new GerberViewer.Stitching.Alignment.SampleTileRect
+                                 {
+                                     OrderIndex = t.OrderIndex, Row = t.Row, Column = t.Column,
+                                     X = t.X, Y = t.Y, Width = t.Width, Height = t.Height
+                                 })
+                                 .ToList();
+
+            var debugTileDir = opts.EmitDebugPreview
+                                   ? Path.Combine(outputRoot, "DebugSampleTiles_" +
+                                                              DateTime.Now.ToString("yyyyMMdd_HHmmss"))
+                                   : null;
+            if (debugTileDir != null)
+            {
+                // Spec 3.6: in debug mode the tiles AND a manifest land on disk, so a run can be replayed
+                // through the disk tile source. WriteValidated uses requireFiles:false because ExpectedPath is
+                // filled in just below only for the copies InMemorySampleTileSource.CreateFromRaster is about to
+                // write into debugTileDir (it writes the same file names) -- the in-memory run itself does not
+                // depend on any of these files existing.
+                Directory.CreateDirectory(debugTileDir);
+                var debugManifest = BuildInMemoryManifest(sampleImagePath, tiles, sourceWidth, sourceHeight);
+                foreach (var t in debugManifest.Tiles)
+                {
+                    t.ExpectedPath = Path.Combine(
+                        debugTileDir, string.Format("Sample_R{0:00}_C{1:00}_O{2:000}.tiff",
+                                                    t.Row, t.Column, t.OrderIndex));
+                }
+                SampleManifestSerializer.WriteValidated(
+                    Path.Combine(debugTileDir, "sample_manifest.json"), debugManifest, false);
+            }
+
+            using (var tileSource = GerberViewer.Stitching.Alignment.InMemorySampleTileSource.CreateFromRaster(
+                       sampleImagePath, coreRects, debugTileDir, cancellationToken))
+            {
+                return await RunCoreAsync(manifest, loadResult.Images, null, capturedImagesFolder, opts,
+                                          outputRoot, tileSource, progress, cancellationToken);
+            }
+        }
+
+        private static void ReadRasterSize(string path, out int width, out int height)
+        {
+            HObject image = null;
+            HTuple w = null, h = null;
+            try
+            {
+                HOperatorSet.ReadImage(out image, path);
+                HOperatorSet.GetImageSize(image, out w, out h);
+                width = w.I;
+                height = h.I;
+            }
+            finally
+            {
+                if (w != null) w.Dispose();
+                if (h != null) h.Dispose();
+                if (image != null && image.IsInitialized()) image.Dispose();
+            }
+        }
+
+        // [Claude] [Change time: 2026-08-14] [Purpose: The Worker no longer writes a manifest to disk, but Core still
+        // needs a SampleManifest for tile geometry. ExpectedPath stays null: nothing reads it once the tile source is
+        // in-memory, and SampleManifestSerializer.Validate is called with requireFiles:false accordingly.]
+        private static SampleManifest BuildInMemoryManifest(string sampleImagePath, IList<TileRect> tiles,
+                                                            int sourceWidth, int sourceHeight)
+        {
+            var ordered = tiles.OrderBy(t => t.OrderIndex).ToList();
+            return new SampleManifest
+            {
+                ManifestVersion = SampleManifest.CurrentVersion,
+                RootDirectory = Path.GetDirectoryName(sampleImagePath),
+                SourceRasterPath = sampleImagePath,
+                ProcessedSamplePath = sampleImagePath,
+                SourceWidth = sourceWidth,
+                SourceHeight = sourceHeight,
+                ProcessedWidth = sourceWidth,
+                ProcessedHeight = sourceHeight,
+                CreatedUtc = DateTime.Now,
+                ModelGeneration = SampleModelGenerationMode.OnTheFly.ToString(),
+                Tiles = ordered.Select(t => new SampleTileInfo
+                {
+                    OrderIndex = t.OrderIndex,
+                    Row = t.Row,
+                    Column = t.Column,
+                    ExpectedX = t.X,
+                    ExpectedY = t.Y,
+                    Width = t.Width,
+                    Height = t.Height,
+                    ExpectedPath = null
+                }).ToList()
+            };
+        }
+
+        /// <summary>
+        /// Shared implementation for both RunAlignStitch overloads: build the Core config, run Align -> PoseGraph ->
+        /// Stitch, publish the run directory, and map the result. tileSource is null for the manifest-path overload
+        /// (falls back to DiskSampleTileSource inside AlignStitchWorkflowService) and non-null for the in-memory
+        /// raster+rects overload.
+        /// </summary>
+        private async Task<AlignStitchResult> RunCoreAsync(
+            SampleManifest manifest, IList<CapturedImageInfo> images, string manifestPathForConfig,
+            string capturedImagesFolder, AlignStitchConfig opts, string outputRoot,
+            GerberViewer.Stitching.Alignment.ISampleTileSource tileSource,
+            IProgress<AlignStitchProgress> progress, CancellationToken cancellationToken)
+        {
             var runId = DateTime.Now.ToString("yyyyMMdd_HHmmss");
             var finalRunDir = Path.Combine(outputRoot, "AlignStitch_" + runId);
             var creatingDir = Path.Combine(finalRunDir, ".creating");
@@ -490,7 +644,7 @@ namespace RDL.GerberStitch.Facade
             var stopwatch = Stopwatch.StartNew();
             try
             {
-                var coreConfig = BuildCoreConfig(opts, manifestPath, capturedImagesFolder, creatingDir);
+                var coreConfig = BuildCoreConfig(opts, manifestPathForConfig, capturedImagesFolder, creatingDir);
 
                 IProgress<WorkflowProgress> coreProgress = null;
                 if (progress != null)
@@ -510,9 +664,10 @@ namespace RDL.GerberStitch.Facade
                 }
 
                 // Use the Core default aligner and manual provider, matching the production full-workflow path.
-                var service = new AlignStitchWorkflowService(null, null);
+                // tileSource is passed straight through; null makes the service fall back to DiskSampleTileSource.
+                var service = new AlignStitchWorkflowService(null, null, tileSource);
                 var workflowResult =
-                    await service.RunAsync(coreConfig, manifest, loadResult.Images, coreProgress, cancellationToken);
+                    await service.RunAsync(coreConfig, manifest, images, coreProgress, cancellationToken);
                 cancellationToken.ThrowIfCancellationRequested();
 
                 var report = workflowResult.Report;
