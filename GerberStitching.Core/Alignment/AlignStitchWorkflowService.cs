@@ -48,6 +48,8 @@ namespace GerberViewer.Stitching.Alignment
         private readonly IWorkflowImageMappingService _mappingService;
         private readonly WorkflowStitchingService _stitchingService;
         private WorkflowImageCache _imageCache;
+        private ISampleTileSource _tileSource;
+        private readonly ISampleTileSource _externalTileSource;
 
         public AlignStitchWorkflowService(Func<ISampleAligner> alignerFactory,
                                           IManualAlignmentProvider manualProvider = null,
@@ -58,6 +60,14 @@ namespace GerberViewer.Stitching.Alignment
             _matcherFactory = matcherFactory ?? new MatcherFactory();
             _mappingService = new WorkflowImageMappingService();
             _stitchingService = new WorkflowStitchingService();
+        }
+
+        public AlignStitchWorkflowService(Func<ISampleAligner> alignerFactory,
+                                          IManualAlignmentProvider manualProvider,
+                                          ISampleTileSource tileSource)
+            : this(alignerFactory, manualProvider)
+        {
+            _externalTileSource = tileSource;
         }
 
         public Task<AlignStitchWorkflowResult> RunAsync(AlignStitchConfig config, SampleManifest manifest,
@@ -142,6 +152,9 @@ namespace GerberViewer.Stitching.Alignment
             using (_imageCache = new WorkflowImageCache()) using (
                 var aligner = _alignerFactory == null ? null : _alignerFactory())
             {
+                // [Claude] [Change time: 2026-08-14] [Purpose: Default to the disk source so this refactor changes
+                // nothing. Task 3 injects InMemorySampleTileSource for the Worker path.]
+                _tileSource = _externalTileSource ?? new DiskSampleTileSource(tileByOrder, _imageCache);
                 for (int i = 0; i < ordered.Count; i++)
                 {
                     ct.ThrowIfCancellationRequested();
@@ -264,6 +277,9 @@ namespace GerberViewer.Stitching.Alignment
                          ? ("tiles=" + ordered.Count)
                          : "skipped (ReconcileAllMatchedTiles=false)");
             }
+            // Only dispose a source this service created; an injected one belongs to the caller.
+            if (_externalTileSource == null && _tileSource != null) _tileSource.Dispose();
+            _tileSource = null;
             _imageCache = null;
 
             ct.ThrowIfCancellationRequested();
@@ -524,7 +540,7 @@ namespace GerberViewer.Stitching.Alignment
             }
             if (aligner == null)
                 return SolveDirectWithMatcherFactory(config, tile, cap, report, ct, metrics);
-            using (var sample = LoadBitmap(tile.ExpectedPath)) using (var img = LoadBitmap(cap.FilePath))
+            using (var sample = _tileSource.GetTileBitmap(tile.OrderIndex)) using (var img = LoadBitmap(cap.FilePath))
             {
                 var ctx = new SampleAlignmentContext { SampleTileId = cap.OrderIndex.ToString(),
                                                        SampleNccModelPath = tile.NccModelPath,
@@ -568,7 +584,7 @@ namespace GerberViewer.Stitching.Alignment
                 return WithContent(TileWorkflowState.From(cap, null, PoseSource.Failed, null, ex.Message), metrics);
             }
             var refinement = AlignStitchConfigMapper.ToDirectRefinementMatcherKind(config);
-            var directRequest = new MatchRequest { ReferenceImage = _imageCache.GetMono8(tile.ExpectedPath),
+            var directRequest = new MatchRequest { ReferenceImage = _tileSource.GetTile(tile.OrderIndex),
                                                    MovingImage = _imageCache.GetDirectMovingMono8(
                                                        cap.FilePath, config.DirectAlignment.Preprocessing.Contrast),
                                                    InitialMovingToReferenceTransform = Transform2D.Identity,
@@ -950,7 +966,7 @@ namespace GerberViewer.Stitching.Alignment
         private void CalculateSampleOverlapMetrics(SampleTileInfo targetTile, SampleTileInfo anchorTile,
                                                    string direction, out double foregroundRatio, out double edgeDensity)
         {
-            var sample = _imageCache.GetMono8(targetTile.ExpectedPath);
+            var sample = _tileSource.GetTile(targetTile.OrderIndex);
             var roi = TargetRoi(sample, anchorTile, targetTile, direction);
             using (var crop = CropCopy(sample, roi)) using (var foreground = new Mat()) using (var edges = new Mat())
             {
@@ -1358,7 +1374,7 @@ namespace GerberViewer.Stitching.Alignment
                 var a = config.LowTextureStdDevThreshold;
             }
 #endif
-            return new SampleTileContentAnalyzer().Analyze(_imageCache.GetMono8(tile.ExpectedPath),
+            return new SampleTileContentAnalyzer().Analyze(_tileSource.GetTile(tile.OrderIndex),
                                                            config.LowTextureStdDevThreshold);
         }
 

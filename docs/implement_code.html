@@ -72,6 +72,7 @@
     <li><a href="#entry-8">2026-08-11 (nhánh <code>Ver1_2</code>) — Thêm <code>MaxAbsRotationDeg</code>/Policy (<code>AllowCoarseOnlyAcceptance</code>, <code>AllowRefinementFromExpectedWhenCoarseFails</code>) vào façade + ini</a></li>
     <li><a href="#entry-9">2026-08-14 (nhánh <code>Ver2_0</code>) — Task 0: hợp nhất bản Worker (<code>GenerateSampleManifestFromRects</code>, <code>DebugPreviewWriter</code>) vào lại repo, khôi phục <code>CalculateTimeDetail</code></a></li>
     <li><a href="#entry-10">2026-08-14 (nhánh <code>Ver2_0</code>) — Task 1: Bỏ ghi <code>processed_sample.tiff</code> khi <code>PreprocessMode=None</code></a></li>
+    <li><a href="#entry-11">2026-08-14 (nhánh <code>Ver2_0</code>) — Task 2: <code>ISampleTileSource</code> + <code>DiskSampleTileSource</code> (refactor không đổi hành vi)</a></li>
     <li><a href="#pitfalls">Bảng tổng hợp lỗi &amp; cách fix (tra nhanh)</a></li>
   </ol>
 </div>
@@ -512,6 +513,54 @@ return AlignStitchConfigMapper.CloneForRun(baseConfig, outputPath); // tự đ�
 </div>
 
 <!-- ============================================================ -->
+<h2 id="entry-11">11. 2026-08-14 (nhánh <code>Ver2_0</code>) — Task 2: <code>ISampleTileSource</code> + <code>DiskSampleTileSource</code> (refactor không đổi hành vi)</h2>
+<div class="entry">
+  <div class="entry-meta"><span class="badge ok">Core</span> Phạm vi: <code>GerberStitching.Core/Alignment/ISampleTileSource.cs</code> (mới), <code>GerberStitching.Core/Alignment/DiskSampleTileSource.cs</code> (mới), <code>GerberStitching.Core/Alignment/AlignStitchWorkflowService.cs</code>, <code>GerberStitching.Core/GerberStitching.Core.csproj</code></div>
+
+  <h4>Bối cảnh</h4>
+  <p>Task 2 của plan <code>2026-08-14-in-memory-sample-crop-and-settings-file</code>. Mục tiêu cuối cùng của plan là ngừng crop sample tile ra đĩa và crop trực tiếp từ ảnh raster lớn trong bộ nhớ (HALCON). Task 2 chỉ làm bước đầu: tách một abstraction <code>ISampleTileSource</code> giữa <code>AlignStitchWorkflowService</code> và "tile ảnh lấy từ đâu", cung cấp <code>DiskSampleTileSource</code> tái tạo <strong>y hệt</strong> hành vi hiện có (đọc <code>tile.ExpectedPath</code> qua <code>WorkflowImageCache</code> có sẵn). Task 3 (chưa làm) sẽ thêm <code>InMemorySampleTileSource</code>. Task này <strong>không được đổi hành vi gì</strong> — plan gọi đây là "điểm kiểm tra an toàn": nếu pose lệch sau task này thì lỗi ở refactor, không phải ở cơ chế crop mới sau này.</p>
+
+  <h3>11.1. 2 file mới</h3>
+  <ul class="filelist">
+    <li><code>ISampleTileSource.cs</code> — interface <code>public</code> (namespace <code>GerberViewer.Stitching.Alignment</code>), 2 phương thức: <code>Mat GetTile(int orderIndex)</code> và <code>Bitmap GetTileBitmap(int orderIndex)</code>, kế thừa <code>IDisposable</code>.</li>
+    <li><code>DiskSampleTileSource.cs</code> — <code>internal sealed class</code> implement interface trên, ctor nhận <code>IDictionary&lt;int, SampleTileInfo&gt; tileByOrder</code> + <code>WorkflowImageCache cache</code> (không sở hữu cache — workflow vẫn là chủ sở hữu và dispose nó như cũ). <code>GetTile</code> gọi <code>_cache.GetMono8(PathFor(orderIndex))</code>, <code>GetTileBitmap</code> gọi <code>new Bitmap(PathFor(orderIndex))</code> — cả hai tra <code>tile.ExpectedPath</code> qua <code>_tileByOrder</code>.</li>
+  </ul>
+
+  <h3>11.2. Vì sao <code>ISampleTileSource</code> là <code>public</code> nhưng <code>DiskSampleTileSource</code> là <code>internal</code></h3>
+  <p><code>ISampleTileSource</code> phải <code>public</code> vì Task 4 sẽ để façade (<code>RDL.GerberStitch</code>, assembly khác) truyền một implementation đã chọn vào ctor <code>AlignStitchWorkflowService</code> — assembly khác không thể tham chiếu một interface <code>internal</code>. Đây là ngoại lệ có ý thức với AGENTS.md §3.1 ("không rò kiểu nội bộ Core ra khỏi façade"): bản thân façade <strong>không</strong> phơi <code>ISampleTileSource</code> ra API công khai của nó, chỉ dùng nội bộ để dựng workflow — biên façade vẫn giữ nguyên phía "output" (Master/Worker chỉ thấy <code>Facade.*</code>), chỉ nới phía "input" cho đúng 1 kiểu cần thiết. <code>DiskSampleTileSource</code> giữ <code>internal</code> vì chỉ Core tự dùng nó làm default — không ai ngoài Core cần biết chi tiết implementation này.</p>
+
+  <h3>11.3. Vì sao có 2 phương thức thay vì 1</h3>
+  <p><code>GetTile</code> trả <code>Mat</code> <strong>không sở hữu</strong> (caller không được dispose, còn hiệu lực tới khi source bị dispose) — dùng cho 3 trong 4 call site, đúng như cách <code>WorkflowImageCache.GetMono8</code> hoạt động hôm nay (cache tự quản lý vòng đời). <code>GetTileBitmap</code> trả <code>Bitmap</code> <strong>có sở hữu</strong> (caller phải dispose) — chỉ dùng cho 1 call site duy nhất (nhánh <code>aligner != null</code>, đường legacy <code>ISampleAligner</code> nhận kiểu <code>System.Drawing.Bitmap</code>), và call site đó đang bọc biến trong <code>using</code>. Gộp 2 phương thức thành 1 sẽ buộc chọn 1 trong 2 model sở hữu — hoặc double-dispose (nếu source cũng giữ tham chiếu tới cùng object mà caller lại dispose), hoặc rò <code>Mat</code>/<code>Bitmap</code> ở 3 call site kia (nếu source không sở hữu gì mà bắt caller luôn dispose). Giữ 2 phương thức tách bạch đúng 2 model sở hữu khác nhau, khớp chính xác hành vi <code>WorkflowImageCache</code>/<code>LoadBitmap</code> đang có.</p>
+
+  <h3>11.4. Các điểm sửa trong <code>AlignStitchWorkflowService.cs</code></h3>
+  <p>Line số ở brief (kế hoạch viết trước khi Task 0 merge — xem entry 9) đã lệch so với code thật; đối chiếu lại bằng grep trước khi sửa, vị trí thật:</p>
+  <ul class="filelist">
+    <li><strong>Field + ctor overload (gần dòng 50-68):</strong> thêm <code>private ISampleTileSource _tileSource;</code> và <code>private readonly ISampleTileSource _externalTileSource;</code> cạnh <code>_imageCache</code>. Giữ nguyên ctor cũ (3 tham số, <code>manualProvider</code>/<code>matcherFactory</code> optional) — không caller nào phải sửa. Thêm ctor overload mới <code>AlignStitchWorkflowService(Func&lt;ISampleAligner&gt;, IManualAlignmentProvider, ISampleTileSource)</code>, gọi <code>: this(alignerFactory, manualProvider)</code> rồi gán <code>_externalTileSource = tileSource;</code>.</li>
+    <li><strong>Khởi tạo (trong <code>using (_imageCache = new WorkflowImageCache()) using (...)</code>, sau khi <code>tileByOrder</code> đã dựng ở trên):</strong> thêm <code>_tileSource = _externalTileSource ?? new DiskSampleTileSource(tileByOrder, _imageCache);</code> ngay đầu block <code>using</code> — default về disk source nếu không ai inject.</li>
+    <li><strong>Dọn (ngay trước <code>_imageCache = null;</code>, sau khi khối <code>using</code> đóng):</strong> thêm <code>if (_externalTileSource == null &amp;&amp; _tileSource != null) _tileSource.Dispose(); _tileSource = null;</code> — chỉ dispose source do chính service tạo ra, không đụng vào source được inject từ ngoài (thuộc sở hữu caller).</li>
+    <li><strong>Call site 1 — nhánh <code>aligner != null</code> (dòng 527, brief ghi <code>:520</code>):</strong> <code>LoadBitmap(tile.ExpectedPath)</code> → <code>_tileSource.GetTileBitmap(tile.OrderIndex)</code>, giữ nguyên <code>using</code> bao ngoài (biến vẫn có sở hữu).</li>
+    <li><strong>Call site 2 — nhánh <code>SolveDirectWithMatcherFactory</code> (dòng 571, brief ghi <code>:564</code>):</strong> <code>ReferenceImage = _imageCache.GetMono8(tile.ExpectedPath)</code> → <code>ReferenceImage = _tileSource.GetTile(tile.OrderIndex)</code>.</li>
+    <li><strong>Call site 3 — <code>CalculateSampleOverlapMetrics</code> (Neighbor Recovery, dòng 953, brief ghi <code>:946</code>):</strong> <code>_imageCache.GetMono8(targetTile.ExpectedPath)</code> → <code>_tileSource.GetTile(targetTile.OrderIndex)</code>.</li>
+    <li><strong>Call site 4 — <code>GetSampleContent</code> (blank detection, dòng 1361, brief ghi <code>:1354</code>):</strong> <code>_imageCache.GetMono8(tile.ExpectedPath)</code> → <code>_tileSource.GetTile(tile.OrderIndex)</code>.</li>
+    <li><strong>Không đụng</strong> 2 lệnh gọi <code>_imageCache.GetMono8(anchorCap.FilePath)</code>/<code>(target.FilePath)</code> ở khu vực Neighbor Recovery (~dòng 881-882) — đó là ảnh <strong>chụp</strong> (captured), không phải tile mẫu, đúng như brief chỉ rõ.</li>
+  </ul>
+
+  <h3>11.5. Sự cố build gặp phải — thiếu dòng <code>&lt;Compile Include&gt;</code></h3>
+  <p>Build lần đầu báo <code>CS0246: The type or namespace name 'ISampleTileSource' could not be found</code> dù file đã tạo đúng và namespace đúng. Nguyên nhân: <code>GerberStitching.Core.csproj</code> là old-style csproj, liệt kê tường minh từng file qua <code>&lt;Compile Include="..." /&gt;</code> — MSBuild không tự động glob thư mục, file mới tạo không tự được biên dịch. Fix: thêm 2 dòng <code>&lt;Compile Include="Alignment\ISampleTileSource.cs" /&gt;</code> và <code>&lt;Compile Include="Alignment\DiskSampleTileSource.cs" /&gt;</code> cạnh dòng <code>WorkflowImageCache.cs</code> đã có. <strong>Lưu ý cho các task sau trong cùng plan (Task 3 thêm <code>InMemorySampleTileSource</code>):</strong> mọi file <code>.cs</code> mới trong <code>GerberStitching.Core</code>/<code>RDL.GerberStitch</code> đều phải nhớ thêm dòng này, không có glob tự động.</p>
+
+  <h3>11.6. Kiểm chứng</h3>
+  <p>Grep xác nhận (Step 8 của brief): <code>grep -rn "ExpectedPath" --include=*.cs GerberStitching.Core/Alignment/</code> chỉ còn 2 dòng, cả 2 đều trong <code>DiskSampleTileSource.cs</code> (1 dòng comment, 1 dòng code thật <code>return tile.ExpectedPath;</code>) — không còn call site nào khác đọc <code>ExpectedPath</code> trực tiếp trong thư mục <code>Alignment/</code>.</p>
+  <p>2 caller hiện có của <code>AlignStitchWorkflowService</code> (<code>RDL.GerberStitch/Facade/GerberStitchFacade.cs</code> dòng 513 và <code>GerberStitching.Core/Alignment/AlignStitchWorkflowService_Simple.cs</code> dòng 21) đều dùng ctor cũ (2-3 tham số, không truyền <code>ISampleTileSource</code>) — build xác nhận cả hai vẫn biên dịch được không cần sửa, đúng yêu cầu "thêm overload, không đụng ctor cũ".</p>
+
+  <h4>Build gate</h4>
+  <p><span class="badge ok">PASS</span> — <code>msbuild RDL.GerberStitch.sln /p:Configuration=Debug /p:Platform=x64</code>, 4/4 project build thành công, <strong>0 error</strong>. Chỉ còn các warning <code>CS0618</code>/<code>CS0162</code>/<code>CS0067</code> đã tồn tại từ trước (không liên quan thay đổi này).</p>
+
+  <div class="note">
+    <strong>Verification gate thật (Step 12 của brief) — user tự chạy, chưa thực hiện trong lượt này.</strong> Chạy lại lô tham chiếu qua <code>RDL.GerberStitch.Harness.exe</code>, so bảng <code>Dx</code>/<code>Dy</code>/<code>DAngle</code> từng tile trong <code>Debug_&lt;date&gt;.html</code> mới với bản <code>AlignStitch_20260813_154108</code> đã có — phải <strong>trùng tuyệt đối</strong>. Đây là refactor thuần, không phải chỉ "build được" — build gate ở trên không chứng minh pose không lệch, chỉ chứng minh code biên dịch đúng. Bất kỳ sai lệch nào ở gate này là bug của task này, phải sửa xong trước khi sang Task 3.
+  </div>
+</div>
+
+<!-- ============================================================ -->
 <h2 id="pitfalls">6. Bảng tổng hợp lỗi &amp; cách fix (tra nhanh)</h2>
 <table>
   <tr><th>Triệu chứng</th><th>Nguyên nhân gốc</th><th>Fix</th><th>Entry</th></tr>
@@ -523,6 +572,7 @@ return AlignStitchConfigMapper.CloneForRun(baseConfig, outputPath); // tự đ�
   <tr><td><code>CS0012</code> dù chỉ truyền <code>null</code></td><td>C# vẫn cần reference assembly định nghĩa type trong signature, bất kể giá trị truyền vào</td><td>Thêm <code>ProjectReference</code> trực tiếp tới assembly đó</td><td><a href="#entry-4">4</a></td></tr>
   <tr><td><code>CS1061: 'AlignStitchConfig' does not contain 'OutputFormat'</code></td><td>Doc kế hoạch cũ (<code>Phase1_Task04.md</code>) có trường này, nhưng lớp thật (Task 1.2) không giữ nó — tên file output do Core tự đặt cứng, không cấu hình được</td><td>Bỏ dòng đọc <code>OutputFormat</code> khỏi ini reader; đối chiếu doc kế hoạch với code thật <strong>trước</strong> khi viết, không tin doc cũ nguyên văn</td><td><a href="#entry-5">5</a></td></tr>
   <tr><td>Field mới trên <code>AlignStitchConfig</code> âm thầm bị reset về default khi chạy thật</td><td><code>AlignStitchConfigMapper.CloneForRun</code> build lại config mới từ stage options, không copy field phẳng nào không có bản sao ở stage options — trong khi <code>BuildCoreConfig</code> (façade) luôn gọi <code>CloneForRun</code> ở bước cuối</td><td>Khi thêm field phẳng mới không thuộc stage nào, phải copy tay trong <code>CloneForRun</code>; kiểm tra ngay chỗ này mỗi khi thêm field mới vào <code>AlignStitchConfig</code></td><td><a href="#entry-6">6</a></td></tr>
+  <tr><td><code>CS0246: type or namespace 'ISampleTileSource' could not be found</code> dù file/namespace đúng</td><td>Old-style <code>.csproj</code> liệt kê tường minh từng file qua <code>&lt;Compile Include&gt;</code> — không tự glob thư mục, file mới tạo không tự được biên dịch</td><td>Thêm dòng <code>&lt;Compile Include="..." /&gt;</code> cho mọi file <code>.cs</code> mới trong <code>GerberStitching.Core.csproj</code>/<code>RDL.GerberStitch.csproj</code></td><td><a href="#entry-11">11</a></td></tr>
 </table>
 
 <footer>
