@@ -7,25 +7,26 @@ namespace GerberViewer.Stitching.Alignment
 {
     public static class AlignmentPoseInterpolator
     {
-        public static bool TryInterpolate(
-            SampleTileInfo target,
-            IEnumerable<TileWorkflowState> states,
-            IDictionary<int, SampleTileInfo> tiles,
-            out double[,] globalPose,
-            out string reason)
+        public static bool TryInterpolate(SampleTileInfo target, IEnumerable<TileWorkflowState> states,
+                                          IDictionary<int, SampleTileInfo> tiles, out double[,] globalPose,
+                                          out string reason)
         {
             globalPose = null;
             reason = null;
-            if (target == null || states == null || tiles == null) return false;
+            if (target == null || states == null || tiles == null)
+                return false;
 
-            var anchors = states
-                .Where(x => x != null && x.AlignmentSucceeded && Homography.IsFinite(x.GlobalPose) && tiles.ContainsKey(x.OrderIndex))
-                .Select(x => new Anchor(x, tiles[x.OrderIndex], DistanceSquared(target, tiles[x.OrderIndex])))
-                .OrderBy(x => x.DistanceSquared)
-                .ThenBy(x => x.State.OrderIndex)
-                .Take(4)
-                .ToList();
-            if (anchors.Count == 0) return false;
+            var anchors =
+                states
+                    .Where(x => x != null && x.AlignmentSucceeded && Homography.IsFinite(x.GlobalPose) &&
+                                tiles.ContainsKey(x.OrderIndex))
+                    .Select(x => new Anchor(x, tiles[x.OrderIndex], DistanceSquared(target, tiles[x.OrderIndex])))
+                    .OrderBy(x => x.DistanceSquared)
+                    .ThenBy(x => x.State.OrderIndex)
+                    .Take(4)
+                    .ToList();
+            if (anchors.Count == 0)
+                return false;
 
             double weightTotal = 0;
             double a = 0, b = 0, d = 0, e = 0, offsetX = 0, offsetY = 0;
@@ -42,15 +43,16 @@ namespace GerberViewer.Stitching.Alignment
                 offsetY += (pose[1, 2] - anchor.Tile.ExpectedY) * weight;
             }
 
-            globalPose = new[,]
+            globalPose = new[,] { { a / weightTotal, b / weightTotal, target.ExpectedX + offsetX / weightTotal },
+                                  { d / weightTotal, e / weightTotal, target.ExpectedY + offsetY / weightTotal },
+                                  { 0d, 0d, 1d } };
+            if (!Homography.IsFinite(globalPose))
             {
-                { a / weightTotal, b / weightTotal, target.ExpectedX + offsetX / weightTotal },
-                { d / weightTotal, e / weightTotal, target.ExpectedY + offsetY / weightTotal },
-                { 0d, 0d, 1d }
-            };
-            if (!Homography.IsFinite(globalPose)) { globalPose = null; return false; }
+                globalPose = null;
+                return false;
+            }
             reason = "Interpolated pose from " + anchors.Count + " measured anchor(s): " +
-                string.Join(",", anchors.Select(x => x.State.OrderIndex.ToString()).ToArray()) + ".";
+                     string.Join(",", anchors.Select(x => x.State.OrderIndex.ToString()).ToArray()) + ".";
             return true;
         }
 
@@ -64,7 +66,11 @@ namespace GerberViewer.Stitching.Alignment
         private sealed class Anchor
         {
             public Anchor(TileWorkflowState state, SampleTileInfo tile, double distanceSquared)
-            { State = state; Tile = tile; DistanceSquared = distanceSquared; }
+            {
+                State = state;
+                Tile = tile;
+                DistanceSquared = distanceSquared;
+            }
             public TileWorkflowState State { get; private set; }
             public SampleTileInfo Tile { get; private set; }
             public double DistanceSquared { get; private set; }

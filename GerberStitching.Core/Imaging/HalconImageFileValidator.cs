@@ -31,9 +31,12 @@ namespace GerberViewer.Stitching.Imaging
             }
             finally
             {
-                if (height != null) height.Dispose();
-                if (width != null) width.Dispose();
-                if (image != null && image.IsInitialized()) image.Dispose();
+                if (height != null)
+                    height.Dispose();
+                if (width != null)
+                    width.Dispose();
+                if (image != null && image.IsInitialized())
+                    image.Dispose();
             }
         }
     }

@@ -17,7 +17,15 @@ namespace GerberViewer.Stitching.Configuration
     public sealed class EffectiveConfigSnapshot
     {
         private readonly IList<EffectiveConfigEntry> _entries;
-        internal EffectiveConfigSnapshot(IList<EffectiveConfigEntry> entries) { _entries = new List<EffectiveConfigEntry>(entries).AsReadOnly(); }
-        public IList<EffectiveConfigEntry> Entries { get { return _entries; } }
+        internal EffectiveConfigSnapshot(IList<EffectiveConfigEntry> entries)
+        {
+            _entries = new List<EffectiveConfigEntry>(entries).AsReadOnly();
+        }
+        public IList<EffectiveConfigEntry> Entries
+        {
+            get {
+                return _entries;
+            }
+        }
     }
 }

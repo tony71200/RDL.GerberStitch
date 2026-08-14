@@ -1,6 +1,7 @@
 namespace GerberViewer.Stitching.Matching.Halcon
 {
-    // [Codex] [Change time: 2026-07-27] [Purpose: Persist the measured NCC domain centre and explicit full-tile origin convention.]
+    // [Tony] [Change time: 2026-07-27] [Purpose: Persist the measured NCC domain centre and explicit full-tile origin
+    // convention.]
     public sealed class HalconModelOrigin
     {
         public double DomainCenterRowLocal { get; set; }

@@ -10,11 +10,13 @@ namespace GerberViewer.Stitching.Configuration
     {
         public static void WriteDataContract(string path, object value, Type type)
         {
-            if (value == null) throw new ArgumentNullException("value");
+            if (value == null)
+                throw new ArgumentNullException("value");
             var directory = Path.GetDirectoryName(path);
-            if (!string.IsNullOrWhiteSpace(directory)) Directory.CreateDirectory(directory);
-            using (var stream = File.Create(path))
-            using (var writer = JsonReaderWriterFactory.CreateJsonWriter(stream, Encoding.UTF8, false, true, "  "))
+            if (!string.IsNullOrWhiteSpace(directory))
+                Directory.CreateDirectory(directory);
+            using (var stream = File.Create(path)) using (
+                var writer = JsonReaderWriterFactory.CreateJsonWriter(stream, Encoding.UTF8, false, true, "  "))
             {
                 new DataContractJsonSerializer(type).WriteObject(writer, value);
                 writer.Flush();

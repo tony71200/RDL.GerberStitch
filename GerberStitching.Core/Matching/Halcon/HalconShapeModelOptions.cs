@@ -11,14 +11,14 @@ namespace GerberViewer.Stitching.Configuration
     [TypeConverter(typeof(ExpandableObjectConverter))]
     public sealed class HalconShapeModelOptions
     {
-        // [Codex] [Change time: 2026-07-27] [Purpose: Match the proven AlignByShapeModel HDevelop parameter profile.]
+        // [Tony] [Change time: 2026-07-27] [Purpose: Match the proven AlignByShapeModel HDevelop parameter profile.]
         public HalconShapeModelMode Mode { get; set; } = HalconShapeModelMode.Rigid;
 
         // HALCON accepts 0 as the backwards-compatible representation of 'auto'.
         public int NumLevels { get; set; } = 0;
         public double AngleStartRad { get; set; } = -0.17453292519943295; // -10 deg
         public double AngleExtentRad { get; set; } = 0.3490658503988659;  // 20 deg
-        public double AngleStepRad { get; set; } = 0.0;                  // 'auto'
+        public double AngleStepRad { get; set; } = 0.0;                   // 'auto'
         public string Optimization { get; set; } = "auto";
         public string Metric { get; set; } = "use_polarity";
 

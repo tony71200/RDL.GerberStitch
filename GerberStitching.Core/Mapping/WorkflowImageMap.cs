@@ -16,13 +16,16 @@ namespace GerberViewer.Stitching.Mapping
 
     public interface IWorkflowImageMappingService
     {
-        WorkflowImageMap ValidateAndMap(SampleManifest manifest, IList<CapturedImageInfo> captured, CancellationToken cancellationToken);
+        WorkflowImageMap ValidateAndMap(SampleManifest manifest, IList<CapturedImageInfo> captured,
+                                        CancellationToken cancellationToken);
     }
 
-    // [Codex] [Change time: 2026-07-26] [Purpose: Keep validation and the canonical OrderIndex mapping out of workflow orchestration.]
+    // [Tony] [Change time: 2026-07-26] [Purpose: Keep validation and the canonical OrderIndex mapping out of workflow
+    // orchestration.]
     public sealed class WorkflowImageMappingService : IWorkflowImageMappingService
     {
-        public WorkflowImageMap ValidateAndMap(SampleManifest manifest, IList<CapturedImageInfo> captured, CancellationToken cancellationToken)
+        public WorkflowImageMap ValidateAndMap(SampleManifest manifest, IList<CapturedImageInfo> captured,
+                                               CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
             var validation = SampleManifestValidator.Validate(manifest, true);
@@ -41,16 +44,14 @@ namespace GerberViewer.Stitching.Mapping
                 cancellationToken.ThrowIfCancellationRequested();
                 CapturedImageInfo image;
                 if (!capturedByOrder.TryGetValue(tile.OrderIndex, out image))
-                    throw new InvalidOperationException("Captured image missing for manifest OrderIndex: " + tile.OrderIndex + ".");
+                    throw new InvalidOperationException(
+                        "Captured image missing for manifest OrderIndex: " + tile.OrderIndex + ".");
                 if (string.IsNullOrWhiteSpace(image.FilePath) || !File.Exists(image.FilePath))
-                    throw new FileNotFoundException("Captured image missing for OrderIndex " + image.OrderIndex, image.FilePath);
+                    throw new FileNotFoundException("Captured image missing for OrderIndex " + image.OrderIndex,
+                                                    image.FilePath);
             }
-            return new WorkflowImageMap
-            {
-                OrderedCaptured = captured.OrderBy(c => c.OrderIndex).ToList(),
-                CapturedByOrder = capturedByOrder,
-                TileByOrder = tileByOrder
-            };
+            return new WorkflowImageMap { OrderedCaptured = captured.OrderBy(c => c.OrderIndex).ToList(),
+                                          CapturedByOrder = capturedByOrder, TileByOrder = tileByOrder };
         }
     }
 }

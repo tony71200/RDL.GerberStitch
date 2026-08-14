@@ -9,13 +9,17 @@ namespace GerberViewer.Stitching.Alignment
     {
         private const double MadConsistencyFactor = 1.4826;
 
-        // [Codex] [Change time: 2026-08-03] [Purpose: Replace anisotropic direct-pose rotation outliers with a robust global angle and neighbor-interpolated translation.]
-        public DirectPoseCorrectionReport Correct(AlignStitchConfig config,
-            IDictionary<int, SampleTileInfo> tiles, IList<TileWorkflowState> states)
+        // [Tony] [Change time: 2026-08-03] [Purpose: Replace anisotropic direct-pose rotation outliers with a robust
+        // global angle and neighbor-interpolated translation.]
+        public DirectPoseCorrectionReport Correct(AlignStitchConfig config, IDictionary<int, SampleTileInfo> tiles,
+                                                  IList<TileWorkflowState> states)
         {
-            if (config == null) throw new ArgumentNullException("config");
-            if (tiles == null) throw new ArgumentNullException("tiles");
-            if (states == null) throw new ArgumentNullException("states");
+            if (config == null)
+                throw new ArgumentNullException("config");
+            if (tiles == null)
+                throw new ArgumentNullException("tiles");
+            if (states == null)
+                throw new ArgumentNullException("states");
 
             var report = new DirectPoseCorrectionReport();
             report.RotationOutlierMadK = config.DirectAlignment.RotationOutlierMadK;
@@ -28,63 +32,65 @@ namespace GerberViewer.Stitching.Alignment
             }
             report.Enabled = true;
 
-            var validStates = states.Where(x => x != null && x.HasValidPose && tiles.ContainsKey(x.OrderIndex)).ToList();
+            var validStates =
+                states.Where(x => x != null && x.HasValidPose && tiles.ContainsKey(x.OrderIndex)).ToList();
             report.ValidPoseCount = validStates.Count;
-            if (validStates.Count == 0) return report;
+            if (validStates.Count == 0)
+                return report;
 
             var angles = validStates.Select(RotationDeg).OrderBy(x => x).ToArray();
             report.MedianRotationDeg = Median(angles);
-            report.RotationMadDeg = Median(angles.Select(x => Math.Abs(x - report.MedianRotationDeg)).OrderBy(x => x).ToArray());
-            report.RotationBandDeg = Math.Max(config.DirectAlignment.AngleBandFloorDeg,
-                config.DirectAlignment.RotationOutlierMadK * MadConsistencyFactor * report.RotationMadDeg);
+            report.RotationMadDeg =
+                Median(angles.Select(x => Math.Abs(x - report.MedianRotationDeg)).OrderBy(x => x).ToArray());
+            report.RotationBandDeg =
+                Math.Max(config.DirectAlignment.AngleBandFloorDeg,
+                         config.DirectAlignment.RotationOutlierMadK * MadConsistencyFactor * report.RotationMadDeg);
 
-            var outliers = validStates.Where(x => IsOutlier(RotationDeg(x), report.MedianRotationDeg,
-                report.RotationBandDeg, config.DirectAlignment.SignFlipGuardDeg)).ToList();
+            var outliers = validStates
+                               .Where(x => IsOutlier(RotationDeg(x), report.MedianRotationDeg, report.RotationBandDeg,
+                                                     config.DirectAlignment.SignFlipGuardDeg))
+                               .ToList();
             report.OutlierCount = outliers.Count;
             var outlierOrders = new HashSet<int>(outliers.Select(x => x.OrderIndex));
-            var anchors = validStates.Where(x => !outlierOrders.Contains(x.OrderIndex) && x.AlignmentSucceeded).ToList();
+            var anchors =
+                validStates.Where(x => !outlierOrders.Contains(x.OrderIndex) && x.AlignmentSucceeded).ToList();
 
             foreach (var state in outliers.OrderBy(x => x.OrderIndex))
             {
                 var before = (double[,])state.GlobalPose.Clone();
                 double[,] interpolated;
                 string interpolationReason;
-                if (!AlignmentPoseInterpolator.TryInterpolate(tiles[state.OrderIndex], anchors, tiles,
-                    out interpolated, out interpolationReason))
+                if (!AlignmentPoseInterpolator.TryInterpolate(tiles[state.OrderIndex], anchors, tiles, out interpolated,
+                                                              out interpolationReason))
                 {
                     report.OutlierUncorrectable.Add(state.OrderIndex);
                     report.Warnings.Add("OrderIndex " + state.OrderIndex +
-                        " is a rotation outlier but no valid non-outlier anchor was available; original pose retained.");
+                                        (" is a rotation outlier but no valid non-outlier anchor was available; " +
+                                         "original pose retained."));
                     continue;
                 }
 
                 var radians = report.MedianRotationDeg * Math.PI / 180d;
                 var cosine = Math.Cos(radians);
                 var sine = Math.Sin(radians);
-                state.GlobalPose = new[,]
-                {
-                    { cosine, -sine, interpolated[0, 2] },
-                    { sine, cosine, interpolated[1, 2] },
-                    { 0d, 0d, 1d }
-                };
+                state.GlobalPose = new[,] { { cosine, -sine, interpolated[0, 2] },
+                                            { sine, cosine, interpolated[1, 2] },
+                                            { 0d, 0d, 1d } };
                 state.Source = PoseSource.Interpolated;
                 state.PoseCorrected = true;
                 state.IsFallbackPose = true;
                 state.IsStitchable = true;
-                state.Reason = "Direct pose corrected: median rotation + neighbor-interpolated translation. " + interpolationReason;
+                state.Reason = "Direct pose corrected: median rotation + neighbor-interpolated translation. " +
+                               interpolationReason;
 
-                report.Corrected.Add(new CorrectedTile
-                {
-                    OrderIndex = state.OrderIndex,
-                    BeforeRotationDeg = RotationDeg(before),
-                    AfterRotationDeg = report.MedianRotationDeg,
-                    BeforeTranslationX = before[0, 2],
-                    BeforeTranslationY = before[1, 2],
-                    AfterTranslationX = state.GlobalPose[0, 2],
-                    AfterTranslationY = state.GlobalPose[1, 2],
-                    AnchorOrderIndices = NearestAnchorOrders(tiles[state.OrderIndex], anchors, tiles),
-                    Reason = state.Reason
-                });
+                report.Corrected.Add(
+                    new CorrectedTile { OrderIndex = state.OrderIndex, BeforeRotationDeg = RotationDeg(before),
+                                        AfterRotationDeg = report.MedianRotationDeg, BeforeTranslationX = before[0, 2],
+                                        BeforeTranslationY = before[1, 2], AfterTranslationX = state.GlobalPose[0, 2],
+                                        AfterTranslationY = state.GlobalPose[1, 2],
+                                        AnchorOrderIndices =
+                                            NearestAnchorOrders(tiles[state.OrderIndex], anchors, tiles),
+                                        Reason = state.Reason });
             }
             return report;
         }
@@ -92,14 +98,17 @@ namespace GerberViewer.Stitching.Alignment
         private static bool IsOutlier(double angle, double median, double band, double signFlipGuard)
         {
             return Math.Abs(angle - median) > band ||
-                (Math.Abs(median) > signFlipGuard && Math.Sign(angle) != 0 && Math.Sign(angle) != Math.Sign(median));
+                   (Math.Abs(median) > signFlipGuard && Math.Sign(angle) != 0 && Math.Sign(angle) != Math.Sign(median));
         }
 
         private static IList<int> NearestAnchorOrders(SampleTileInfo target, IEnumerable<TileWorkflowState> anchors,
-            IDictionary<int, SampleTileInfo> tiles)
+                                                      IDictionary<int, SampleTileInfo> tiles)
         {
-            return anchors.OrderBy(x => DistanceSquared(target, tiles[x.OrderIndex])).ThenBy(x => x.OrderIndex)
-                .Take(4).Select(x => x.OrderIndex).ToList();
+            return anchors.OrderBy(x => DistanceSquared(target, tiles[x.OrderIndex]))
+                .ThenBy(x => x.OrderIndex)
+                .Take(4)
+                .Select(x => x.OrderIndex)
+                .ToList();
         }
 
         private static double DistanceSquared(SampleTileInfo a, SampleTileInfo b)
@@ -109,11 +118,18 @@ namespace GerberViewer.Stitching.Alignment
             return dx * dx + dy * dy;
         }
 
-        private static double RotationDeg(TileWorkflowState state) { return RotationDeg(state.GlobalPose); }
-        private static double RotationDeg(double[,] pose) { return Math.Atan2(pose[1, 0], pose[0, 0]) * 180d / Math.PI; }
+        private static double RotationDeg(TileWorkflowState state)
+        {
+            return RotationDeg(state.GlobalPose);
+        }
+        private static double RotationDeg(double[,] pose)
+        {
+            return Math.Atan2(pose[1, 0], pose[0, 0]) * 180d / Math.PI;
+        }
         private static double Median(double[] sorted)
         {
-            if (sorted.Length == 0) return double.NaN;
+            if (sorted.Length == 0)
+                return double.NaN;
             var middle = sorted.Length / 2;
             return sorted.Length % 2 == 0 ? (sorted[middle - 1] + sorted[middle]) / 2d : sorted[middle];
         }
@@ -146,8 +162,23 @@ namespace GerberViewer.Stitching.Alignment
         public double AfterTranslationY { get; set; }
         public IList<int> AnchorOrderIndices { get; set; } = new List<int>();
         public string Reason { get; set; }
-        public double AdjustmentRotationDeg { get { return AfterRotationDeg - BeforeRotationDeg; } }
-        public double AdjustmentX { get { return AfterTranslationX - BeforeTranslationX; } }
-        public double AdjustmentY { get { return AfterTranslationY - BeforeTranslationY; } }
+        public double AdjustmentRotationDeg
+        {
+            get {
+                return AfterRotationDeg - BeforeRotationDeg;
+            }
+        }
+        public double AdjustmentX
+        {
+            get {
+                return AfterTranslationX - BeforeTranslationX;
+            }
+        }
+        public double AdjustmentY
+        {
+            get {
+                return AfterTranslationY - BeforeTranslationY;
+            }
+        }
     }
 }

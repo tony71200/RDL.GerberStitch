@@ -172,6 +172,8 @@
     <Compile Include="Configuration\SampleConfigStore.cs" />
     <!-- #if DEBUG is enforced inside this file so Release builds contain no diagnostic type or behavior. -->
     <Compile Include="Diagnostics\DebugHtmlReportWriter.cs" />
+    <!-- Not #if DEBUG-gated: WriteStitchedPreview must compile and run in Release (see AlignStitchConfig.EmitDebugPreview). -->
+    <Compile Include="Diagnostics\DebugPreviewWriter.cs" />
     <Compile Include="Diagnostics\StitchedOverlayModel.cs" />
     <Compile Include="Imaging\ImageInterop\IImageInteropService.cs" />
     <Compile Include="Imaging\ImageInterop\ImageInteropService.cs" />

@@ -10,11 +10,7 @@ namespace GerberViewer.Stitching.Imaging.ImageInterop
 
     public sealed class ImagePixelFormatInfo
     {
-        public ImagePixelFormatInfo(
-            InteropPixelFormat pixelFormat, 
-            int channelCount, 
-            int bitDepth, 
-            string channelOrder)
+        public ImagePixelFormatInfo(InteropPixelFormat pixelFormat, int channelCount, int bitDepth, string channelOrder)
         {
             PixelFormat = pixelFormat;
             ChannelCount = channelCount;

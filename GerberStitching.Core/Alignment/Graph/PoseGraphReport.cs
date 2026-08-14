@@ -3,7 +3,8 @@ using GerberViewer.Stitching.Models;
 
 namespace GerberViewer.Stitching.Alignment.Graph
 {
-    // [Codex] [Change time: 2026-08-04] [Purpose: Report/diagnostics model for the global pose-graph optimizer, emitted into processing_report.json and the DEBUG HTML report.]
+    // [Tony] [Change time: 2026-08-04] [Purpose: Report/diagnostics model for the global pose-graph optimizer, emitted
+    // into processing_report.json and the DEBUG HTML report.]
     public sealed class PoseGraphReport
     {
         public bool Enabled { get; set; }

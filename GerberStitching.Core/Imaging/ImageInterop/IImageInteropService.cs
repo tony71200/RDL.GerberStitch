@@ -6,8 +6,13 @@ namespace GerberViewer.Stitching.Imaging.ImageInterop
 {
     public sealed class HalconImageInteropException : System.InvalidOperationException
     {
-        public HalconImageInteropException(string message, int errorCode, bool licenseExpired, System.Exception innerException)
-            : base(message, innerException) { ErrorCode = errorCode; LicenseExpired = licenseExpired; }
+        public HalconImageInteropException(string message, int errorCode, bool licenseExpired,
+                                           System.Exception innerException)
+            : base(message, innerException)
+        {
+            ErrorCode = errorCode;
+            LicenseExpired = licenseExpired;
+        }
         public int ErrorCode { get; private set; }
         public bool LicenseExpired { get; private set; }
     }

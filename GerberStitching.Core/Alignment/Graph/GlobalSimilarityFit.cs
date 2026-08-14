@@ -2,11 +2,12 @@ using System;
 
 namespace GerberViewer.Stitching.Alignment.Graph
 {
-    // [Codex] [Change time: 2026-08-04] [Purpose: Closed-form weighted 4-DOF similarity fit (Umeyama) between the sample-grid prior frame and the current pose-graph frame.]
+    // [Tony] [Change time: 2026-08-04] [Purpose: Closed-form weighted 4-DOF similarity fit (Umeyama) between the
+    // sample-grid prior frame and the current pose-graph frame.]
     public static class GlobalSimilarityFit
     {
-        public static bool TryFit(PoseGraphNode[] nodes, bool estimateScale,
-            out double scale, out double rotationRad, out double offsetX, out double offsetY)
+        public static bool TryFit(PoseGraphNode[] nodes, bool estimateScale, out double scale, out double rotationRad,
+                                  out double offsetX, out double offsetY)
         {
             scale = 1.0;
             rotationRad = 0.0;
@@ -18,14 +19,16 @@ namespace GerberViewer.Stitching.Alignment.Graph
             for (var i = 0; i < nodes.Length; i++)
             {
                 var n = nodes[i];
-                if (n.Frozen || !n.HasPrior || n.Lambda <= 0) continue;
+                if (n.Frozen || !n.HasPrior || n.Lambda <= 0)
+                    continue;
                 sumLambda += n.Lambda;
                 dSumX += n.Lambda * n.PriorDx;
                 dSumY += n.Lambda * n.PriorDy;
                 tSumX += n.Lambda * n.Tx;
                 tSumY += n.Lambda * n.Ty;
             }
-            if (sumLambda <= 1e-12) return false;
+            if (sumLambda <= 1e-12)
+                return false;
 
             var dBarX = dSumX / sumLambda;
             var dBarY = dSumY / sumLambda;
@@ -36,7 +39,8 @@ namespace GerberViewer.Stitching.Alignment.Graph
             for (var i = 0; i < nodes.Length; i++)
             {
                 var n = nodes[i];
-                if (n.Frozen || !n.HasPrior || n.Lambda <= 0) continue;
+                if (n.Frozen || !n.HasPrior || n.Lambda <= 0)
+                    continue;
                 var dx = n.PriorDx - dBarX;
                 var dy = n.PriorDy - dBarY;
                 var tx = n.Tx - tBarX;
@@ -45,7 +49,8 @@ namespace GerberViewer.Stitching.Alignment.Graph
                 sxy += n.Lambda * (dx * ty - dy * tx);
                 sdd += n.Lambda * (dx * dx + dy * dy);
             }
-            if (sdd < 1e-9) return false;
+            if (sdd < 1e-9)
+                return false;
 
             rotationRad = Math.Atan2(sxy, sxx);
             scale = estimateScale ? Math.Sqrt(sxx * sxx + sxy * sxy) / sdd : 1.0;

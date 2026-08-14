@@ -7,7 +7,9 @@ namespace GerberViewer.Stitching.Configuration
     {
         public static string SampleConfigPath
         {
-            get { return Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Config", "gerber_sample_config.json"); }
+            get {
+                return Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Config", "gerber_sample_config.json");
+            }
         }
     }
 }

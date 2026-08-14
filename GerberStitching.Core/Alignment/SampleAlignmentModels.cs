@@ -6,48 +6,49 @@ using GerberViewer.Stitching.Alignment.Evaluation;
 
 namespace GerberViewer.Stitching.Alignment
 {
-    /// <summary>Aligns a captured tile to its Gerber sample tile. All transforms are 3x3 CV_64F-compatible homographies in Captured -> Sample direction.</summary>
+    /// <summary>Aligns a captured tile to its Gerber sample tile. All transforms are 3x3 CV_64F-compatible homographies
+    /// in Captured -> Sample direction.</summary>
     public interface ISampleAligner : IDisposable
     {
         SampleAlignmentResult Align(SampleAlignmentContext context);
     }
 
-    public enum SampleAlignmentMethod 
-    { 
-        HalconNcc, 
-        PyramidEcc, 
+    public enum SampleAlignmentMethod
+    {
+        HalconNcc,
+        PyramidEcc,
         PyramidPhaseCorrelation,
         NccThenPyramidEcc,
         HalconShapeModel,
         ShapeThenPyramidEcc
     }
-    public enum PolarityMode 
-    { 
-        AsIs, 
-        InvertSample, 
-        InvertCaptured, 
-        InvertBoth, 
-        Auto 
+    public enum PolarityMode
+    {
+        AsIs,
+        InvertSample,
+        InvertCaptured,
+        InvertBoth,
+        Auto
     }
-    public enum ThresholdMode 
-    { 
-        None, 
-        Fixed, 
-        Otsu, 
-        Adaptive 
+    public enum ThresholdMode
+    {
+        None,
+        Fixed,
+        Otsu,
+        Adaptive
     }
-    public enum EdgePreparationMode 
-    { 
-        None, 
-        Sobel, 
-        Canny, 
-        HalconEquivalent 
+    public enum EdgePreparationMode
+    {
+        None,
+        Sobel,
+        Canny,
+        HalconEquivalent
     }
-    public enum ContrastNormalizationMode 
-    { 
-        None, 
-        MinMax, 
-        HistogramStretch 
+    public enum ContrastNormalizationMode
+    {
+        None,
+        MinMax,
+        HistogramStretch
     }
 
     public sealed class SampleAlignmentOptions
@@ -130,37 +131,30 @@ namespace GerberViewer.Stitching.Alignment
 
         public static SampleAlignmentResult Rejected(SampleAlignmentMethod method, string reason)
         {
-            return new SampleAlignmentResult 
-            { 
-                Method = method, 
-                Success = false, 
-                RejectionReason = reason, 
-                CapturedToSampleTransform = Homography.Identity() 
-            };
+            return new SampleAlignmentResult { Method = method, Success = false, RejectionReason = reason,
+                                               CapturedToSampleTransform = Homography.Identity() };
         }
     }
 
     public static class Homography
     {
-        public static double[,] Identity() 
-        { 
-            return new[,] { { 1d, 0d, 0d }, { 0d, 1d, 0d }, { 0d, 0d, 1d } }; 
+        public static double[,] Identity()
+        {
+            return new[,] { { 1d, 0d, 0d }, { 0d, 1d, 0d }, { 0d, 0d, 1d } };
         }
         public static double[,] FromPose(double tx, double ty, double angleRad, double scale)
         {
-            var c = Math.Cos(angleRad) * scale; var s = Math.Sin(angleRad) * scale;
-            return new[,] { 
-                { c, -s, tx }, 
-                { s, c, ty }, 
-                { 0d, 0d, 1d } 
-            };
+            var c = Math.Cos(angleRad) * scale;
+            var s = Math.Sin(angleRad) * scale;
+            return new[,] { { c, -s, tx }, { s, c, ty }, { 0d, 0d, 1d } };
         }
         public static bool IsFinite(double[,] h)
         {
-            if (h == null || h.GetLength(0) != 3 || h.GetLength(1) != 3) return false;
-            for (int r = 0; r < 3; r++) 
-                for (int c = 0; c < 3; c++) 
-                    if (double.IsNaN(h[r, c]) || double.IsInfinity(h[r, c])) 
+            if (h == null || h.GetLength(0) != 3 || h.GetLength(1) != 3)
+                return false;
+            for (int r = 0; r < 3; r++)
+                for (int c = 0; c < 3; c++)
+                    if (double.IsNaN(h[r, c]) || double.IsInfinity(h[r, c]))
                         return false;
             return Math.Abs(h[2, 2]) > 1e-12;
         }

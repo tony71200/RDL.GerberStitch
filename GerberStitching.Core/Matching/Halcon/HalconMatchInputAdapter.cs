@@ -9,22 +9,24 @@ namespace GerberViewer.Stitching.Matching.Halcon
     public sealed class HalconMatchInputAdapter
     {
         private readonly IImageInteropService _interop;
-        public HalconMatchInputAdapter() : this(new ImageInteropService()) { }
-        public HalconMatchInputAdapter(IImageInteropService interop) 
-        { 
-            _interop = interop ?? throw new ArgumentNullException("interop"); 
+        public HalconMatchInputAdapter() : this(new ImageInteropService())
+        {
         }
-        public HObject ToMono8HObjectCopy(Mat source) 
-        { 
-            return _interop.ToHObjectCopy(source, InteropPixelFormat.Mono8); 
+        public HalconMatchInputAdapter(IImageInteropService interop)
+        {
+            _interop = interop ?? throw new ArgumentNullException("interop");
         }
-        public HObject ToMono16HObjectCopy(Mat source) 
-        { 
-            return _interop.ToHObjectCopy(source, InteropPixelFormat.Mono16); 
+        public HObject ToMono8HObjectCopy(Mat source)
+        {
+            return _interop.ToHObjectCopy(source, InteropPixelFormat.Mono8);
         }
-        public HObject ToBgr8HObjectCopy(Mat source) 
-        { 
-            return _interop.ToHObjectCopy(source, InteropPixelFormat.Bgr8); 
+        public HObject ToMono16HObjectCopy(Mat source)
+        {
+            return _interop.ToHObjectCopy(source, InteropPixelFormat.Mono16);
+        }
+        public HObject ToBgr8HObjectCopy(Mat source)
+        {
+            return _interop.ToHObjectCopy(source, InteropPixelFormat.Bgr8);
         }
     }
 }

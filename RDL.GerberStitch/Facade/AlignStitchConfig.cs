@@ -3,106 +3,108 @@ using System;
 namespace RDL.GerberStitch.Facade
 {
     /// <summary>
-    /// Minimal alignment/stitching configuration for RDL Master/Worker. It exposes only settings
-    /// normally tuned for a production line; all other pipeline defaults remain those verified in Phase 0.
-    /// This name intentionally matches the Core AlignStitchConfig type while representing the façade layer.
-    /// GerberStitchFacade.BuildCoreConfig uses the fully qualified Core type name when mapping it.
+    /// Minimal align/stitch configuration for RDL Master and Worker. Expose only production-tunable values while
+    /// retaining Phase 0 validated defaults for the rest of the pipeline.
     /// </summary>
     public sealed class AlignStitchConfig
     {
         // ── Engine ──
 
         /// <summary>
-        /// Stitching engine. Valid values: "OpenCv", "HalconProjectiveMosaic",
-        /// "HalconProjectiveMosaicRebased" | "HalconWarpThenTileOffsetExperimental" |
-        /// "HalconThenOpenCvFallback". The default HalconProjectiveMosaicRebased engine is
-        /// 17 times faster than OpenCV for stitching on the reference 80-tile dataset (13.3s vs 231.7s).
+        /// Stitching engine. HalconProjectiveMosaicRebased is the default because reference runs measured it
+        /// substantially faster than OpenCv.
         /// </summary>
         public string StitchingEngine { get; set; } = "HalconProjectiveMosaicRebased";
 
         /// <summary>
-        /// Enables seam blending. The default is false because HOperatorSet.GenProjectiveMosaic
-        /// has no blending parameter; enabling this with the HALCON engine only produces a warning
-        /// and overlaps remain hard-overwritten. For real blending, also select the OpenCv engine,
-        /// at the cost of approximately 17-times slower stitching.
+        /// Enable seam blending. The HALCON mosaic engine ignores this option and emits a warning; use OpenCv when
+        /// actual blending is required.
         /// </summary>
         public bool EnableBlending { get; set; } = false;
 
         /// <summary>
-        /// true (default) computes and reports per-tile alignment/recovery duration (Detail mode) —
-        /// matches existing behavior. false skips the per-tile timing reads and only reports
-        /// stage-level totals (Mapping, Direct Alignment, Failure Recovery, Neighbor Graph, Stitching)
-        /// on ProcessingReport.StageTimings — use when per-image granularity is not needed.
+        /// true (default) computes and reports per-tile alignment/recovery duration (Detail mode).
+        /// false skips the per-tile timing reads and only reports stage-level totals
+        /// (Mapping, Direct Alignment, Failure Recovery, Neighbor Graph, Stitching)
+        /// on ProcessingReport.StageTimings.
         /// </summary>
         public bool CalculateTimeDetail { get; set; } = true;
 
-        // ── Direct Alignment thresholds ──
+        // Direct Alignment thresholds.
 
         /// <summary>
-        /// Minimum HALCON NCC match score. The 0.10 default matches
-        /// GerberViewer.Stitching.Configuration.HalconNccOptions.MinScore in Core.
-        /// Do not use 0.7; it is about 5–7 times the real default and rejects almost every tile.
+        /// Minimum HALCON NCC match score. Keep the Core default of 0.10; 0.7 rejects most tiles.
         /// </summary>
         public double NccMinScore { get; set; } = 0.10;
 
         /// <summary>
-        /// Minimum ECC correlation for the refinement matcher. The 0.13 default matches
-        /// Core EccOptions.MinCorrelation.
+        /// Minimum ECC refinement correlation, matching the Core default of 0.13.
         /// </summary>
         public double EccMinCorrelation { get; set; } = 0.13;
 
-        /// <summary>Maximum translation in pixels allowed for direct matching.</summary>
+        /// <summary>Maximum permitted translation in pixels for direct matching.</summary>
         public double MaxTranslationPixels { get; set; } = 300;
 
         /// <summary>
-        /// Maximum absolute rotation in degrees allowed for direct matching. RDL uses 0.1,
-        /// tighter than the Core structured default of 0.5, because the mechanical RDL line
-        /// places tiles with very little real rotational deviation.
+        /// Maximum absolute direct-match rotation in degrees. RDL uses 0.1 because mechanical placement has very
+        /// small rotation error.
         /// </summary>
         public double MaxAbsRotationDeg { get; set; } = 0.1;
 
-        // ── Direct Alignment policy (Core DirectAlignmentOptions.Policy / DirectPipelinePolicy) ──
+        // [Tony 20260813] Direct-pipeline acceptance policy, exposed so the station can tune it from
+        // [GerberAlignStitch] in HandShake_Worker.ini. Both defaults mirror DirectPipelinePolicy in
+        // GerberStitching.Core (AlignStitchStageOptions.cs:115-116); a different default here would
+        // silently change how every existing lot is aligned.
 
         /// <summary>
-        /// true (default) accepts a direct-alignment pose from the coarse matcher alone when the
-        /// refinement matcher is unavailable or skipped. Matches Core DirectPipelinePolicy default.
+        /// Accept a coarse-only (NCC) match when refinement does not reach its threshold. Core default: true.
         /// </summary>
         public bool AllowCoarseOnlyAcceptance { get; set; } = true;
 
         /// <summary>
-        /// true (default) lets the refinement matcher run from the tile's expected pose when the
-        /// coarse matcher fails, instead of leaving the tile unaligned. Matches Core
-        /// DirectPipelinePolicy default.
+        /// Run refinement from the expected position when the coarse stage fails. Core default: true.
         /// </summary>
         public bool AllowRefinementFromExpectedWhenCoarseFails { get; set; } = true;
 
         // ── Fallback RDL ──
 
         /// <summary>
-        /// true lets Worker fall back to the legacy NewMergeFunc after an align/stitch failure.
-        /// false returns error -300 to Master. This flag is for the Worker caller only;
-        /// Core has no NewMergeFunc concept.
+        /// When true, the Worker falls back to legacy NewMergeFunc after align/stitch failure. When false, it
+        /// returns -300 to the Master. Core does not know about NewMergeFunc.
         /// </summary>
         public bool FallbackToLegacyMerge { get; set; } = false;
+
+        // [Tony] [Change time: 2026-08-11] [Purpose: Task07 truyền cờ DebugMode của Master xuống đây rồi
+        // GerberStitchFacade.BuildCoreConfig map sang GerberViewer.Stitching.Models.AlignStitchConfig
+        // (task04). Facade AlignStitchConfig này chưa có field này trước task07 - Runner cần property
+        // để gán request.EmitDebugPreview vào.]
+        /// <summary>Bật sinh DebugPreview_&lt;yyyyHHmm&gt;.jpg. Mặc định false.</summary>
+        public bool EmitDebugPreview { get; set; } = false;
 
         internal void Validate()
         {
             if (NccMinScore <= 0 || NccMinScore > 1)
-                throw new ArgumentOutOfRangeException(nameof(NccMinScore), NccMinScore, "NccMinScore must be in (0, 1].");
+                throw new ArgumentOutOfRangeException(nameof(NccMinScore), NccMinScore,
+                                                      "NccMinScore phải trong (0, 1].");
             if (EccMinCorrelation <= 0 || EccMinCorrelation > 1)
-                throw new ArgumentOutOfRangeException(nameof(EccMinCorrelation), EccMinCorrelation, "EccMinCorrelation must be in (0, 1].");
+                throw new ArgumentOutOfRangeException(nameof(EccMinCorrelation), EccMinCorrelation,
+                                                      "EccMinCorrelation phải trong (0, 1].");
             if (MaxTranslationPixels <= 0)
-                throw new ArgumentOutOfRangeException(nameof(MaxTranslationPixels), MaxTranslationPixels, "MaxTranslationPixels must be greater than 0.");
+                throw new ArgumentOutOfRangeException(nameof(MaxTranslationPixels), MaxTranslationPixels,
+                                                      "MaxTranslationPixels phải > 0.");
             if (MaxAbsRotationDeg <= 0)
-                throw new ArgumentOutOfRangeException(nameof(MaxAbsRotationDeg), MaxAbsRotationDeg, "MaxAbsRotationDeg must be greater than 0.");
+                throw new ArgumentOutOfRangeException(nameof(MaxAbsRotationDeg), MaxAbsRotationDeg,
+                                                      "MaxAbsRotationDeg phải > 0.");
             if (ParseEngine(StitchingEngine) == null)
-                throw new ArgumentException("Invalid StitchingEngine: " + StitchingEngine, nameof(StitchingEngine));
+                throw new ArgumentException("StitchingEngine không hợp lệ: " + StitchingEngine,
+                                            nameof(StitchingEngine));
         }
 
         internal static GerberViewer.Stitching.Models.StitchingEngine? ParseEngine(string value)
         {
             GerberViewer.Stitching.Models.StitchingEngine parsed;
-            if (Enum.TryParse(value, true, out parsed)) return parsed;
+            if (Enum.TryParse(value, true, out parsed))
+                return parsed;
             return null;
         }
     }

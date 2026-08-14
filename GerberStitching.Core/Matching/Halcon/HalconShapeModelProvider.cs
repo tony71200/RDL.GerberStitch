@@ -10,7 +10,7 @@ using OpenCvSharp;
 
 namespace GerberViewer.Stitching.Matching.Halcon
 {
-    // [Codex] [Change time: 2026-07-27] [Purpose: Make model creation equivalent to AlignByShapeModel in AlignNCC.txt.]
+    // [Tony] [Change time: 2026-07-27] [Purpose: Make model creation equivalent to AlignByShapeModel in AlignNCC.txt.]
     public sealed class HalconShapeModelProvider : IDisposable
     {
         private const int HDevelopCompatibleSchemaVersion = 2;
@@ -19,7 +19,9 @@ namespace GerberViewer.Stitching.Matching.Halcon
         private readonly HalconMatchInputAdapter _adapter;
         private bool _disposed;
 
-        public HalconShapeModelProvider() : this(new ImageInteropService()) { }
+        public HalconShapeModelProvider() : this(new ImageInteropService())
+        {
+        }
 
         public HalconShapeModelProvider(IImageInteropService interop)
         {
@@ -28,8 +30,7 @@ namespace GerberViewer.Stitching.Matching.Halcon
 
         public int CachedModelCount
         {
-            get
-            {
+            get {
                 lock (_sync) return _cache.Count;
             }
         }
@@ -45,7 +46,8 @@ namespace GerberViewer.Stitching.Matching.Halcon
             {
                 ThrowIfDisposed();
                 Entry cached;
-                if (_cache.TryGetValue(key, out cached)) return cached.Model(key, true);
+                if (_cache.TryGetValue(key, out cached))
+                    return cached.Model(key, true);
             }
 
             token.ThrowIfCancellationRequested();
@@ -90,10 +92,9 @@ namespace GerberViewer.Stitching.Matching.Halcon
 
                 var referenceOriginRow = centerRow[0].D;
                 var referenceOriginColumn = centerColumn[0].D;
-                var useCompatibleDiskModel =
-                    request.ShapeModelSchemaVersion >= HDevelopCompatibleSchemaVersion &&
-                    !string.IsNullOrWhiteSpace(request.ReferenceShapeModelPath) &&
-                    File.Exists(request.ReferenceShapeModelPath);
+                var useCompatibleDiskModel = request.ShapeModelSchemaVersion >= HDevelopCompatibleSchemaVersion &&
+                                             !string.IsNullOrWhiteSpace(request.ReferenceShapeModelPath) &&
+                                             File.Exists(request.ReferenceShapeModelPath);
 
                 if (useCompatibleDiskModel)
                 {
@@ -106,24 +107,15 @@ namespace GerberViewer.Stitching.Matching.Halcon
                     contrast = options.Contrast <= 0 ? new HTuple("auto") : new HTuple(options.Contrast);
                     minContrast = options.MinContrast <= 0 ? new HTuple("auto") : new HTuple(options.MinContrast);
 
-                    HOperatorSet.CreateShapeModel(
-                        reference,
-                        numLevels,
-                        options.AngleStartRad,
-                        options.AngleExtentRad,
-                        angleStep,
-                        options.Optimization,
-                        options.Metric,
-                        contrast,
-                        minContrast,
-                        out modelId);
+                    HOperatorSet.CreateShapeModel(reference, numLevels, options.AngleStartRad, options.AngleExtentRad,
+                                                  angleStep, options.Optimization, options.Metric, contrast,
+                                                  minContrast, out modelId);
                 }
 
                 // AlignByShapeModel deliberately keeps HALCON's default model origin:
                 // the center of gravity of the complete reference-image domain.
                 var fullReferenceRoi = new Rect(0, 0, request.ReferenceImage.Cols, request.ReferenceImage.Rows);
-                var origin = new HalconModelOrigin
-                {
+                var origin = new HalconModelOrigin {
                     DomainCenterRowLocal = referenceOriginRow,
                     DomainCenterColumnLocal = referenceOriginColumn,
                     ReferenceOriginRow = referenceOriginRow,
@@ -135,19 +127,19 @@ namespace GerberViewer.Stitching.Matching.Halcon
                     Convention = "HALCON default shape origin: center of gravity of full reference domain"
                 };
 
-                var entry = new Entry(
-                    modelId,
-                    fullReferenceRoi,
-                    origin,
-                    useCompatibleDiskModel ? "HDevelopCompatibleDiskModel" : "RuntimeFullReferenceModel",
-                    HDevelopCompatibleSchemaVersion);
+                var entry =
+                    new Entry(modelId, fullReferenceRoi, origin,
+                              useCompatibleDiskModel ? "HDevelopCompatibleDiskModel" : "RuntimeFullReferenceModel",
+                              HDevelopCompatibleSchemaVersion);
                 modelId = null;
                 return entry;
             }
             finally
             {
-                if (reference != null) reference.Dispose();
-                if (domain != null) domain.Dispose();
+                if (reference != null)
+                    reference.Dispose();
+                if (domain != null)
+                    domain.Dispose();
                 DisposeTuple(area);
                 DisposeTuple(centerRow);
                 DisposeTuple(centerColumn);
@@ -155,7 +147,8 @@ namespace GerberViewer.Stitching.Matching.Halcon
                 DisposeTuple(angleStep);
                 DisposeTuple(contrast);
                 DisposeTuple(minContrast);
-                if (modelId != null) modelId.Dispose();
+                if (modelId != null)
+                    modelId.Dispose();
             }
         }
 
@@ -169,47 +162,43 @@ namespace GerberViewer.Stitching.Matching.Halcon
         private static string Key(MatchRequest request, HalconShapeModelOptions options)
         {
             var path = string.IsNullOrWhiteSpace(request.ReferenceShapeModelPath)
-                ? string.Empty
-                : Path.GetFullPath(request.ReferenceShapeModelPath);
-            var stamp = File.Exists(path)
-                ? new FileInfo(path).LastWriteTimeUtc.Ticks + ":" + new FileInfo(path).Length
-                : "none";
+                           ? string.Empty
+                           : Path.GetFullPath(request.ReferenceShapeModelPath);
+            var stamp = File.Exists(path) ? new FileInfo(path).LastWriteTimeUtc.Ticks + ":" + new FileInfo(path).Length
+                                          : "none";
 
-            return string.Join("|", new[]
-            {
-                request.SampleTileId ?? "none",
-                path,
-                stamp,
-                request.ShapeModelSchemaVersion.ToString(CultureInfo.InvariantCulture),
-                request.ReferenceImage.Rows + "x" + request.ReferenceImage.Cols,
-                options.Mode.ToString(),
-                options.NumLevels.ToString(CultureInfo.InvariantCulture),
-                options.AngleStartRad.ToString("R", CultureInfo.InvariantCulture),
-                options.AngleExtentRad.ToString("R", CultureInfo.InvariantCulture),
-                options.AngleStepRad.ToString("R", CultureInfo.InvariantCulture),
-                options.Optimization,
-                options.Metric,
-                options.Contrast.ToString(CultureInfo.InvariantCulture),
-                options.MinContrast.ToString(CultureInfo.InvariantCulture)
-            });
+            return string.Join(
+                "|", new[] { request.SampleTileId ?? "none", path, stamp,
+                             request.ShapeModelSchemaVersion.ToString(CultureInfo.InvariantCulture),
+                             request.ReferenceImage.Rows + "x" + request.ReferenceImage.Cols, options.Mode.ToString(),
+                             options.NumLevels.ToString(CultureInfo.InvariantCulture),
+                             options.AngleStartRad.ToString("R", CultureInfo.InvariantCulture),
+                             options.AngleExtentRad.ToString("R", CultureInfo.InvariantCulture),
+                             options.AngleStepRad.ToString("R", CultureInfo.InvariantCulture), options.Optimization,
+                             options.Metric, options.Contrast.ToString(CultureInfo.InvariantCulture),
+                             options.MinContrast.ToString(CultureInfo.InvariantCulture) });
         }
 
         private void ThrowIfDisposed()
         {
-            if (_disposed) throw new ObjectDisposedException(GetType().FullName);
+            if (_disposed)
+                throw new ObjectDisposedException(GetType().FullName);
         }
 
         private static void DisposeTuple(HTuple tuple)
         {
-            if (tuple != null) tuple.Dispose();
+            if (tuple != null)
+                tuple.Dispose();
         }
 
         public void Dispose()
         {
             lock (_sync)
             {
-                if (_disposed) return;
-                foreach (var entry in _cache.Values) entry.Dispose();
+                if (_disposed)
+                    return;
+                foreach (var entry in _cache.Values)
+                    entry.Dispose();
                 _cache.Clear();
                 _disposed = true;
             }
@@ -239,7 +228,8 @@ namespace GerberViewer.Stitching.Matching.Halcon
 
             public void Dispose()
             {
-                if (_id == null) return;
+                if (_id == null)
+                    return;
                 HOperatorSet.ClearShapeModel(_id);
                 _id.Dispose();
                 _id = null;

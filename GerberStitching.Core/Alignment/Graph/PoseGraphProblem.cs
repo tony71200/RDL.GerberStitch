@@ -1,6 +1,7 @@
 namespace GerberViewer.Stitching.Alignment.Graph
 {
-    // [Codex] [Change time: 2026-08-04] [Purpose: Domain-free pose-graph data model so the solver is testable without HALCON/OpenCV.]
+    // [Tony] [Change time: 2026-08-04] [Purpose: Domain-free pose-graph data model so the solver is testable without
+    // HALCON/OpenCV.]
     public sealed class PoseGraphNode
     {
         public int OrderIndex { get; set; }

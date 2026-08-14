@@ -70,6 +70,7 @@
     <li><a href="#entry-6">2026-08-11 (nhánh <code>Ver1_2</code>) — Thêm cờ <code>CalculateTimeDetail</code> (Detail/Non-Detail)</a></li>
     <li><a href="#entry-7">2026-08-11 (nhánh <code>Ver1_2</code>) — Harness đọc <code>align_stitch.ini</code> để cấu hình <code>AlignStitchConfig</code></a></li>
     <li><a href="#entry-8">2026-08-11 (nhánh <code>Ver1_2</code>) — Thêm <code>MaxAbsRotationDeg</code>/Policy (<code>AllowCoarseOnlyAcceptance</code>, <code>AllowRefinementFromExpectedWhenCoarseFails</code>) vào façade + ini</a></li>
+    <li><a href="#entry-9">2026-08-14 (nhánh <code>Ver2_0</code>) — Task 0: hợp nhất bản Worker (<code>GenerateSampleManifestFromRects</code>, <code>DebugPreviewWriter</code>) vào lại repo, khôi phục <code>CalculateTimeDetail</code></a></li>
     <li><a href="#pitfalls">Bảng tổng hợp lỗi &amp; cách fix (tra nhanh)</a></li>
   </ol>
 </div>
@@ -385,6 +386,89 @@ return AlignStitchConfigMapper.CloneForRun(baseConfig, outputPath); // tự đ�
 
   <h4>Build</h4>
   <p><span class="badge ok">PASS</span> — <code>Debug|x64</code>, full solution, 0 error.</p>
+</div>
+
+<div class="entry" id="entry-9">
+  <div class="entry-meta"><span class="badge ok">Core</span> <span class="badge ok">Facade</span> Phạm vi: toàn bộ <code>GerberStitching.Core/</code> (92 file <code>.cs</code> + 1 <code>.csproj</code>), 3 file <code>RDL.GerberStitch/Facade/{GerberStitchFacade,AlignStitchConfig,AlignStitchConfigIniReader}.cs</code></div>
+
+  <h4>Bối cảnh</h4>
+  <p>Task 0 của plan <code>2026-08-14-in-memory-sample-crop-and-settings-file</code>. Một bản copy của repo này đã bị nhúng vào
+  <code>H:\...\RDL_WorkerNorthT_Ver2_SoftMerge_2026_08_09\</code> (cả <code>GerberStitching.Core\</code> và <code>RDL.GerberStitch\</code>) và
+  đi tiếp một mình từ đó, được thêm các tính năng Phase 4 (<code>GenerateSampleManifestFromRects</code>, <code>TileRect</code>,
+  <code>EmitDebugPreview</code>, <code>DebugPreviewWriter</code>) chưa từng được đưa ngược lại repo gốc này. Trong lúc đó repo này độc lập
+  có thêm <code>CalculateTimeDetail</code> (entry 6-8) mà bản Worker không có. Task này hợp nhất 2 nhánh — <strong>không đổi logic
+  nào</strong>, thuần copy + khôi phục field đã mất.</p>
+
+  <h3>9.1. Đối chiếu trước khi copy</h3>
+  <p><code>diff -rq</code> giữa <code>GerberStitching.Core</code> của repo này và của bản Worker: 81 file <code>.cs</code>/<code>.csproj</code> chung
+  tên khác nhau (Worker đi trước, đã refactor/format lại phần lớn code), 1 file chỉ tồn tại bên Worker
+  (<code>Diagnostics/DebugPreviewWriter.cs</code>), 0 file chỉ tồn tại bên repo này. Không phát hiện loại khác biệt thứ 3 nào
+  ngoài 2 delta đã biết (Phase 4 bên Worker, <code>CalculateTimeDetail</code> bên repo này) — không cần dừng lại hỏi user.</p>
+
+  <h3>9.2. Copy</h3>
+  <ul class="filelist">
+    <li>Copy toàn bộ 93 file <code>.cs</code>/<code>.csproj</code> từ Worker's <code>GerberStitching.Core/</code> đè lên thư mục cùng tên trong
+    repo này (không copy <code>bin/</code>/<code>obj/</code>/<code>.vs/</code>). Kết quả: 92 file <code>M</code> (modified), 1 file mới
+    (<code>DebugPreviewWriter.cs</code>) — khớp đúng dự kiến từ bước đối chiếu.</li>
+    <li>Copy 3 file façade (<code>GerberStitchFacade.cs</code>, <code>AlignStitchConfig.cs</code>, <code>AlignStitchConfigIniReader.cs</code>) từ
+    Worker's <code>RDL.GerberStitch/Facade/</code> đè lên bản trong repo này.</li>
+    <li><code>GerberStitching.Core.csproj</code> — copy nguyên văn từ Worker (đã có mọi <code>&lt;Compile Include&gt;</code> cần thiết, kể cả
+    dòng mới cho <code>DebugPreviewWriter.cs</code>). Diff trước/sau xác nhận: <strong>chỉ khác đúng 1 dòng</strong>
+    (<code>&lt;Compile Include="Diagnostics\DebugPreviewWriter.cs" /&gt;</code>) — hint path <code>$(HALCONROOT)\bin\dotnet35\...</code>
+    của repo này không bị mất. <code>RDL.GerberStitch.csproj</code> không đụng tới (chỉ copy 3 file <code>.cs</code> lẻ trong
+    <code>Facade/</code>, không copy nguyên <code>.csproj</code>) nên hint path HALCON của façade project cũng nguyên vẹn.</li>
+  </ul>
+
+  <h3>9.3. Khôi phục <code>CalculateTimeDetail</code> — end-to-end</h3>
+  <p>Bản Worker không có field này ở bất kỳ đâu (xác nhận bằng <code>grep</code> trước khi sửa). Khôi phục đúng 6 điểm (nhiều
+  hơn 2 điểm brief liệt kê, vì brief chỉ nêu 2 điểm chính — soát lại toàn bộ chuỗi wiring qua
+  <code>git log -S CalculateTimeDetail</code> phát hiện thêm 4 điểm nữa từng tồn tại trước khi Worker ghi đè):</p>
+  <ul class="filelist">
+    <li><code>GerberStitching.Core/Models/WorkflowModels.cs</code> — thêm lại <code>public bool CalculateTimeDetail { get; set; } = true;</code>
+    vào cuối khối property bool của <code>AlignStitchConfig</code> (Core), ngay sau <code>EmitDebugPreview</code> (field Phase 4 của Worker).</li>
+    <li><code>GerberStitching.Core/Alignment/AlignStitchWorkflowService.cs</code> — bọc lại 4 điểm đọc/tính delta per-tile
+    (<code>directBeforeMs</code>/<code>recoverBeforeMs</code>, <code>tileDirectMs</code>, report Neighbor Recovery pass 1 và pass 2) bằng
+    <code>config.CalculateTimeDetail ? ... : 0L</code>, giống hệt logic gốc ở entry 6 (đối chiếu bằng <code>git show 89f25b9</code>
+    trước khi sửa, vì code Worker đã format lại dòng nên không thể patch thẳng — phải áp lại từng đoạn thủ công).</li>
+    <li><code>GerberStitching.Core/Configuration/AlignStitchConfigMapper.cs</code>, hàm <code>CloneForRun</code> — thêm
+    <code>c.CalculateTimeDetail = source.CalculateTimeDetail;</code> ngay cạnh dòng <code>c.EmitDebugPreview = source.EmitDebugPreview;</code>
+    đã có sẵn (comment gốc của dòng đó cảnh báo đúng loại lỗi này: field phẳng không có bản sao ở stage options sẽ bị
+    reset về default nếu không copy tay — xem bảng pitfalls hàng cuối, đây chính là chỗ entry 6 đã cảnh báo trước).</li>
+    <li><code>RDL.GerberStitch/Facade/AlignStitchConfig.cs</code> — thêm lại property <code>CalculateTimeDetail</code> (bool, default
+    <code>true</code>), đặt ngay sau <code>EnableBlending</code> theo đúng vị trí brief chỉ định.</li>
+    <li><code>RDL.GerberStitch/Facade/GerberStitchFacade.cs</code>, hàm <code>BuildCoreConfig</code> — thêm
+    <code>baseConfig.CalculateTimeDetail = options.CalculateTimeDetail;</code> ngay sau
+    <code>baseConfig.Stitching.EnableBlending = options.EnableBlending;</code>.</li>
+    <li><code>RDL.GerberStitch/Facade/AlignStitchConfigIniReader.cs</code> — <strong>không có trong danh sách brief</strong>, nhưng repo này
+    trước khi bị Worker ghi đè đã đọc <code>CalculateTimeDetail</code> từ ini (xác nhận bằng <code>git show HEAD:...AlignStitchConfigIniReader.cs</code>).
+    Thêm lại dòng đọc key <code>CalculateTimeDetail</code> (theo pattern <code>ParseBool</code> như các field bool khác), và thêm
+    <code>"CalculateTimeDetail"</code> vào <code>KnownKeys</code> — whitelist này là bổ sung mới của Worker (entry 5/8 chưa có), thiếu nó
+    thì key hợp lệ này sẽ bị cảnh báo "khoá không được dùng" dù vẫn đọc được giá trị.</li>
+  </ul>
+
+  <h3>9.4. Build gate</h3>
+  <p><code>MSBuild RDL.GerberStitch.sln /p:Configuration=Debug /p:Platform=x64</code> (chạy qua
+  <code>...\MSBuild\Current\Bin\amd64\MSBuild.exe</code>, <code>HALCONROOT</code> đã có sẵn trong môi trường, trỏ đúng
+  <code>C:\Users\USER\AppData\Local\Programs\MVTec\HALCON-25.05-Progress</code>). Kết quả: <span class="badge ok">PASS</span> —
+  4/4 project build thành công (<code>GerberEngine</code>, <code>GerberStitching.Core</code>, <code>RDL.GerberStitch</code>,
+  <code>RDL.GerberStitch.Harness</code>), <strong>0 error</strong>. <strong>Không gặp <code>CS0104</code> hay <code>CS0012</code></strong> mà brief
+  cảnh báo trước — bản Worker đã tự nhất quán về namespace đầy đủ (<code>GerberViewer.Stitching.Configuration.GerberSampleConfig</code>
+  vs <code>...Models.GerberSampleConfig</code>) từ trước khi copy, và <code>HALCONROOT</code> đã set sẵn trong môi trường build. Chỉ còn
+  các warning đã tồn tại từ trước (<code>CS0618</code> obsolete member ở <code>AlignStitchConfigMapper.cs</code>, <code>CS0162</code> unreachable
+  code ở <code>ModalityAwarePreprocessor.cs</code>, <code>CS0067</code> unused event ở <code>SampleAligners.cs</code>) — không liên quan tới
+  thay đổi lần này.</p>
+
+  <h4>Điểm cần lưu ý khi đọc lại code</h4>
+  <ul>
+    <li>Toàn bộ 92 file <code>.cs</code> đổi trong <code>GerberStitching.Core/</code> là do <strong>copy đè nguyên khối</strong> từ bản Worker,
+    không phải review/sửa từng dòng — coi diff của các file đó như "đổi source of truth", không phải như 92 thay đổi logic
+    riêng lẻ cần review độc lập.</li>
+    <li>6 điểm khôi phục <code>CalculateTimeDetail</code> ở trên là <strong>thứ duy nhất</strong> viết tay thủ công trong task này (ngoài
+    2 dòng thêm vào <code>KnownKeys</code>/ini reader vốn không nằm trong brief nhưng cần thiết để giữ đúng hành vi cũ).</li>
+    <li><strong>Chưa chạy Step 10 (verification gate)</strong> — cần <code>RDL.GerberStitch.Harness.exe --mode alignstitch</code> trên bộ
+    dữ liệu lô tham chiếu, kỳ vọng <code>aligned=54, blank=26, failed=0</code> giống các lần chạy trước (entry 3, 5). Việc này
+    cần dữ liệu ảnh thật và do user tự chạy.</li>
+  </ul>
 </div>
 
 <!-- ============================================================ -->

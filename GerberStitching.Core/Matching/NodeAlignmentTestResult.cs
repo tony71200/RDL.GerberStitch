@@ -15,25 +15,25 @@ namespace GerberViewer.Stitching.Matching
 
         public void Dispose()
         {
-            if (SamplePreview != null) 
-            { 
-                SamplePreview.Dispose(); 
-                SamplePreview = null; 
+            if (SamplePreview != null)
+            {
+                SamplePreview.Dispose();
+                SamplePreview = null;
             }
             if (TestPreview != null)
             {
                 TestPreview.Dispose();
                 TestPreview = null;
             }
-            if (TransformedCapturedPreview != null) 
-            { 
-                TransformedCapturedPreview.Dispose(); 
-                TransformedCapturedPreview = null; 
+            if (TransformedCapturedPreview != null)
+            {
+                TransformedCapturedPreview.Dispose();
+                TransformedCapturedPreview = null;
             }
-            if (OverlayPreview != null) 
-            { 
-                OverlayPreview.Dispose(); 
-                OverlayPreview = null; 
+            if (OverlayPreview != null)
+            {
+                OverlayPreview.Dispose();
+                OverlayPreview = null;
             }
         }
     }

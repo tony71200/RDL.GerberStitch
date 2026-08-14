@@ -17,7 +17,8 @@ namespace GerberViewer.Stitching.Alignment.Graph
         public bool Converged { get; set; }
     }
 
-    // [Codex] [Change time: 2026-08-04] [Purpose: Solve every tile pose jointly from robust neighbor-edge evidence plus a finite-weight direct-pose prior, replacing single-path spanning-tree propagation.]
+    // [Tony] [Change time: 2026-08-04] [Purpose: Solve every tile pose jointly from robust neighbor-edge evidence plus
+    // a finite-weight direct-pose prior, replacing single-path spanning-tree propagation.]
     public sealed class PoseGraphSolver
     {
         private struct Row
@@ -30,20 +31,18 @@ namespace GerberViewer.Stitching.Alignment.Graph
 
         public PoseGraphSolveStats Solve(PoseGraphProblem problem, PoseGraphOptions options)
         {
-            if (problem == null) throw new ArgumentNullException("problem");
+            if (problem == null)
+                throw new ArgumentNullException("problem");
             options = options ?? new PoseGraphOptions();
             var nodes = problem.Nodes ?? new PoseGraphNode[0];
             var edges = problem.Edges ?? new PoseGraphEdge[0];
             var unknownCount = nodes.Length * 3;
 
-            var stats = new PoseGraphSolveStats
-            {
-                GlobalScale = problem.GlobalScale,
-                GlobalRotationDeg = problem.GlobalRotationRad * 180.0 / Math.PI,
-                GlobalOffsetX = problem.GlobalOffsetX,
-                GlobalOffsetY = problem.GlobalOffsetY,
-                BeforeEdgeResiduals = ComputeEdgeResiduals(nodes, edges)
-            };
+            var stats =
+                new PoseGraphSolveStats { GlobalScale = problem.GlobalScale,
+                                          GlobalRotationDeg = problem.GlobalRotationRad * 180.0 / Math.PI,
+                                          GlobalOffsetX = problem.GlobalOffsetX, GlobalOffsetY = problem.GlobalOffsetY,
+                                          BeforeEdgeResiduals = ComputeEdgeResiduals(nodes, edges) };
 
             var scale = 1.0;
             var rotationRad = 0.0;
@@ -54,30 +53,45 @@ namespace GerberViewer.Stitching.Alignment.Graph
             for (var it = 0; it < Math.Max(1, options.MaxIterations); it++)
             {
                 double fitScale, fitRotation, fitOffsetX, fitOffsetY;
-                if (GlobalSimilarityFit.TryFit(nodes, options.EstimateGlobalScale, out fitScale, out fitRotation, out fitOffsetX, out fitOffsetY))
+                if (GlobalSimilarityFit.TryFit(nodes, options.EstimateGlobalScale, out fitScale, out fitRotation,
+                                               out fitOffsetX, out fitOffsetY))
                 {
                     scale = fitScale;
                     rotationRad = fitRotation;
                     offsetX = fitOffsetX;
                     offsetY = fitOffsetY;
-                    if (scale < options.MinGlobalScale) { scale = options.MinGlobalScale; stats.GlobalScaleClamped = true; }
-                    else if (scale > options.MaxGlobalScale) { scale = options.MaxGlobalScale; stats.GlobalScaleClamped = true; }
+                    if (scale < options.MinGlobalScale)
+                    {
+                        scale = options.MinGlobalScale;
+                        stats.GlobalScaleClamped = true;
+                    }
+                    else if (scale > options.MaxGlobalScale)
+                    {
+                        scale = options.MaxGlobalScale;
+                        stats.GlobalScaleClamped = true;
+                    }
                     var maxRotationRad = options.MaxGlobalRotationDeg * Math.PI / 180.0;
-                    if (rotationRad < -maxRotationRad) { rotationRad = -maxRotationRad; stats.GlobalRotationClamped = true; }
-                    else if (rotationRad > maxRotationRad) { rotationRad = maxRotationRad; stats.GlobalRotationClamped = true; }
+                    if (rotationRad < -maxRotationRad)
+                    {
+                        rotationRad = -maxRotationRad;
+                        stats.GlobalRotationClamped = true;
+                    }
+                    else if (rotationRad > maxRotationRad)
+                    {
+                        rotationRad = maxRotationRad;
+                        stats.GlobalRotationClamped = true;
+                    }
                 }
 
                 var rows = BuildRows(nodes, edges, options, scale, rotationRad, offsetX, offsetY);
-                var delta = SparseNormalEquationCg.Solve(unknownCount,
-                    delegate (Action<double, double, int[], double[]> visit)
-                    {
+                var delta =
+                    SparseNormalEquationCg.Solve(unknownCount, delegate(Action<double, double, int[], double[]> visit) {
                         for (var i = 0; i < rows.Count; i++)
                         {
                             var row = rows[i];
                             visit(row.Weight, row.Residual, row.Cols, row.Grad);
                         }
-                    },
-                    Math.Max(1, options.MaxCgIterations), options.CgTolerance <= 0 ? 1e-10 : options.CgTolerance);
+                    }, Math.Max(1, options.MaxCgIterations), options.CgTolerance <= 0 ? 1e-10 : options.CgTolerance);
 
                 var stepSumSquares = 0.0;
                 for (var i = 0; i < nodes.Length; i++)
@@ -112,7 +126,7 @@ namespace GerberViewer.Stitching.Alignment.Graph
         }
 
         private static List<Row> BuildRows(PoseGraphNode[] nodes, PoseGraphEdge[] edges, PoseGraphOptions options,
-            double scale, double rotationRad, double offsetX, double offsetY)
+                                           double scale, double rotationRad, double offsetX, double offsetY)
         {
             var rows = new List<Row>(edges.Length * 3 + nodes.Length * 3);
             var cosPhi = Math.Cos(rotationRad);
@@ -132,56 +146,92 @@ namespace GerberViewer.Stitching.Alignment.Graph
                 var rtheta = WrapAngle(b.Theta - a.Theta - edge.MTheta);
                 var w = edge.BaseWeight * edge.HuberWeight;
 
-                var aTx = edge.AnchorIndex * 3 + 0; var aTy = edge.AnchorIndex * 3 + 1; var aTh = edge.AnchorIndex * 3 + 2;
-                var bTx = edge.TargetIndex * 3 + 0; var bTy = edge.TargetIndex * 3 + 1; var bTh = edge.TargetIndex * 3 + 2;
+                var aTx = edge.AnchorIndex * 3 + 0;
+                var aTy = edge.AnchorIndex * 3 + 1;
+                var aTh = edge.AnchorIndex * 3 + 2;
+                var bTx = edge.TargetIndex * 3 + 0;
+                var bTy = edge.TargetIndex * 3 + 1;
+                var bTh = edge.TargetIndex * 3 + 2;
 
                 var thetaGradX = -sa * dtx + ca * dty;
                 var thetaGradY = -ca * dtx - sa * dty;
 
-                rows.Add(new Row
+                var translationXRow = new Row
                 {
                     Weight = w,
                     Residual = rtx,
                     Cols = new[] { aTx, aTy, aTh, bTx, bTy },
                     Grad = new[] { -ca, -sa, thetaGradX, ca, sa }
-                });
-                rows.Add(new Row
+                };
+                rows.Add(translationXRow);
+
+                var translationYRow = new Row
                 {
                     Weight = w,
                     Residual = rty,
                     Cols = new[] { aTx, aTy, aTh, bTx, bTy },
                     Grad = new[] { sa, -ca, thetaGradY, -sa, ca }
-                });
-                rows.Add(new Row
+                };
+                rows.Add(translationYRow);
+
+                var rotationRow = new Row
                 {
                     Weight = w * options.RotationScalePixels,
                     Residual = rtheta,
                     Cols = new[] { aTh, bTh },
                     Grad = new double[] { -1.0, 1.0 }
-                });
+                };
+                rows.Add(rotationRow);
             }
 
             for (var i = 0; i < nodes.Length; i++)
             {
                 var n = nodes[i];
-                if (n.Frozen || !n.HasPrior || n.Lambda <= 0) continue;
+                if (n.Frozen || !n.HasPrior || n.Lambda <= 0)
+                    continue;
                 var predX = scale * (cosPhi * n.PriorDx - sinPhi * n.PriorDy) + offsetX;
                 var predY = scale * (sinPhi * n.PriorDx + cosPhi * n.PriorDy) + offsetY;
                 var rpx = n.Tx - predX;
                 var rpy = n.Ty - predY;
                 var rptheta = WrapAngle(n.Theta - (n.PriorTheta + rotationRad));
-                var txCol = i * 3 + 0; var tyCol = i * 3 + 1; var thCol = i * 3 + 2;
+                var txCol = i * 3 + 0;
+                var tyCol = i * 3 + 1;
+                var thCol = i * 3 + 2;
 
-                rows.Add(new Row { Weight = n.Lambda, Residual = rpx, Cols = new[] { txCol }, Grad = new[] { 1.0 } });
-                rows.Add(new Row { Weight = n.Lambda, Residual = rpy, Cols = new[] { tyCol }, Grad = new[] { 1.0 } });
-                rows.Add(new Row { Weight = n.Lambda * options.RotationScalePixels, Residual = rptheta, Cols = new[] { thCol }, Grad = new[] { 1.0 } });
+                var priorTranslationXRow = new Row
+                {
+                    Weight = n.Lambda,
+                    Residual = rpx,
+                    Cols = new[] { txCol },
+                    Grad = new[] { 1.0 }
+                };
+                rows.Add(priorTranslationXRow);
+
+                var priorTranslationYRow = new Row
+                {
+                    Weight = n.Lambda,
+                    Residual = rpy,
+                    Cols = new[] { tyCol },
+                    Grad = new[] { 1.0 }
+                };
+                rows.Add(priorTranslationYRow);
+
+                var priorRotationRow = new Row
+                {
+                    Weight = n.Lambda * options.RotationScalePixels,
+                    Residual = rptheta,
+                    Cols = new[] { thCol },
+                    Grad = new[] { 1.0 }
+                };
+                rows.Add(priorRotationRow);
             }
             return rows;
         }
 
         private static void UpdateHuberWeights(PoseGraphNode[] nodes, PoseGraphEdge[] edges, double huberPixels)
         {
-            if (huberPixels <= 0) return;
+            if (huberPixels <= 0)
+                return;
             for (var e = 0; e < edges.Length; e++)
             {
                 var edge = edges[e];
@@ -193,7 +243,8 @@ namespace GerberViewer.Stitching.Alignment.Graph
         private static double[] ComputeEdgeResiduals(PoseGraphNode[] nodes, PoseGraphEdge[] edges)
         {
             var result = new double[edges.Length];
-            for (var e = 0; e < edges.Length; e++) result[e] = EdgeTranslationResidualNorm(nodes, edges[e]);
+            for (var e = 0; e < edges.Length; e++)
+                result[e] = EdgeTranslationResidualNorm(nodes, edges[e]);
             return result;
         }
 
@@ -212,8 +263,10 @@ namespace GerberViewer.Stitching.Alignment.Graph
 
         private static double WrapAngle(double radians)
         {
-            while (radians <= -Math.PI) radians += 2 * Math.PI;
-            while (radians > Math.PI) radians -= 2 * Math.PI;
+            while (radians <= -Math.PI)
+                radians += 2 * Math.PI;
+            while (radians > Math.PI)
+                radians -= 2 * Math.PI;
             return radians;
         }
     }

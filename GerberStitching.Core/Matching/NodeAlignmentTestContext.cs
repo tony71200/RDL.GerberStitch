@@ -16,24 +16,25 @@ namespace GerberViewer.Stitching.Matching
     /// <summary>Immutable input for a diagnostic one-node CapturedImage-to-SampleTile match.</summary>
     public sealed class NodeAlignmentTestContext
     {
-        public NodeAlignmentTestContext(
-            int orderIndex,
-            string sampleImagePath,
-            string capturedImagePath,
-            string nccModelPath,
-            string shapeModelPath,
-            MatcherPreprocessOptions preprocessOptions,
-            MatcherOptions matcherOptions,
-            HalconShapeModelOptions shapeOptions)
+        public NodeAlignmentTestContext(int orderIndex, string sampleImagePath, string capturedImagePath,
+                                        string nccModelPath, string shapeModelPath,
+                                        MatcherPreprocessOptions preprocessOptions, MatcherOptions matcherOptions,
+                                        HalconShapeModelOptions shapeOptions)
         {
-            if (orderIndex < 0) throw new ArgumentOutOfRangeException("orderIndex");
+            if (orderIndex < 0)
+                throw new ArgumentOutOfRangeException("orderIndex");
             OrderIndex = orderIndex;
             SampleImagePath = sampleImagePath ?? string.Empty;
             CapturedImagePath = capturedImagePath ?? string.Empty;
             NccModelPath = nccModelPath ?? string.Empty;
             ShapeModelPath = shapeModelPath ?? string.Empty;
             var preprocessing = preprocessOptions ?? new MatcherPreprocessOptions();
-            PreprocessOptions = new MatcherPreprocessOptions { Variant = preprocessing.Variant, Contrast = preprocessing.Contrast };
+            PreprocessOptions =
+                new MatcherPreprocessOptions
+                {
+                    Variant = preprocessing.Variant,
+                    Contrast = preprocessing.Contrast
+                };
             MatcherOptions = Clone(matcherOptions ?? new MatcherOptions());
             ShapeOptions = Clone(shapeOptions ?? new HalconShapeModelOptions());
         }
@@ -61,42 +62,57 @@ namespace GerberViewer.Stitching.Matching
 
         private static MatcherOptions Clone(MatcherOptions source)
         {
-            return new MatcherOptions
-            {
-                PhaseMinResponse = source.PhaseMinResponse, MinTextureStdDev = source.MinTextureStdDev,
-                MinOverlapRatio = source.MinOverlapRatio, MaxTranslationPixels = source.MaxTranslationPixels,
-                EccMotionModel = source.EccMotionModel, PyramidLevels = source.PyramidLevels,
-                MaxIterations = source.MaxIterations, Epsilon = source.Epsilon,
-                MinCorrelation = source.MinCorrelation, MaxAbsRotationDeg = source.MaxAbsRotationDeg,
-                MinScale = source.MinScale, MaxScale = source.MaxScale,
-                PreprocessingVariant = source.PreprocessingVariant, NccNumLevels = source.NccNumLevels,
-                NccAngleStartRad = source.NccAngleStartRad, NccAngleExtentRad = source.NccAngleExtentRad,
-                NccAngleStepRad = source.NccAngleStepRad, NccMetric = source.NccMetric,
-                NccMinScore = source.NccMinScore, NccMaxMatches = source.NccMaxMatches,
-                NccMaxOverlap = source.NccMaxOverlap, NccSubPixel = source.NccSubPixel,
-                NccModelRoiMarginPixels = source.NccModelRoiMarginPixels,
-                NccModelRoiMinWidth = source.NccModelRoiMinWidth,
-                NccModelRoiMinHeight = source.NccModelRoiMinHeight,
-                NccModelRoiMinStdDev = source.NccModelRoiMinStdDev
-            };
+            return new MatcherOptions { PhaseMinResponse = source.PhaseMinResponse,
+                                        MinTextureStdDev = source.MinTextureStdDev,
+                                        MinOverlapRatio = source.MinOverlapRatio,
+                                        MaxTranslationPixels = source.MaxTranslationPixels,
+                                        EccMotionModel = source.EccMotionModel,
+                                        PyramidLevels = source.PyramidLevels,
+                                        MaxIterations = source.MaxIterations,
+                                        Epsilon = source.Epsilon,
+                                        MinCorrelation = source.MinCorrelation,
+                                        MaxAbsRotationDeg = source.MaxAbsRotationDeg,
+                                        MinScale = source.MinScale,
+                                        MaxScale = source.MaxScale,
+                                        PreprocessingVariant = source.PreprocessingVariant,
+                                        NccNumLevels = source.NccNumLevels,
+                                        NccAngleStartRad = source.NccAngleStartRad,
+                                        NccAngleExtentRad = source.NccAngleExtentRad,
+                                        NccAngleStepRad = source.NccAngleStepRad,
+                                        NccMetric = source.NccMetric,
+                                        NccMinScore = source.NccMinScore,
+                                        NccMaxMatches = source.NccMaxMatches,
+                                        NccMaxOverlap = source.NccMaxOverlap,
+                                        NccSubPixel = source.NccSubPixel,
+                                        NccModelRoiMarginPixels = source.NccModelRoiMarginPixels,
+                                        NccModelRoiMinWidth = source.NccModelRoiMinWidth,
+                                        NccModelRoiMinHeight = source.NccModelRoiMinHeight,
+                                        NccModelRoiMinStdDev = source.NccModelRoiMinStdDev };
         }
 
         private static HalconShapeModelOptions Clone(HalconShapeModelOptions source)
         {
-            return new HalconShapeModelOptions
-            {
-                Mode = source.Mode, NumLevels = source.NumLevels,
-                AngleStartRad = source.AngleStartRad, AngleExtentRad = source.AngleExtentRad,
-                AngleStepRad = source.AngleStepRad, Optimization = source.Optimization,
-                Metric = source.Metric, Contrast = source.Contrast, MinContrast = source.MinContrast,
-                ScaleMin = source.ScaleMin, ScaleMax = source.ScaleMax, ScaleStep = source.ScaleStep,
-                MinScore = source.MinScore, NumMatches = source.NumMatches,
-                MaxOverlap = source.MaxOverlap, SubPixel = source.SubPixel,
-                SearchNumLevels = source.SearchNumLevels, Greediness = source.Greediness,
-                ModelRoiMarginPixels = source.ModelRoiMarginPixels,
-                MinModelRoiWidth = source.MinModelRoiWidth,
-                MinModelRoiHeight = source.MinModelRoiHeight
-            };
+            return new HalconShapeModelOptions { Mode = source.Mode,
+                                                 NumLevels = source.NumLevels,
+                                                 AngleStartRad = source.AngleStartRad,
+                                                 AngleExtentRad = source.AngleExtentRad,
+                                                 AngleStepRad = source.AngleStepRad,
+                                                 Optimization = source.Optimization,
+                                                 Metric = source.Metric,
+                                                 Contrast = source.Contrast,
+                                                 MinContrast = source.MinContrast,
+                                                 ScaleMin = source.ScaleMin,
+                                                 ScaleMax = source.ScaleMax,
+                                                 ScaleStep = source.ScaleStep,
+                                                 MinScore = source.MinScore,
+                                                 NumMatches = source.NumMatches,
+                                                 MaxOverlap = source.MaxOverlap,
+                                                 SubPixel = source.SubPixel,
+                                                 SearchNumLevels = source.SearchNumLevels,
+                                                 Greediness = source.Greediness,
+                                                 ModelRoiMarginPixels = source.ModelRoiMarginPixels,
+                                                 MinModelRoiWidth = source.MinModelRoiWidth,
+                                                 MinModelRoiHeight = source.MinModelRoiHeight };
         }
     }
 }

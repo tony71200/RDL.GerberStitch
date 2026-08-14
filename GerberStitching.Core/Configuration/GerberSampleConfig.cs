@@ -7,43 +7,44 @@ using GerberViewer.Stitching.RobotManager;
 namespace GerberViewer.Stitching.Configuration
 {
     [DataContract]
-    public enum OverlapUnit 
-    { 
-        Pixel = 0, 
-        Percent = 1 
+    public enum OverlapUnit
+    {
+        Pixel = 0,
+        Percent = 1
     }
     [DataContract]
-    public enum SamplePreprocessMode 
-    { 
-        None = 0, 
-        Resize = 1, 
-        FitPad = 2, 
-        CenterCrop = 3 
+    public enum SamplePreprocessMode
+    {
+        None = 0,
+        Resize = 1,
+        FitPad = 2,
+        CenterCrop = 3
     }
     [DataContract]
-    public enum SampleOutputFormat 
-    { 
+    public enum SampleOutputFormat
+    {
         Tiff = 0,
         BigTiff = 1,
-        Png = 2, 
-        Bmp = 3, 
+        Png = 2,
+        Bmp = 3,
         Jpeg = 4,
     }
 
-    // [Claude] [Change time: 2026-08-07] [Purpose: Let users either pre-generate HALCON models on disk or let the matcher create them at runtime; persist the choice in sample_manifest.json so Worker knows the model source.]
+    // Let the user choose whether HALCON models are saved to disk in advance or created by the matcher at runtime;
+    // record the choice in sample_manifest.json so the Worker knows the model source.
     [DataContract]
     public enum SampleModelGenerationMode
     {
         /// <summary>
-        /// Does not write .ncm/.shm files. Model paths remain empty in the manifest;
-        /// HalconNccModelProvider/HalconShapeModelProvider create models in memory at runtime.
-        /// This is the default behavior and matches the verified Phase 0 runs.
+        /// Do not write .ncm/.shm files. Leave model paths empty in the manifest; HalconNccModelProvider and
+        /// HalconShapeModelProvider create models in memory at runtime. This is the default behavior validated in
+        /// Phase 0.
         /// </summary>
         OnTheFly = 0,
 
         /// <summary>
-        /// Analyzes each tile; for Matchable tiles, writes .ncm and .shm beside the tile image
-        /// and records paths, ROI, and origin in the manifest so Worker calls ReadModel instead of CreateModel.
+        /// Analyze each tile. For matchable tiles, write adjacent .ncm and .shm files and store their paths, ROI,
+        /// and origin in the manifest so the Worker reads rather than creates the models.
         /// </summary>
         Pregenerate = 1
     }
@@ -75,7 +76,7 @@ namespace GerberViewer.Stitching.Configuration
         public bool KeepAspectRatio { get; set; } = true;
         [DataMember]
         public SampleOutputFormat OutputFormat { get; set; } = SampleOutputFormat.Tiff;
-        // [Claude] [Change time: 2026-08-07] [Purpose: Let users select HALCON model generation mode; OnTheFly remains the default to preserve existing behavior.]
+        // Use the model-generation mode selected by the user; OnTheFly preserves the current default behavior.
         [DataMember]
         public SampleModelGenerationMode ModelGeneration { get; set; } = SampleModelGenerationMode.OnTheFly;
         [DataMember]
@@ -91,41 +92,51 @@ namespace GerberViewer.Stitching.Configuration
     public sealed class SampleConfigValidationResult
     {
         public List<string> Errors { get; } = new List<string>();
-        public bool IsValid { get { return Errors.Count == 0; } }
+        public bool IsValid
+        {
+            get {
+                return Errors.Count == 0;
+            }
+        }
     }
 
     public static class GerberSampleConfigValidator
     {
-        public static SampleConfigValidationResult Validate(
-            GerberSampleConfig config, 
-            Size sourceSize)
+        public static SampleConfigValidationResult Validate(GerberSampleConfig config, Size sourceSize)
         {
-            if (config == null) throw new ArgumentNullException(nameof(config));
+            if (config == null)
+                throw new ArgumentNullException(nameof(config));
             var result = new SampleConfigValidationResult();
-            if (config.Rows < 1) 
+            if (config.Rows < 1)
                 result.Errors.Add("Rows must be >= 1.");
-            if (config.Columns < 1) 
+            if (config.Columns < 1)
                 result.Errors.Add("Columns must be >= 1.");
-            if (config.OverlapUnit == OverlapUnit.Percent && (config.OverlapValue < 0 || config.OverlapValue >= 100)) 
+            if (config.OverlapUnit == OverlapUnit.Percent && (config.OverlapValue < 0 || config.OverlapValue >= 100))
                 result.Errors.Add("Percent overlap must satisfy 0 <= P < 100.");
 
-            var fallbackTileWidth = CalculateFallbackTileSize(sourceSize.Width, config.Columns, config.OverlapValue, config.OverlapUnit);
-            var fallbackTileHeight = CalculateFallbackTileSize(sourceSize.Height, config.Rows, config.OverlapValue, config.OverlapUnit);
+            var fallbackTileWidth =
+                CalculateFallbackTileSize(sourceSize.Width, config.Columns, config.OverlapValue, config.OverlapUnit);
+            var fallbackTileHeight =
+                CalculateFallbackTileSize(sourceSize.Height, config.Rows, config.OverlapValue, config.OverlapUnit);
             var tileWidth = config.ProcessedWidth > 0 ? config.ProcessedWidth : fallbackTileWidth;
             var tileHeight = config.ProcessedHeight > 0 ? config.ProcessedHeight : fallbackTileHeight;
             if (config.Rows >= 1 && config.Columns >= 1 && tileWidth > 0 && tileHeight > 0)
             {
                 var overlapX = CalculateOverlap(tileWidth, config.OverlapValue, config.OverlapUnit);
                 var overlapY = CalculateOverlap(tileHeight, config.OverlapValue, config.OverlapUnit);
-                if (tileWidth <= overlapX) result.Errors.Add("Overlap makes tileWidth <= overlap.");
-                if (tileHeight <= overlapY) result.Errors.Add("Overlap makes tileHeight <= overlap.");
+                if (tileWidth <= overlapX)
+                    result.Errors.Add("Overlap makes tileWidth <= overlap.");
+                if (tileHeight <= overlapY)
+                    result.Errors.Add("Overlap makes tileHeight <= overlap.");
             }
             return result;
         }
 
-        private static double CalculateFallbackTileSize(int processedSize, int count, double overlapValue, OverlapUnit overlapUnit)
+        private static double CalculateFallbackTileSize(int processedSize, int count, double overlapValue,
+                                                        OverlapUnit overlapUnit)
         {
-            if (count <= 1) return processedSize;
+            if (count <= 1)
+                return processedSize;
             var overlap = overlapUnit == OverlapUnit.Percent ? 0.0 : overlapValue;
             return (processedSize + Math.Max(0, count - 1) * overlap) / count;
         }

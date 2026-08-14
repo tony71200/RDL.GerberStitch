@@ -1,6 +1,11 @@
 namespace GerberViewer.Stitching.Utils
 {
-    public enum StitchingMethod { CoarseFine, PhaseCorrelation, Manual }
+    public enum StitchingMethod
+    {
+        CoarseFine,
+        PhaseCorrelation,
+        Manual
+    }
     public sealed class StitchingConfig
     {
         public StitchingMethod Method { get; set; } = StitchingMethod.CoarseFine;
@@ -14,6 +19,9 @@ namespace GerberViewer.Stitching.Utils
         public double ManualOffsetHorizontalTy { get; set; }
         public double ManualOffsetVerticalTx { get; set; }
         public double ManualOffsetVerticalTy { get; set; }
-        public StitchingConfig Clone() { return (StitchingConfig)MemberwiseClone(); }
+        public StitchingConfig Clone()
+        {
+            return (StitchingConfig)MemberwiseClone();
+        }
     }
 }

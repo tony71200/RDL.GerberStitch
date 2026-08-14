@@ -18,10 +18,14 @@ namespace GerberViewer.Stitching.Alignment
 
         public void Dispose()
         {
-            if (Sample != null) Sample.Dispose();
-            if (Captured != null) Captured.Dispose();
-            if (SampleDiagnostic != null) SampleDiagnostic.Dispose();
-            if (CapturedDiagnostic != null) CapturedDiagnostic.Dispose();
+            if (Sample != null)
+                Sample.Dispose();
+            if (Captured != null)
+                Captured.Dispose();
+            if (SampleDiagnostic != null)
+                SampleDiagnostic.Dispose();
+            if (CapturedDiagnostic != null)
+                CapturedDiagnostic.Dispose();
         }
     }
 
@@ -40,28 +44,35 @@ namespace GerberViewer.Stitching.Alignment
 
         public ModalityAwarePreprocessor(IImageInteropService imageInterop)
         {
-            if (imageInterop == null) throw new ArgumentNullException("imageInterop");
+            if (imageInterop == null)
+                throw new ArgumentNullException("imageInterop");
             _imageAdapter = new BitmapMatchImageAdapter(imageInterop);
         }
 
-        public IList<PreprocessedAlignmentImages> PreprocessCandidates(Bitmap sample, Bitmap captured, PreprocessingOptions options)
+        public IList<PreprocessedAlignmentImages> PreprocessCandidates(Bitmap sample, Bitmap captured,
+                                                                       PreprocessingOptions options)
         {
-            if (sample == null) throw new ArgumentNullException("sample");
-            if (captured == null) throw new ArgumentNullException("captured");
+            if (sample == null)
+                throw new ArgumentNullException("sample");
+            if (captured == null)
+                throw new ArgumentNullException("captured");
             options = options ?? new PreprocessingOptions();
             var candidates = new List<PreprocessedAlignmentImages>();
-            //if (options.Polarity == PolarityMode.Auto)
+            // if (options.Polarity == PolarityMode.Auto)
             //{
-            //    candidates.Add(CreateCandidate(sample, captured, options, PolarityMode.AsIs, "polarity:auto/as-is"));
-            //    candidates.Add(CreateCandidate(sample, captured, options, PolarityMode.InvertCaptured, "polarity:auto/invert-captured"));
-            //    return candidates;
-            //}
+            //     candidates.Add(CreateCandidate(sample, captured, options, PolarityMode.AsIs, "polarity:auto/as-is"));
+            //     candidates.Add(CreateCandidate(sample, captured, options, PolarityMode.InvertCaptured,
+            //     "polarity:auto/invert-captured")); return candidates;
+            // }
 
-            candidates.Add(CreateCandidate(sample, captured, options, options.Polarity, "polarity:" + options.Polarity));
+            candidates.Add(
+                CreateCandidate(sample, captured, options, options.Polarity, "polarity:" + options.Polarity));
             return candidates;
         }
 
-        private PreprocessedAlignmentImages CreateCandidate(Bitmap sample, Bitmap captured, PreprocessingOptions options, PolarityMode polarity, string polarityVariant)
+        private PreprocessedAlignmentImages CreateCandidate(Bitmap sample, Bitmap captured,
+                                                            PreprocessingOptions options, PolarityMode polarity,
+                                                            string polarityVariant)
         {
             Mat sampleMat = null;
             Mat capturedMat = null;
@@ -73,8 +84,8 @@ namespace GerberViewer.Stitching.Alignment
                 ResizeIfRequested(ref capturedMat, options.NormalizedWidth, options.NormalizedHeight);
                 // Contrast belongs to the Direct Alignment moving/request image only.
                 IncreaseContrast(capturedMat, options.Contrast);
-                
-                //Threshold(capturedMat, options);
+
+                // Threshold(capturedMat, options);
                 if (!SkipThresholdAndEdgePreparation)
                 {
                     Normalize(sampleMat, options.ContrastNormalization);
@@ -82,17 +93,14 @@ namespace GerberViewer.Stitching.Alignment
                     ApplyPolarity(sampleMat, capturedMat, polarity);
                     Threshold(sampleMat, options);
                     Threshold(capturedMat, options);
-                    if (options.ApplyGerberContentMask) ApplyContentMask(sampleMat, capturedMat);
+                    if (options.ApplyGerberContentMask)
+                        ApplyContentMask(sampleMat, capturedMat);
                     PrepareEdges(ref sampleMat, options.EdgePreparation);
                     PrepareEdges(ref capturedMat, options.EdgePreparation);
                 }
 
-                var result = new PreprocessedAlignmentImages
-                {
-                    Sample = sampleMat,
-                    Captured = capturedMat,
-                    Variant = BuildVariant(options, polarityVariant)
-                };
+                var result = new PreprocessedAlignmentImages { Sample = sampleMat, Captured = capturedMat,
+                                                               Variant = BuildVariant(options, polarityVariant) };
                 sampleMat = null;
                 capturedMat = null;
                 if (options.IncludeDiagnosticImages)
@@ -104,8 +112,10 @@ namespace GerberViewer.Stitching.Alignment
             }
             finally
             {
-                if (sampleMat != null) sampleMat.Dispose();
-                if (capturedMat != null) capturedMat.Dispose();
+                if (sampleMat != null)
+                    sampleMat.Dispose();
+                if (capturedMat != null)
+                    capturedMat.Dispose();
             }
         }
 
@@ -114,13 +124,18 @@ namespace GerberViewer.Stitching.Alignment
             var threshold = SkipThresholdAndEdgePreparation ? "disabled-temporary" : o.Threshold.ToString();
             var edge = SkipThresholdAndEdgePreparation ? "disabled-temporary" : o.EdgePreparation.ToString();
             var mask = SkipThresholdAndEdgePreparation ? "disabled-temporary" : o.ApplyGerberContentMask.ToString();
-            return string.Format(CultureInfo.InvariantCulture, "opencv-gray+contrast:{0:0.###}%+{1}+{2}+threshold:{3}+edge:{4}+mask:{5}+size:{6}x{7}", o.Contrast, o.ContrastNormalization, polarityVariant, threshold, edge, mask, o.NormalizedWidth, o.NormalizedHeight);
+            return string.Format(CultureInfo.InvariantCulture,
+                                 "opencv-gray+contrast:{0:0.###}%+{1}+{2}+threshold:{3}+edge:{4}+mask:{5}+size:{6}x{7}",
+                                 o.Contrast, o.ContrastNormalization, polarityVariant, threshold, edge, mask,
+                                 o.NormalizedWidth, o.NormalizedHeight);
         }
 
         private static void ResizeIfRequested(ref Mat image, int width, int height)
         {
-            if (width <= 0 || height <= 0) return;
-            if (image.Cols == width && image.Rows == height) return;
+            if (width <= 0 || height <= 0)
+                return;
+            if (image.Cols == width && image.Rows == height)
+                return;
             var resized = new Mat();
             Cv2.Resize(image, resized, new OpenCvSharp.Size(width, height), 0, 0, InterpolationFlags.Area);
             image.Dispose();
@@ -134,9 +149,11 @@ namespace GerberViewer.Stitching.Alignment
         /// </summary>
         public static void IncreaseContrast(Mat image, double contrastPercent = 100d)
         {
-            if (image == null) throw new ArgumentNullException("image");
+            if (image == null)
+                throw new ArgumentNullException("image");
             ValidateContrast(contrastPercent);
-            if (Math.Abs(contrastPercent - 100d) < 1e-9) return;
+            if (Math.Abs(contrastPercent - 100d) < 1e-9)
+                return;
 
             double alpha;
             double beta;
@@ -148,7 +165,8 @@ namespace GerberViewer.Stitching.Alignment
         /// <summary>Creates an owned contrast-adjusted copy without changing the source image.</summary>
         public static Mat CreateContrastCopy(Mat source, double contrastPercent = 100d)
         {
-            if (source == null) throw new ArgumentNullException("source");
+            if (source == null)
+                throw new ArgumentNullException("source");
             var result = source.Clone();
             try
             {
@@ -165,7 +183,8 @@ namespace GerberViewer.Stitching.Alignment
         private static void ValidateContrast(double contrastPercent)
         {
             if (double.IsNaN(contrastPercent) || double.IsInfinity(contrastPercent) || contrastPercent < 0d)
-                throw new ArgumentOutOfRangeException("contrastPercent", "Contrast must be a finite value greater than or equal to zero.");
+                throw new ArgumentOutOfRangeException("contrastPercent",
+                                                      "Contrast must be a finite value greater than or equal to zero.");
         }
 
         private static void GetContrastScale(double contrastPercent, out double alpha, out double beta)
@@ -176,19 +195,23 @@ namespace GerberViewer.Stitching.Alignment
 
         private static void Normalize(Mat image, ContrastNormalizationMode mode)
         {
-            if (mode == ContrastNormalizationMode.None) return;
+            if (mode == ContrastNormalizationMode.None)
+                return;
             Cv2.Normalize(image, image, 0, 255, NormTypes.MinMax);
         }
 
         private static void ApplyPolarity(Mat sample, Mat captured, PolarityMode mode)
         {
-            if (mode == PolarityMode.InvertSample || mode == PolarityMode.InvertBoth) Cv2.BitwiseNot(sample, sample);
-            if (mode == PolarityMode.InvertCaptured || mode == PolarityMode.InvertBoth) Cv2.BitwiseNot(captured, captured);
+            if (mode == PolarityMode.InvertSample || mode == PolarityMode.InvertBoth)
+                Cv2.BitwiseNot(sample, sample);
+            if (mode == PolarityMode.InvertCaptured || mode == PolarityMode.InvertBoth)
+                Cv2.BitwiseNot(captured, captured);
         }
 
         private static void Threshold(Mat image, PreprocessingOptions options)
         {
-            if (options.Threshold == ThresholdMode.None) return;
+            if (options.Threshold == ThresholdMode.None)
+                return;
             if (options.Threshold == ThresholdMode.Fixed)
             {
                 Cv2.Threshold(image, image, options.FixedThreshold, 255, ThresholdTypes.Binary);
@@ -199,7 +222,8 @@ namespace GerberViewer.Stitching.Alignment
                 var blockSize = Math.Max(3, options.AdaptiveRadius | 1);
                 using (var adaptive = new Mat())
                 {
-                    Cv2.AdaptiveThreshold(image, adaptive, 255, AdaptiveThresholdTypes.GaussianC, ThresholdTypes.Binary, blockSize, 2);
+                    Cv2.AdaptiveThreshold(image, adaptive, 255, AdaptiveThresholdTypes.GaussianC, ThresholdTypes.Binary,
+                                          blockSize, 2);
                     adaptive.CopyTo(image);
                 }
                 return;
@@ -209,8 +233,7 @@ namespace GerberViewer.Stitching.Alignment
 
         private static void ApplyContentMask(Mat sample, Mat captured)
         {
-            using (var sampleMask = new Mat())
-            using (var capturedMask = new Mat())
+            using (var sampleMask = new Mat()) using (var capturedMask = new Mat())
             {
                 Cv2.Threshold(sample, sampleMask, 0, 255, ThresholdTypes.Binary);
                 Cv2.Threshold(captured, capturedMask, 0, 255, ThresholdTypes.Binary);
@@ -221,7 +244,8 @@ namespace GerberViewer.Stitching.Alignment
 
         private static void PrepareEdges(ref Mat image, EdgePreparationMode mode)
         {
-            if (mode == EdgePreparationMode.None) return;
+            if (mode == EdgePreparationMode.None)
+                return;
             if (mode == EdgePreparationMode.Canny)
             {
                 var canny = new Mat();
@@ -253,7 +277,8 @@ namespace GerberViewer.Stitching.Alignment
                 gradY.Dispose();
                 absX.Dispose();
                 absY.Dispose();
-                if (sobel != null) sobel.Dispose();
+                if (sobel != null)
+                    sobel.Dispose();
             }
         }
     }

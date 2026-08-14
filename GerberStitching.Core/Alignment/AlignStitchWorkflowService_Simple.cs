@@ -23,16 +23,20 @@ namespace GerberViewer.Stitching.Alignment
 
         public event EventHandler<MatchResultEventArgs> MatcherResultAvailable
         {
-            add { _workflow.MatcherResultAvailable += value; }
-            remove { _workflow.MatcherResultAvailable -= value; }
+            add
+            {
+                _workflow.MatcherResultAvailable += value;
+            }
+            remove
+            {
+                _workflow.MatcherResultAvailable -= value;
+            }
         }
 
-        public Task<AlignStitchWorkflowResult> RunAsync(
-            AlignStitchConfig config,
-            SampleManifest manifest,
-            IList<CapturedImageInfo> captured,
-            IProgress<WorkflowProgress> progress,
-            CancellationToken cancellationToken)
+        public Task<AlignStitchWorkflowResult> RunAsync(AlignStitchConfig config, SampleManifest manifest,
+                                                        IList<CapturedImageInfo> captured,
+                                                        IProgress<WorkflowProgress> progress,
+                                                        CancellationToken cancellationToken)
         {
             return _workflow.RunSimpleAsync(config, manifest, captured, progress, cancellationToken);
         }

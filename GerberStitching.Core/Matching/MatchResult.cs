@@ -26,23 +26,26 @@ namespace GerberViewer.Stitching.Matching
 
         public static MatchResult Failed(string matcherName, MatchFailureReason reason, string message)
         {
-            return new MatchResult { MatcherName = matcherName, FailureReason = reason, FailureMessage = message, RawScore = double.NaN, NormalizedConfidence = 0d, OverlapRatio = 0d, Scale = 1d };
+            return new MatchResult { MatcherName = matcherName,
+                                     FailureReason = reason,
+                                     FailureMessage = message,
+                                     RawScore = double.NaN,
+                                     NormalizedConfidence = 0d,
+                                     OverlapRatio = 0d,
+                                     Scale = 1d };
         }
 
         public override string ToString()
         {
-            var text = string.Format(
-                CultureInfo.InvariantCulture,
-                "MatcherName={0}; Success={1}; \tScore={2:F5}; Dx={3:F4}; Dy={4:F4}; Angle={5:F5}",
-                OneLine(MatcherName), Success, RawScore, TranslationX, TranslationY, RotationDeg);
+            var text = string.Format(CultureInfo.InvariantCulture,
+                                     "MatcherName={0}; Success={1}; \tScore={2:F5}; Dx={3:F4}; Dy={4:F4}; Angle={5:F5}",
+                                     OneLine(MatcherName), Success, RawScore, TranslationX, TranslationY, RotationDeg);
 
-            if (!Success || !IsFinite(RawScore) || !IsFinite(TranslationX) ||
-                !IsFinite(TranslationY) || !IsFinite(RotationDeg))
+            if (!Success || !IsFinite(RawScore) || !IsFinite(TranslationX) || !IsFinite(TranslationY) ||
+                !IsFinite(RotationDeg))
             {
-                text += string.Format(
-                    CultureInfo.InvariantCulture,
-                    "; FailureReason={0}; FailureMessage={1}",
-                    FailureReason, OneLine(FailureMessage));
+                text += string.Format(CultureInfo.InvariantCulture, "; FailureReason={0}; FailureMessage={1}",
+                                      FailureReason, OneLine(FailureMessage));
             }
 
             return text;

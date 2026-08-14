@@ -13,7 +13,12 @@ namespace GerberViewer.Stitching.Imaging
         public SamplePreprocessMode Mode { get; set; }
         public bool KeepAspectRatio { get; set; }
         public bool Inverted { get; set; }
-        public string CoordinateSpace { get { return "processed-source pixels"; } }
+        public string CoordinateSpace
+        {
+            get {
+                return "processed-source pixels";
+            }
+        }
     }
 
     public sealed class PreparedSampleRun : IDisposable
@@ -29,102 +34,138 @@ namespace GerberViewer.Stitching.Imaging
         public IReadOnlyList<SampleTileLayout> TilesByOrder { get; private set; }
         public ImagePreprocessMetadata PreprocessMetadata { get; private set; }
 
-        public PreparedSampleRun(HObject sourceImage, HObject processedImage, int sourceWidth, int sourceHeight, int processedWidth, int processedHeight, GerberSampleConfig configSnapshot, SampleGridLayout layout, ImagePreprocessMetadata metadata)
+        public PreparedSampleRun(HObject sourceImage, HObject processedImage, int sourceWidth, int sourceHeight,
+                                 int processedWidth, int processedHeight, GerberSampleConfig configSnapshot,
+                                 SampleGridLayout layout, ImagePreprocessMetadata metadata)
         {
-            if (sourceImage == null || !sourceImage.IsInitialized()) 
+            if (sourceImage == null || !sourceImage.IsInitialized())
                 throw new ArgumentException("Owned source image is required.", nameof(sourceImage));
-            if (processedImage == null || !processedImage.IsInitialized()) 
+            if (processedImage == null || !processedImage.IsInitialized())
                 throw new ArgumentException("Owned processed image is required.", nameof(processedImage));
-            if (sourceWidth <= 0 || sourceHeight <= 0 || processedWidth <= 0 || processedHeight <= 0) 
+            if (sourceWidth <= 0 || sourceHeight <= 0 || processedWidth <= 0 || processedHeight <= 0)
                 throw new ArgumentOutOfRangeException("Image dimensions must be positive.");
-            if (configSnapshot == null) 
+            if (configSnapshot == null)
                 throw new ArgumentNullException(nameof(configSnapshot));
-            if (layout == null || layout.Tiles == null) 
+            if (layout == null || layout.Tiles == null)
                 throw new ArgumentNullException(nameof(layout));
-            SourceImage = sourceImage; 
-            ProcessedImage = processedImage; 
-            SourceWidth = sourceWidth; 
-            SourceHeight = sourceHeight; 
-            ProcessedWidth = processedWidth; 
+            SourceImage = sourceImage;
+            ProcessedImage = processedImage;
+            SourceWidth = sourceWidth;
+            SourceHeight = sourceHeight;
+            ProcessedWidth = processedWidth;
             ProcessedHeight = processedHeight;
-            ConfigSnapshot = configSnapshot; 
-            Layout = layout; 
-            TilesByOrder = layout.Tiles.OrderBy(t => t.OrderIndex).ToList().AsReadOnly(); 
+            ConfigSnapshot = configSnapshot;
+            Layout = layout;
+            TilesByOrder = layout.Tiles.OrderBy(t => t.OrderIndex).ToList().AsReadOnly();
             PreprocessMetadata = metadata ?? new ImagePreprocessMetadata();
         }
 
         public void Dispose()
         {
-            if (SourceImage != null && SourceImage.IsInitialized()) SourceImage.Dispose();
-            if (ProcessedImage != null && ProcessedImage.IsInitialized()) ProcessedImage.Dispose();
-            SourceImage = null; ProcessedImage = null;
+            if (SourceImage != null && SourceImage.IsInitialized())
+                SourceImage.Dispose();
+            if (ProcessedImage != null && ProcessedImage.IsInitialized())
+                ProcessedImage.Dispose();
+            SourceImage = null;
+            ProcessedImage = null;
         }
     }
 
-    public interface ISamplePreparationService { 
-        PreparedSampleRun Prepare(HObject sourceImage, GerberSampleConfig config, CancellationToken cancellationToken); 
+    public interface ISamplePreparationService
+    {
+        PreparedSampleRun Prepare(HObject sourceImage, GerberSampleConfig config, CancellationToken cancellationToken);
     }
 
     public sealed class SamplePreparationService : ISamplePreparationService
     {
-        public PreparedSampleRun Prepare(HObject sourceImage, GerberSampleConfig config, CancellationToken cancellationToken)
+        public PreparedSampleRun Prepare(HObject sourceImage, GerberSampleConfig config,
+                                         CancellationToken cancellationToken)
         {
-            if (sourceImage == null || !sourceImage.IsInitialized()) 
+            return PrepareCore(sourceImage, config, null, cancellationToken);
+        }
+
+        // [Tony] [Change time: 2026-08-11] [Purpose: Cho phép truyền sẵn SampleGridLayout thay vì để
+        // SampleGeometryCalculator.Calculate suy từ lưới đều. Master gửi rect tường minh lấy từ MapCore
+        // (lưới EdgePath không đều), xem RDL_Master3/docs/implement_worker_phase4_20260811.md §3.2.
+        // Đường cũ đi qua đúng mã này với explicitLayout = null nên không có nhánh nào lệch nhau.]
+        public PreparedSampleRun Prepare(HObject sourceImage, GerberSampleConfig config,
+                                         SampleGridLayout explicitLayout,
+                                         CancellationToken cancellationToken)
+        {
+            if (explicitLayout == null)
+                throw new ArgumentNullException(nameof(explicitLayout));
+            return PrepareCore(sourceImage, config, explicitLayout, cancellationToken);
+        }
+
+        private PreparedSampleRun PrepareCore(HObject sourceImage, GerberSampleConfig config,
+                                              SampleGridLayout explicitLayout,
+                                              CancellationToken cancellationToken)
+        {
+            if (sourceImage == null || !sourceImage.IsInitialized())
                 throw new ArgumentException("Source image is required.", nameof(sourceImage));
-            if (config == null) 
+            if (config == null)
                 throw new ArgumentNullException(nameof(config));
             cancellationToken.ThrowIfCancellationRequested();
             var snapshot = CloneConfig(config);
-            HObject ownedSource = null; HObject processed = null;
+            HObject ownedSource = null;
+            HObject processed = null;
             try
             {
                 HOperatorSet.CopyImage(sourceImage, out ownedSource);
                 var sourceSize = GetSize(ownedSource);
                 var validation = GerberSampleConfigValidator.Validate(snapshot, sourceSize);
-                if (!validation.IsValid) 
+                if (!validation.IsValid)
                     throw new InvalidOperationException(string.Join(Environment.NewLine, validation.Errors));
-                processed = Preprocess(
-                    ownedSource, 
-                    sourceSize, 
-                    snapshot, 
-                    cancellationToken);
+                processed = Preprocess(ownedSource, sourceSize, snapshot, cancellationToken);
                 var processedSize = GetSize(processed);
-                var layout = SampleGeometryCalculator.Calculate(processedSize.Width, processedSize.Height, snapshot);
-                return new PreparedSampleRun(ownedSource, processed, sourceSize.Width, sourceSize.Height, processedSize.Width, processedSize.Height, snapshot, layout, new ImagePreprocessMetadata { Mode = snapshot.PreprocessMode, KeepAspectRatio = snapshot.KeepAspectRatio, Inverted = snapshot.InvertImage });
+
+                // Điểm khác biệt DUY NHẤT giữa hai đường vào.
+                var layout = explicitLayout
+                             ?? SampleGeometryCalculator.Calculate(processedSize.Width, processedSize.Height,
+                                                                   snapshot);
+
+                return new PreparedSampleRun(ownedSource, processed, sourceSize.Width, sourceSize.Height,
+                                             processedSize.Width, processedSize.Height, snapshot, layout,
+                                             new ImagePreprocessMetadata { Mode = snapshot.PreprocessMode,
+                                                                           KeepAspectRatio = snapshot.KeepAspectRatio,
+                                                                           Inverted = snapshot.InvertImage });
             }
             catch
             {
-                if (ownedSource != null && ownedSource.IsInitialized()) 
+                if (ownedSource != null && ownedSource.IsInitialized())
                     ownedSource.Dispose();
-                if (processed != null && processed.IsInitialized()) 
+                if (processed != null && processed.IsInitialized())
                     processed.Dispose();
                 throw;
             }
         }
 
-        private static HObject Preprocess(HObject source, Size sourceSize, GerberSampleConfig config, CancellationToken ct)
+        private static HObject Preprocess(HObject source, Size sourceSize, GerberSampleConfig config,
+                                          CancellationToken ct)
         {
             ct.ThrowIfCancellationRequested();
             HObject result = null;
             var width = sourceSize.Width;
             var height = sourceSize.Height;
-            if (config.PreprocessMode == SamplePreprocessMode.None || 
-                (width == sourceSize.Width && height == sourceSize.Height)) 
+            if (config.PreprocessMode == SamplePreprocessMode.None ||
+                (width == sourceSize.Width && height == sourceSize.Height))
                 HOperatorSet.CopyImage(source, out result);
-            else HOperatorSet.ZoomImageSize(source, out result, width, height, "constant");
+            else
+                HOperatorSet.ZoomImageSize(source, out result, width, height, "constant");
             if (config.InvertImage)
             {
                 HObject inverted = null;
-                try 
-                { 
-                    HOperatorSet.InvertImage(result, out inverted); 
-                    result.Dispose(); 
-                    result = inverted; 
-                    inverted = null; 
+                try
+                {
+                    HOperatorSet.InvertImage(result, out inverted);
+                    result.Dispose();
+                    result = inverted;
+                    inverted = null;
                 }
-                finally { 
-                    if (inverted != null && inverted.IsInitialized()) 
-                        inverted.Dispose(); 
+                finally
+                {
+                    if (inverted != null && inverted.IsInitialized())
+                        inverted.Dispose();
                 }
             }
             return result;
@@ -133,41 +174,38 @@ namespace GerberViewer.Stitching.Imaging
         private static Size GetSize(HObject image)
         {
             HTuple w = null, h = null;
-            try 
-            { 
-                HOperatorSet.GetImageSize(image, out w, out h); 
-                return new Size(w.I, h.I); 
+            try
+            {
+                HOperatorSet.GetImageSize(image, out w, out h);
+                return new Size(w.I, h.I);
             }
-            finally 
-            { 
-                if (w != null) 
-                    w.Dispose(); 
-                if (h != null) 
-                    h.Dispose(); 
+            finally
+            {
+                if (w != null)
+                    w.Dispose();
+                if (h != null)
+                    h.Dispose();
             }
         }
 
         private static GerberSampleConfig CloneConfig(GerberSampleConfig c)
         {
-            return new GerberSampleConfig 
-            { 
-                SourceRasterPath = c.SourceRasterPath, 
-                OutputDirectory = c.OutputDirectory, 
-                Rows = c.Rows, 
-                Columns = c.Columns, 
-                CropOrder = c.CropOrder, 
-                StartOrder = c.StartOrder, 
-                InvertImage = c.InvertImage, 
-                OverlapValue = c.OverlapValue, 
-                OverlapUnit = c.OverlapUnit, 
-                PreprocessMode = c.PreprocessMode, 
-                KeepAspectRatio = c.KeepAspectRatio, 
-                OutputFormat = c.OutputFormat, 
-                TileNamePattern = c.TileNamePattern, 
-                ProcessedWidth = c.ProcessedWidth, 
-                ProcessedHeight = c.ProcessedHeight, 
-                PadColor = c.PadColor 
-            };
+            return new GerberSampleConfig { SourceRasterPath = c.SourceRasterPath,
+                                            OutputDirectory = c.OutputDirectory,
+                                            Rows = c.Rows,
+                                            Columns = c.Columns,
+                                            CropOrder = c.CropOrder,
+                                            StartOrder = c.StartOrder,
+                                            InvertImage = c.InvertImage,
+                                            OverlapValue = c.OverlapValue,
+                                            OverlapUnit = c.OverlapUnit,
+                                            PreprocessMode = c.PreprocessMode,
+                                            KeepAspectRatio = c.KeepAspectRatio,
+                                            OutputFormat = c.OutputFormat,
+                                            TileNamePattern = c.TileNamePattern,
+                                            ProcessedWidth = c.ProcessedWidth,
+                                            ProcessedHeight = c.ProcessedHeight,
+                                            PadColor = c.PadColor };
         }
     }
 }
