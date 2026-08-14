@@ -120,11 +120,19 @@ namespace GerberViewer.Stitching.Imaging
                                                               OrderIndex = tile.OrderIndex,
                                                               State = SampleTileState.Completed, Message = fileName });
                 }
-                var processedSampleFileName = "processed_sample.tiff";
-                WriteProcessedSample(Path.Combine(temp, processedSampleFileName), run.ProcessedImage);
+                // [Claude] [Change time: 2026-08-14] [Purpose: With PreprocessMode=None the processed sample is a
+                // byte-identical copy of the source raster -- 1.31 GB written per prepare for nothing. Skip the write
+                // and point the manifest at the source instead; DebugPreviewWriter and SampleComparisonService read
+                // ProcessedSamplePath and work just as well against the source file.]
+                var skipProcessedSampleCopy =
+                    run.ConfigSnapshot.PreprocessMode == SamplePreprocessMode.None &&
+                    !string.IsNullOrWhiteSpace(run.ConfigSnapshot.SourceRasterPath) &&
+                    File.Exists(run.ConfigSnapshot.SourceRasterPath);
+                if (!skipProcessedSampleCopy)
+                    WriteProcessedSample(Path.Combine(temp, "processed_sample.tiff"), run.ProcessedImage);
                 WriteConfig(Path.Combine(temp, "sample_config.json"), run.ConfigSnapshot);
 
-                var manifest = BuildManifest(run, final, nccMetadata);
+                var manifest = BuildManifest(run, final, nccMetadata, skipProcessedSampleCopy);
                 ValidateTileFilesInTemp(run, temp);
                 var manifestPathInTemp = Path.Combine(temp, "sample_manifest.json");
                 SampleManifestSerializer.WriteValidated(manifestPathInTemp, manifest, false);
@@ -191,7 +199,7 @@ namespace GerberViewer.Stitching.Imaging
 
         private static SampleManifest BuildManifest(
             PreparedSampleRun run, string finalRoot,
-            System.Collections.Generic.IDictionary<int, NccModelMetadata> nccMetadata)
+            System.Collections.Generic.IDictionary<int, NccModelMetadata> nccMetadata, bool skipProcessedSampleCopy)
         {
             return new SampleManifest {
                 ManifestVersion = SampleManifest.CurrentVersion, RootDirectory = finalRoot,
@@ -199,7 +207,9 @@ namespace GerberViewer.Stitching.Imaging
                 SourceHeight = run.SourceHeight, ProcessedWidth = run.ProcessedWidth,
                 ProcessedHeight = run.ProcessedHeight, CropOrder = run.ConfigSnapshot.CropOrder.ToString(),
                 StartOrder = run.ConfigSnapshot.StartOrder.ToString(), CreatedUtc = DateTime.Now,
-                ProcessedSamplePath = Path.Combine(finalRoot, "processed_sample.tiff"),
+                ProcessedSamplePath = skipProcessedSampleCopy
+                                          ? run.ConfigSnapshot.SourceRasterPath
+                                          : Path.Combine(finalRoot, "processed_sample.tiff"),
                 SourceToProcessedTransform = SourceToProcessedTransform(run),
                 PreprocessMode = run.PreprocessMetadata == null ? null : run.PreprocessMetadata.Mode.ToString(),
                 ProcessedChannelCount = CountChannels(run.ProcessedImage),

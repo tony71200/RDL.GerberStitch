@@ -71,6 +71,7 @@
     <li><a href="#entry-7">2026-08-11 (nhánh <code>Ver1_2</code>) — Harness đọc <code>align_stitch.ini</code> để cấu hình <code>AlignStitchConfig</code></a></li>
     <li><a href="#entry-8">2026-08-11 (nhánh <code>Ver1_2</code>) — Thêm <code>MaxAbsRotationDeg</code>/Policy (<code>AllowCoarseOnlyAcceptance</code>, <code>AllowRefinementFromExpectedWhenCoarseFails</code>) vào façade + ini</a></li>
     <li><a href="#entry-9">2026-08-14 (nhánh <code>Ver2_0</code>) — Task 0: hợp nhất bản Worker (<code>GenerateSampleManifestFromRects</code>, <code>DebugPreviewWriter</code>) vào lại repo, khôi phục <code>CalculateTimeDetail</code></a></li>
+    <li><a href="#entry-10">2026-08-14 (nhánh <code>Ver2_0</code>) — Task 1: Bỏ ghi <code>processed_sample.tiff</code> khi <code>PreprocessMode=None</code></a></li>
     <li><a href="#pitfalls">Bảng tổng hợp lỗi &amp; cách fix (tra nhanh)</a></li>
   </ol>
 </div>
@@ -469,6 +470,45 @@ return AlignStitchConfigMapper.CloneForRun(baseConfig, outputPath); // tự đ�
     dữ liệu lô tham chiếu, kỳ vọng <code>aligned=54, blank=26, failed=0</code> giống các lần chạy trước (entry 3, 5). Việc này
     cần dữ liệu ảnh thật và do user tự chạy.</li>
   </ul>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="entry-10">10. 2026-08-14 (nhánh <code>Ver2_0</code>) — Task 1: Bỏ ghi <code>processed_sample.tiff</code> khi <code>PreprocessMode=None</code></h2>
+<div class="entry">
+  <div class="entry-meta"><span class="badge ok">Core</span> Phạm vi: <code>GerberStitching.Core/Imaging/SampleTileGenerator.cs</code> — Step 1 &amp; 2 của task plan</div>
+
+  <h4>Yêu cầu</h4>
+  <p>Khi <code>PreprocessMode == SamplePreprocessMode.None</code>, ảnh <code>processed_sample.tiff</code> là bản copy y hệt ảnh gốc (không biến đổi gì). Tuy nhiên hiện tại vẫn ghi thêm 1 file copy 1.31 GB này ra ổ đĩa mặc dù <strong>không ai đọc lại</strong>. Hai consumer khác (<code>DebugPreviewWriter.cs</code> và <code>SampleComparisonService.cs</code>) đều đọc <code>manifest.ProcessedSamplePath</code> một cách generic — có thể trỏ tới ảnh nguồn thay vì copy mà vẫn hoạt động đúng.</p>
+  <p>Quyết định: khi <code>PreprocessMode == None</code> <strong>và</strong> source raster file tồn tại trên đĩa, bỏ qua việc ghi copy, và trỏ <code>ProcessedSamplePath</code> trực tiếp đến ảnh gốc. Nếu không đủ điều kiện này (ví dụ, ảnh gốc không tồn tại — trường hợp hiếm khi dùng in-memory bitmap), vẫn ghi copy như cũ để bảo đảm <code>ProcessedSamplePath</code> luôn hợp lệ.</p>
+
+  <h4>File đã đổi</h4>
+  <ul class="filelist">
+    <li><code>GerberStitching.Core/Imaging/SampleTileGenerator.cs</code> — 2 điểm chính:
+      <ul>
+        <li><strong>Line 123-132 (bọc lệnh ghi file):</strong> thêm logic quyết định <code>skipProcessedSampleCopy</code> kiểm tra <code>PreprocessMode</code>, <code>SourceRasterPath</code> không rỗng, và file tồn tại. Chỉ gọi <code>WriteProcessedSample(...)</code> nếu <strong>không</strong> skip.</li>
+        <li><strong>Line 192-212 (<code>BuildManifest</code> method):</strong> sửa chữ ký để nhận <code>bool skipProcessedSampleCopy</code>, và dùng nó để chọn: nếu skip thì <code>ProcessedSamplePath = SourceRasterPath</code>, ngược lại là <code>Path.Combine(finalRoot, "processed_sample.tiff")</code> như cũ.</li>
+        <li><strong>Line 129 (call site):</strong> truyền <code>skipProcessedSampleCopy</code> sang <code>BuildManifest</code>.</li>
+      </ul>
+    </li>
+  </ul>
+
+  <h4>Kiểm chứng (Step 3: grep lại)</h4>
+  <p>Chạy <code>grep -rn "processed_sample" --include=*.cs .</code> — chỉ còn 2 match, đều trong <code>SampleTileGenerator.cs</code>:</p>
+  <ul>
+    <li>Line 132: <code>WriteProcessedSample(Path.Combine(temp, "processed_sample.tiff"), ...)</code> — bây giờ nằm trong <code>if (!skipProcessedSampleCopy)</code></li>
+    <li>Line 212: <code>: Path.Combine(finalRoot, "processed_sample.tiff"),</code> — trong biểu thức ba ngôi của <code>ProcessedSamplePath</code></li>
+  </ul>
+  <p><code>DebugPreviewWriter.cs</code> và <code>SampleComparisonService.cs</code> đều đọc <code>manifest.ProcessedSamplePath</code> generic, không hardcode tên file — tương thích với cả 2 trường hợp (path ảnh gốc hoặc path copy).</p>
+
+  <h4>Điểm cần lưu ý</h4>
+  <ul>
+    <li>Điều kiện skip bảo thủ: phải thỏa <strong>cả 3</strong> điều kiện (<code>PreprocessMode == None</code> AND <code>SourceRasterPath</code> không null/trống AND file tồn tại). Nếu bất kỳ điều kiện nào sai, vẫn ghi copy.</li>
+    <li>Không ảnh hưởng tới ảnh sinh ra từ Gerber (route <code>GenerateSampleManifest</code>): trong trường hợp đó <code>SourceRasterPath</code> là file temp từ render Gerber → Bitmap, không bao giờ tồn tại trên đĩa lâu dài (xoá sau khi finish) → điều kiện skip không thỏa → vẫn ghi copy như cũ.</li>
+    <li>Manifest <strong>luôn</strong> có <code>ProcessedSamplePath</code> hợp lệ — quy ước là field này luôn trỏ tới một file ảnh đã tồn tại trên đĩa. Consumer khác không cần lo thay đổi này.</li>
+  </ul>
+
+  <h4>Build gate</h4>
+  <p><span class="badge ok">PASS</span> — <code>Debug|x64</code>, full solution 4 project, <strong>0 error</strong>. Warnings là <code>CS0618</code>/<code>CS0162</code>/<code>CS0067</code> đã tồn tại từ trước, không liên quan thay đổi này.</p>
 </div>
 
 <!-- ============================================================ -->
