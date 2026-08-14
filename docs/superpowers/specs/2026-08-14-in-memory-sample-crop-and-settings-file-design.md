@@ -162,13 +162,13 @@ Kiểm đếm thực tế từ code, **sau khi tách matcher ra registry riêng*
 | Khối | Số tham số |
 |---|---|
 | `Matchers` — `HalconShapeModel` 19, `HalconNcc` 10, `PyramidEcc` 5, `PyramidPhaseCorrelation` 2 | ~36 |
-| `DirectAlignment` (`Geometry` 6, `Policy` 2, `Evaluation` 14, pose-correction 4, còn lại 5) | ~31 |
-| `NeighborAlignment` (`Acceptance` 5, ngưỡng 5, tham chiếu matcher 1) | 11 |
-| `Recovery` (10 cờ policy + tham chiếu matcher 1) | 11 |
+| `DirectAlignment` (`Geometry` 6, `Policy` 2, `Evaluation` 14, pose-correction 4, 2 tham chiếu matcher, còn lại 3) | ~31 |
+| `NeighborAlignment` (`Acceptance` 5, ngưỡng 5, 1 tham chiếu matcher) | 11 |
+| `Recovery` (chỉ cờ policy) | 10 |
 | `PoseGraph` | 19 |
 | `Stitching` | 8 |
 | `Output` (bỏ `OutputPath`) | 5 |
-| **Tổng** | **~121** |
+| **Tổng** | **~120** |
 
 ### 4.2. Vị trí và tầng ưu tiên
 
@@ -192,82 +192,66 @@ chéo stage:
 |---|---|
 | `DirectAlignment` | `Geometry`, `Ncc`, `Shape`, `Ecc` |
 | `NeighborAlignment` | `Geometry` (dựng từ `Acceptance`), `Phase`, `Ecc` *(obsolete, bị bỏ qua)* |
-| `Recovery` | **không có** — hiện dùng chung matcher của Neighbor (xem §4.4) |
+| `Recovery` | **không có** — dùng chung matcher của Neighbor |
 | `PoseGraph` | không có, nhưng **đọc `NeighborAlignment.Phase.MinResponse`** (`GlobalPoseGraphOptimizer.cs:76-77`) để tính trọng số cạnh |
 
-Vì vậy file tách matcher thành một registry riêng; stage chỉ gọi **tên**:
+Vì vậy file tách matcher thành một registry riêng, **key theo loại matcher — mỗi loại đúng một bộ
+tham số dùng chung cho mọi stage**; stage chỉ gọi tên loại:
 
 ```jsonc
-// Matcher definitions. Each entry is one configured matcher instance.
-// The stages below reference these by name.
+// Matcher definitions. Each entry is one matcher kind, configured once and
+// shared by every stage that references it below.
 "Matchers": {
-  "Direct_Shape": {
-    "Kind": "HalconShapeModel",   // HalconNcc | HalconShapeModel | PyramidEcc | PyramidPhaseCorrelation
-    "MinScore": 0.10, "SearchNumLevels": 5, "Greediness": 0.95 /* …19 params… */
-  },
-  "Direct_Ecc": { "Kind": "PyramidEcc", "MinCorrelation": 0.13, "PyramidLevels": 3 /* … */ },
-  "Neighbor_Phase": {
-    "Kind": "PyramidPhaseCorrelation",
-    // NOTE: PoseGraph also reads MinResponse from the matcher referenced by
-    // NeighborAlignment.CoarseMatcher, to weight its edges. Changing this value
-    // affects both neighbor matching and pose-graph solving.
+  "HalconNcc":        { "MinScore": 0.10, "NumLevels": 3, /* …10 params… */ },
+  "HalconShapeModel": { "MinScore": 0.10, "SearchNumLevels": 5, "Greediness": 0.95, /* …19 params… */ },
+  "PyramidEcc":       { "MinCorrelation": 0.13, "PyramidLevels": 3, /* …5 params… */ },
+  "PyramidPhaseCorrelation": {
+    // NOTE: PoseGraph also reads MinResponse from this matcher to weight its
+    // edges. Changing it affects both neighbor matching and pose-graph solving.
     "MinResponse": 0.15, "PyramidLevels": 3
-  },
-  "Recovery_Phase": { "Kind": "PyramidPhaseCorrelation", "MinResponse": 0.15, "PyramidLevels": 3 }
+  }
 },
 
-"DirectAlignment":   { "CoarseMatcher": "Direct_Shape", "RefinementMatcher": "Direct_Ecc", /* … */ },
-"NeighborAlignment": { "CoarseMatcher": "Neighbor_Phase", /* … */ },
-"Recovery":          { "CoarseMatcher": "Recovery_Phase", /* … */ }
+"DirectAlignment":   { "CoarseMatcher": "HalconShapeModel", "RefinementMatcher": "PyramidEcc", /* geometry, policy, evaluation… */ },
+"NeighborAlignment": { "CoarseMatcher": "PyramidPhaseCorrelation", /* acceptance, thresholds… */ },
+"Recovery":          { /* policy flags only — matching runs on NeighborAlignment.CoarseMatcher */ }
 ```
 
-**Loader phân giải tên → Core** theo 3 bước: tra tên trong `Matchers` → đọc `Kind` → set enum của
-stage (`DirectAlignment.CoarseMatcher`, …) và copy params vào đúng slot cố định của stage
-(`.Ncc` / `.Shape` / `.Ecc` / `.Phase`).
+**Tên entry trùng đúng tên hằng enum của Core** (`HalconNcc`, `HalconShapeModel`, `PyramidEcc`,
+`PyramidPhaseCorrelation` — xem `DirectCoarseMatcherKind`, `MatcherKind`). Nhờ vậy giá trị mà
+stage khai báo **chính là** giá trị enum cần gán, không có bảng dịch tên nào ở giữa.
 
-**Ba ràng buộc loader phải cưỡng chế, báo lỗi rõ ràng thay vì ghi đè âm thầm:**
+**Loader phân giải theo 2 bước:** gán enum của stage từ tên → copy bộ tham số của loại đó vào
+**mọi** slot Core tương ứng. Ví dụ `PyramidEcc` được copy vào cả `DirectAlignment.Ecc` lẫn
+`NeighborAlignment.Ecc`; `PyramidPhaseCorrelation` copy vào `NeighborAlignment.Phase`.
 
-1. **Một stage không được tham chiếu hai matcher cùng `Kind`.** Core chỉ có **một slot per
-   (stage, kind)** — `DirectAlignment.Ncc` là duy nhất, không thể chứa hai bộ tham số NCC.
-2. **`Kind` phải hợp lệ với vị trí.** `DirectAlignment.RefinementMatcher` chỉ nhận `PyramidEcc` /
-   `PyramidPhaseCorrelation` / `None` (`DirectRefinementMatcherKind`); `NeighborAlignment` và
-   `Recovery` chỉ nhận `PyramidPhaseCorrelation` / `None` (`NeighborCoarseMatcherKind`).
-3. **Tên không tồn tại trong `Matchers`** → lỗi khi load, không im lặng rơi về mặc định.
+Cấu trúc key-theo-loại **triệt tiêu** ràng buộc "hai matcher cùng loại trong một stage" — điều đó
+không còn biểu diễn được. Hai ràng buộc còn lại loader vẫn phải cưỡng chế, báo lỗi rõ ràng thay
+vì im lặng rơi về mặc định:
 
-Hai stage được phép trỏ cùng một tên; khi đó params copy vào cả hai slot và sửa một chỗ đổi cả
-hai. Đây là hành vi mong muốn, phải ghi rõ trong chú thích.
+1. **Tên loại phải hợp lệ với vị trí.** `DirectAlignment.RefinementMatcher` chỉ nhận `PyramidEcc` /
+   `PyramidPhaseCorrelation` / `None` (`DirectRefinementMatcherKind`); `NeighborAlignment.CoarseMatcher`
+   chỉ nhận `PyramidPhaseCorrelation` / `None` (`NeighborCoarseMatcherKind`).
+2. **Tên loại phải có mặt trong `Matchers`** — một stage trỏ tới loại chưa được định nghĩa là lỗi
+   khi load.
 
-### 4.4. Tách slot matcher riêng cho Recovery (thay đổi Core)
+**Đánh đổi đã chấp nhận:** một loại matcher chỉ có một bộ tham số cho toàn pipeline. Không thể đặt
+`PyramidEcc` của Direct khác `PyramidEcc` dùng ở chỗ khác. Đây là chủ ý — đổi lại là không còn khả
+năng để hai bộ tham số cùng loại lệch nhau mà không ai nhận ra.
 
-Hiện `Recovery` **không có** slot matcher: cả pha khôi phục lỗi lẫn pha reconcile toàn cục đều
-đi qua **cùng một hàm** `AlignStitchWorkflowService.MatchNeighborEdge`, và hàm này gọi
-`AlignStitchConfigMapper.ToNeighborMatcherOptions(config)` cho mọi trường hợp.
+**Recovery không có matcher riêng.** Cả pha khôi phục lỗi lẫn pha reconcile toàn cục đều đi qua
+cùng một hàm `AlignStitchWorkflowService.MatchNeighborEdge`, gọi
+`AlignStitchConfigMapper.ToNeighborMatcherOptions(config)`. Khối `Recovery` trong file chỉ chứa cờ
+policy (`RecoverFailedTiles`, `ReconcileAllMatchedTiles`, …) quyết định **chạy cho tile nào**,
+không quyết định dùng matcher gì. Chú thích trong file phải ghi rõ điều này. **Không có thay đổi
+hành vi nào trong `GerberStitching.Core`** cho hạng mục config.
 
-Điểm may mắn: `MatchNeighborEdge` **đã nhận sẵn tham số `purpose`**, và chỉ có đúng hai caller:
+**`PoseGraph` cũng không có matcher riêng.** Nó đọc `MinResponse` từ
+`NeighborAlignment.CoarseMatcher` (`GlobalPoseGraphOptimizer.cs:76-77`). Coupling này chỉ được
+**ghi chú** ở cả hai chỗ trong file (entry `PyramidPhaseCorrelation` và khối `PoseGraph`), không
+gỡ bằng code.
 
-| Caller | `purpose` | Pha |
-|---|---|---|
-| `AlignStitchWorkflowService.cs:699` | `RecoveryEdgePurpose.FailureRecovery` | Failure Recovery |
-| `AlignStitchWorkflowService.cs:1001` | `RecoveryEdgePurpose.FullPoseReconciliation` | Reconcile / Neighbor Graph |
-
-**Thay đổi:** thêm `RecoveryFallbackOptions.CoarseMatcher` + `RecoveryFallbackOptions.Phase` vào
-Core, thêm `ToRecoveryMatcherOptions` / `ToRecoveryCoarseMatcherKind` vào mapper, và trong
-`MatchNeighborEdge` chọn bundle theo `purpose`. Phạm vi gọn: một nhánh `if` trong một hàm.
-
-**Bắt buộc: mặc định của `Recovery.Phase` phải bằng đúng `NeighborAlignment.Phase`**
-(`MinResponse = 0.15`, `PyramidLevels = 3`) và `Recovery.CoarseMatcher` mặc định
-`PyramidPhaseCorrelation`. Với mặc định đó, kết quả phải **không đổi bit nào** so với hôm nay —
-đây là điều kiện để tiêu chí nghiệm thu §5.1 vẫn áp dụng được.
-
-Đây là thay đổi hành vi pipeline trong `GerberStitching.Core` theo nghĩa AGENTS.md §3.1; đã được
-user xác nhận rõ ràng khi duyệt thiết kế này.
-
-**`PoseGraph` không tách.** Nó vẫn đọc `MinResponse` từ matcher mà `NeighborAlignment.CoarseMatcher`
-trỏ tới. Coupling này chỉ được **ghi chú** ở cả hai chỗ trong file (khối `Matchers` và khối
-`PoseGraph`), không gỡ bằng code — gỡ sẽ là thêm một thay đổi hành vi nữa mà không có nhu cầu
-vận hành đi kèm.
-
-### 4.5. Cấu trúc file
+### 4.4. Cấu trúc file
 
 Ngoài registry `Matchers` ở §4.3, phần còn lại giữ cấu trúc JSON **lồng nhau khớp 1-1** với cây
 options của Core (`DirectAlignment.Geometry.MaxAbsRotationDeg` →
@@ -280,11 +264,11 @@ File chia **hai khối trong cùng một file**. Cả `Matchers` lẫn các stag
   `MinCorrelation` của matcher refinement, `Geometry.MaxTranslationPixels`,
   `Geometry.MaxAbsRotationDeg`, `Policy.*`, `Stitching.Engine`,
   `Recovery.LowTextureStdDevThreshold`, `PoseGraph.Enabled`, …).
-- `"Advanced"` — khối dưới, ~101 khoá còn lại, gồm định nghĩa đầy đủ của từng matcher.
+- `"Advanced"` — khối dưới, ~100 khoá còn lại, gồm định nghĩa đầy đủ của từng loại matcher.
 
-**Quy tắc hợp nhất:** deep-merge `Advanced` trước, rồi `CommonlyTuned` đè lên. `Kind` của mỗi
-matcher và các tham chiếu tên của stage khai báo ở `Advanced`. Nếu một khoá xuất hiện ở cả hai
-khối, `CommonlyTuned` thắng và ghi warning vào log.
+**Quy tắc hợp nhất:** deep-merge `Advanced` trước, rồi `CommonlyTuned` đè lên. Các tham chiếu
+matcher của stage (`CoarseMatcher`, `RefinementMatcher`) khai báo ở `Advanced`. Nếu một khoá xuất
+hiện ở cả hai khối, `CommonlyTuned` thắng và ghi warning vào log.
 
 Mỗi tham số kèm chú thích tiếng Anh gồm: **ý nghĩa**, **ảnh hưởng khi tăng/giảm**, và **giá trị
 mặc định của Core** khi giá trị RDL khác nó. Ví dụ:
@@ -299,8 +283,8 @@ mặc định của Core** khi giá trị RDL khác nó. Ví dụ:
     "Matchers": {
       // Minimum HALCON shape-model match score. Do NOT set this to 0.7: that is
       // 5-7x the real default and rejects almost every tile.
-      "Direct_Shape": { "MinScore": 0.10 },
-      "Direct_Ecc":   { "MinCorrelation": 0.13 }
+      "HalconShapeModel": { "MinScore": 0.10 },
+      "PyramidEcc":       { "MinCorrelation": 0.13 }
     },
     "DirectAlignment": {
       "Geometry": {
@@ -318,17 +302,17 @@ mặc định của Core** khi giá trị RDL khác nó. Ví dụ:
 
   "Advanced": {
     "Matchers": {
-      "Direct_Shape": { "Kind": "HalconShapeModel", "SearchNumLevels": 5, /* …17 more… */ },
-      "Direct_Ecc":   { "Kind": "PyramidEcc", "PyramidLevels": 3, /* …3 more… */ }
-      /* Neighbor_Phase, Recovery_Phase… */
+      "HalconShapeModel": { "SearchNumLevels": 5, "Greediness": 0.95, /* …17 more… */ },
+      "PyramidEcc":       { "PyramidLevels": 3, "MaxIterations": 80, /* …2 more… */ }
+      /* HalconNcc, PyramidPhaseCorrelation… */
     },
-    "DirectAlignment": { "CoarseMatcher": "Direct_Shape", "RefinementMatcher": "Direct_Ecc", /* … */ }
+    "DirectAlignment": { "CoarseMatcher": "HalconShapeModel", "RefinementMatcher": "PyramidEcc", /* … */ }
     /* NeighborAlignment, Recovery, PoseGraph, Stitching, Output… */
   }
 }
 ```
 
-### 4.6. Bốn cái bẫy mà file phải xử lý
+### 4.5. Bốn cái bẫy mà file phải xử lý
 
 1. **Field phẳng legacy không được có trong file.** `AlignStitchConfig` còn ~30 field phẳng
    (`NccMinScore`, `EnableNeighborRecovery`, …) tồn tại để migrate. `EnsureComposite` với
@@ -338,9 +322,8 @@ mặc định của Core** khi giá trị RDL khác nó. Ví dụ:
 2. **Field obsolete bị loại khỏi file, không phải chỉ chú thích.**
    `NeighborAlignment.RefinementMatcher` và `NeighborAlignment.Ecc` được đánh dấu
    `[Obsolete("deserialize-only and ignored")]` — Neighbor chạy phase-only. Để chúng trong file
-   thì người vận hành sẽ chỉnh và không hiểu vì sao không có tác dụng. Hệ quả cho registry: không
-   có mục `Matchers` nào được tham chiếu bởi `NeighborAlignment.RefinementMatcher`, và `Recovery`
-   cũng chỉ có `CoarseMatcher`, không có refinement.
+   thì người vận hành sẽ chỉnh và không hiểu vì sao không có tác dụng. Hệ quả cho registry:
+   `NeighborAlignment` chỉ có `CoarseMatcher`, không có khoá `RefinementMatcher`.
 
 3. **Giá trị ship kèm là giá trị RDL production, không phải default của Core.** Hai chỗ đã lệch
    sẵn: `Stitching.EnableBlending` — Core `true`, RDL `false`; `Geometry.MaxAbsRotationDeg` —
@@ -349,23 +332,24 @@ mặc định của Core** khi giá trị RDL khác nó. Ví dụ:
 4. **Đường dẫn per-lô không nằm trong file.** `Input.ManifestPath`, `Input.CapturedFolderPath`,
    `Output.OutputPath` do Master cấp theo từng lô.
 
-### 4.7. Chống mù với 5 tầng ưu tiên
+### 4.6. Chống mù với 5 tầng ưu tiên
 
 Bắt buộc kèm hai cơ chế, nếu không thì 5 tầng là bài toán không debug được:
 
 - **Log dump lúc bắt đầu lô** — in mọi giá trị **khác mặc định code**, kèm tầng đã set nó:
   ```
   [Gerber] DirectAlignment.Geometry.MaxAbsRotationDeg = 0.1     [file chung]
-  [Gerber] Matchers.Direct_Shape.MinScore             = 0.15    [ini]
+  [Gerber] Matchers.HalconShapeModel.MinScore         = 0.15    [ini]
   [Gerber] Stitching.Engine = HalconProjectiveMosaicRebased     [mặc định]
   ```
-  Với matcher, log dump in theo **tên trong registry**, kèm một dòng ánh xạ tên → stage ở đầu
-  (`Direct_Shape -> DirectAlignment.CoarseMatcher (HalconShapeModel)`) để tra ngược được về slot
-  Core khi cần đối chiếu với `Debug_<date>.html`.
+  Kèm một dòng ánh xạ loại matcher → stage ở đầu block
+  (`HalconShapeModel -> DirectAlignment.CoarseMatcher`,
+  `PyramidPhaseCorrelation -> NeighborAlignment.CoarseMatcher + Recovery + PoseGraph`) để tra
+  ngược được về slot Core khi đối chiếu với `Debug_<date>.html`.
 - **Cảnh báo khoá lạ** — khoá sai chính tả trong JSON ra warning vào log Worker, theo đúng mẫu
   `AlignStitchConfigIniReader.ReadFromIni(path, warningSink)` đang làm với ini.
 
-### 4.8. File này chỉ được đọc, không bao giờ được ghi
+### 4.7. File này chỉ được đọc, không bao giờ được ghi
 
 Newtonsoft **đọc** được comment `//` và `/* */` nhưng **ghi** thì không giữ được — một lần
 serialize ngược là mất sạch chú thích. Vì vậy chương trình tuyệt đối không ghi đè file setup.
@@ -385,14 +369,12 @@ Chạy lại đúng bộ dữ liệu của lô tham chiếu `AlignStitch_2026081
 3. `PeakWorkingSetMB` **không vượt** 7 185 MB của lô tham chiếu.
 4. Không còn `processed_sample.tiff` và thư mục `tiles/` khi `DebugMode=false`.
 5. Tổng thời gian lô giảm (kỳ vọng: bằng phần thời gian prepare đã bỏ).
-6. **Tách slot matcher của Recovery (§4.4) không đổi kết quả.** Với `Recovery.Phase` để mặc định
-   (bằng `NeighborAlignment.Phase`), bảng `RecoveryEdges` trong `Debug_<date>.html` phải trùng
-   tuyệt đối với lô tham chiếu. Kiểm riêng bằng cách chạy **trước** khi đổi cơ chế crop, để tách
-   được hai nguồn sai lệch.
-7. **Registry matcher phân giải đúng.** Đổi `MinScore` trong `Matchers.Direct_Shape` → giá trị
-   phải xuất hiện ở đúng `DirectAlignment.Shape.MinScore` trong `effective_config.json`. Khai báo
-   hai matcher cùng `Kind` cho cùng một stage → loader báo lỗi rõ ràng, không chạy lô.
-8. File setup: đổi `MaxAbsRotationDeg` trong file chung → log dump phản ánh đúng giá trị mới và
+6. **Registry matcher phân giải đúng.** Đổi `MinScore` trong `Matchers.HalconShapeModel` → giá trị
+   phải xuất hiện ở đúng `DirectAlignment.Shape.MinScore` trong `effective_config.json`. Đổi
+   `Matchers.PyramidEcc.PyramidLevels` → phải xuất hiện ở **cả** `DirectAlignment.Ecc` lẫn
+   `NeighborAlignment.Ecc`. Trỏ `NeighborAlignment.CoarseMatcher` tới `HalconNcc` → loader báo lỗi
+   rõ ràng (không hợp lệ với vị trí), không chạy lô.
+7. File setup: đổi `MaxAbsRotationDeg` trong file chung → log dump phản ánh đúng giá trị mới và
    ghi nguồn `[file chung]`; đặt cùng khoá trong ini → log dump ghi `[ini]` và giá trị ini thắng.
 
 Việc chạy kiểm thử do user thực hiện (AGENTS.md §4).
@@ -413,14 +395,16 @@ và mọi lỗi build/chạy kèm cách fix.
 | 3 | `InMemorySampleTileSource` + đường debug ghi tile | 2 |
 | 4 | Overload façade `RunAlignStitch(sampleImagePath, TileRect[], …)` | 3 |
 | 5 | Worker: bỏ Stage 1.5 và `TryReuseManifest`, gọi overload mới | 4 |
-| 6 | **Core: tách slot matcher cho Recovery** (`RecoveryFallbackOptions.CoarseMatcher`/`.Phase`, `ToRecoveryMatcherOptions`, nhánh `purpose` trong `MatchNeighborEdge`) — mặc định bằng Neighbor, chạy nghiệm thu §5.6 ngay sau bước này | 0 |
-| 7 | Loader file setup JSON: registry `Matchers` + phân giải tên → slot, tầng ưu tiên, log dump, cảnh báo khoá lạ | 6 |
-| 8 | Sinh file `GerberAlignStitch.settings.json` đầy đủ chú thích | 7 |
+| 6 | Loader file setup JSON: registry `Matchers` + phân giải loại → slot, tầng ưu tiên, log dump, cảnh báo khoá lạ | 0 |
+| 7 | Sinh file `GerberAlignStitch.settings.json` đầy đủ chú thích | 6 |
 
-Hai điểm kiểm tra an toàn được cài sẵn trong thứ tự này:
+Toàn bộ kế hoạch **không có thay đổi hành vi nào trong `GerberStitching.Core`** — hạng mục config
+chỉ là một tầng đọc/ánh xạ mới đặt trước cây options sẵn có, và phần A giữ nguyên pixel đầu vào
+của mọi matcher. Đó là lý do tiêu chí nghiệm thu §5.1 (pose trùng bit-by-bit) áp dụng được cho cả
+hai phần.
 
-- **Bước 2** giữ hành vi **không đổi gì** (vẫn đọc từ đĩa). Nếu bước 2 làm lệch pose thì lỗi nằm
-  ở refactor interface, không phải ở cơ chế crop mới.
-- **Bước 6** là thay đổi hành vi Core duy nhất trong toàn bộ kế hoạch, và nó **độc lập với bước
-  1–5**. Chạy nghiệm thu ngay sau bước 6 để tách nguồn sai lệch: nếu pose lệch sau bước 6 thì
-  nguyên nhân là việc tách slot matcher, không phải cơ chế crop.
+Hai nhánh 1–5 (crop) và 6–7 (config) chỉ chung phụ thuộc ở bước 0, làm song song được.
+
+**Bước 2 là điểm kiểm tra an toàn:** nó giữ hành vi **không đổi gì** (vẫn đọc tile từ đĩa, chỉ
+chuyển 4 call site sang interface). Nếu bước 2 làm lệch pose thì lỗi nằm ở refactor interface,
+không phải ở cơ chế crop mới.
