@@ -155,6 +155,18 @@ namespace GerberViewer.Stitching.Alignment
                 // [Claude] [Change time: 2026-08-14] [Purpose: Default to the disk source so this refactor changes
                 // nothing. Task 3 injects InMemorySampleTileSource for the Worker path.]
                 _tileSource = _externalTileSource ?? new DiskSampleTileSource(tileByOrder, _imageCache);
+
+                // [Claude] [Change time: 2026-08-14] [Purpose: Pregenerated NCC/shape models live next to the tile
+                // files on disk, so they cannot exist when the tiles are cropped in memory. Fail loudly here rather
+                // than null-ref in the middle of a lot.]
+                if (_externalTileSource != null && manifest != null &&
+                    string.Equals(manifest.ModelGeneration, "Pregenerate", StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new NotSupportedException(
+                        "ModelGeneration=Pregenerate requires sample tile files on disk and is not supported by the " +
+                        "in-memory tile source. Use ModelGeneration=OnTheFly.");
+                }
+
                 for (int i = 0; i < ordered.Count; i++)
                 {
                     ct.ThrowIfCancellationRequested();

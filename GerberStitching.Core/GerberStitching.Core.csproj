@@ -111,6 +111,7 @@
     <Compile Include="Alignment\WorkflowImageCache.cs" />
     <Compile Include="Alignment\ISampleTileSource.cs" />
     <Compile Include="Alignment\DiskSampleTileSource.cs" />
+    <Compile Include="Alignment\InMemorySampleTileSource.cs" />
     <Compile Include="Mapping\WorkflowImageMap.cs" />
     <Compile Include="Matching\IMatcher.cs" />
     <Compile Include="Matching\MatchRequest.cs" />
