@@ -47,11 +47,27 @@ namespace RDL.GerberStitch.Facade.Settings
         /// <param name="logWarning">Called once per unknown key. Never null-checked away silently.</param>
         public static CoreConfig Read(string globalPath, string recipeOverridePath, Action<string> logWarning)
         {
+            IDictionary<string, string> sourceByKey;
+            return Read(globalPath, recipeOverridePath, logWarning, out sourceByKey);
+        }
+
+        /// <param name="globalPath">Station-wide settings file. Missing file is not an error.</param>
+        /// <param name="recipeOverridePath">Optional per-recipe file holding only the keys to override.</param>
+        /// <param name="logWarning">Called once per unknown key. Never null-checked away silently.</param>
+        /// <param name="sourceByKey">Filled in with, for every leaf key set by either file, the layer name that
+        /// set it ("file chung" or "override recipe"). Keys never touched by a file are absent, not "code
+        /// default" -- the caller (BuildCoreConfig) fills those in as it applies later layers.</param>
+        public static CoreConfig Read(string globalPath, string recipeOverridePath, Action<string> logWarning,
+                                      out IDictionary<string, string> sourceByKey)
+        {
+            var sources = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            sourceByKey = sources;
+
             var config = new CoreConfig { ConfigVersion = 3 };
 
             var merged = new JObject();
-            MergeFile(merged, globalPath, logWarning);
-            MergeFile(merged, recipeOverridePath, logWarning);
+            MergeFile(merged, globalPath, "file chung", sources, logWarning);
+            MergeFile(merged, recipeOverridePath, "override recipe", sources, logWarning);
             if (!merged.HasValues) return config;
 
             var registry = merged["Matchers"] == null
@@ -79,7 +95,8 @@ namespace RDL.GerberStitch.Facade.Settings
             return config;
         }
 
-        private static void MergeFile(JObject target, string path, Action<string> logWarning)
+        private static void MergeFile(JObject target, string path, string layerName,
+                                      IDictionary<string, string> sources, Action<string> logWarning)
         {
             if (string.IsNullOrWhiteSpace(path) || !File.Exists(path)) return;
 
@@ -98,12 +115,32 @@ namespace RDL.GerberStitch.Facade.Settings
 
             // Advanced first, CommonlyTuned on top: the short block at the top of the file wins.
             var settings = new JsonMergeSettings { MergeArrayHandling = MergeArrayHandling.Replace };
-            if (file.Advanced != null) { Check(file.Advanced, path, logWarning); target.Merge(file.Advanced, settings); }
+            if (file.Advanced != null)
+            {
+                Check(file.Advanced, path, logWarning);
+                target.Merge(file.Advanced, settings);
+                RecordSources(file.Advanced, layerName, sources);
+            }
             if (file.CommonlyTuned != null)
             {
                 Check(file.CommonlyTuned, path, logWarning);
                 WarnOnOverlap(file.Advanced, file.CommonlyTuned, path, logWarning);
                 target.Merge(file.CommonlyTuned, settings);
+                RecordSources(file.CommonlyTuned, layerName, sources);
+            }
+        }
+
+        /// <summary>Records, for every leaf key in block, which layer set it. JValue.Path is
+        /// "DirectAlignment.Geometry.MaxAbsRotationDeg" -- the same shape ConfigLayerLog.Walk builds, so the two
+        /// line up without a translation table.</summary>
+        private static void RecordSources(JObject block, string layerName, IDictionary<string, string> sources)
+        {
+            if (block == null) return;
+            foreach (var descendant in block.Descendants())
+            {
+                var value = descendant as JValue;
+                if (value == null) continue;
+                sources[value.Path] = layerName;
             }
         }
 

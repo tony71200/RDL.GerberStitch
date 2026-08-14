@@ -646,6 +646,21 @@ namespace RDL.GerberStitch.Facade
             {
                 var coreConfig = BuildCoreConfig(opts, manifestPathForConfig, capturedImagesFolder, creatingDir);
 
+                // The settings file itself is never rewritten -- Newtonsoft drops comments on write. This is a
+                // comment-free snapshot of the merged result, for audit only.
+                try
+                {
+                    File.WriteAllText(Path.Combine(creatingDir, "effective_config.json"),
+                                      Newtonsoft.Json.JsonConvert.SerializeObject(
+                                          coreConfig, Newtonsoft.Json.Formatting.Indented));
+                }
+                catch (Exception ex)
+                {
+                    // An audit file must never be able to fail a lot.
+                    if (opts.LogWarning != null)
+                        opts.LogWarning("Could not write effective_config.json: " + ex.Message);
+                }
+
                 IProgress<WorkflowProgress> coreProgress = null;
                 if (progress != null)
                 {
@@ -703,9 +718,14 @@ namespace RDL.GerberStitch.Facade
                                                                                        string capturedFolderPath,
                                                                                        string outputPath)
         {
-            // Set ConfigVersion to 3 before EnsureComposite; otherwise legacy migration overwrites structured
-            // options with mismatched flat defaults.
-            var baseConfig = new GerberViewer.Stitching.Models.AlignStitchConfig { ConfigVersion = 3 };
+            // [Claude] [Change time: 2026-08-14] [Purpose: One place for the whole precedence chain:
+            // code defaults < global settings file < recipe override < INI < Master payload. The INI and the
+            // Master payload both arrive already folded into `options` by the Worker, so they are applied last,
+            // on top of whatever the settings files set.]
+            IDictionary<string, string> sourceByKey;
+            var baseConfig = Settings.AlignStitchSettingsReader.Read(
+                options.SettingsFilePath, options.RecipeSettingsPath, options.LogWarning, out sourceByKey);
+
             baseConfig.Input.ManifestPath = manifestPath;
             baseConfig.Input.CapturedFolderPath = capturedFolderPath;
             // [Tony] [Change time: 2026-08-11] [Purpose: Truyền cờ preview từ facade AlignStitchConfig
@@ -714,12 +734,16 @@ namespace RDL.GerberStitch.Facade
             baseConfig.EmitDebugPreview = options.EmitDebugPreview;
 
             var engine = AlignStitchConfig.ParseEngine(options.StitchingEngine);
-            if (engine.HasValue)
-                baseConfig.Stitching.Engine = engine.Value;
+            if (engine.HasValue) { baseConfig.Stitching.Engine = engine.Value; sourceByKey["Stitching.Engine"] = "ini"; }
             baseConfig.Stitching.EnableBlending = options.EnableBlending;
             baseConfig.CalculateTimeDetail = options.CalculateTimeDetail;
 
+            // Lưu ý: NccMinScore của ini được gán cho CẢ Ncc.MinScore lẫn Shape.MinScore. Matcher coarse
+            // mặc định thực sự đang chạy là HalconShapeModel, không phải HalconNcc -- khoá ini lịch sử tên
+            // là "NccMinScore" nhưng doc Processing_GerberAlignStitch.html đã ghi rõ nó chính là ngưỡng của
+            // HalconShapeModelMatcher. Không gán cả hai thì đổi ini sẽ không có tác dụng.
             baseConfig.DirectAlignment.Ncc.MinScore = options.NccMinScore;
+            baseConfig.DirectAlignment.Shape.MinScore = options.NccMinScore;
             baseConfig.DirectAlignment.Ecc.MinCorrelation = options.EccMinCorrelation;
             baseConfig.DirectAlignment.Geometry.MaxTranslationPixels = options.MaxTranslationPixels;
             baseConfig.DirectAlignment.Geometry.MaxAbsRotationDeg = options.MaxAbsRotationDeg;
@@ -732,7 +756,16 @@ namespace RDL.GerberStitch.Facade
             baseConfig.DirectAlignment.Policy.AllowRefinementFromExpectedWhenCoarseFails =
                 options.AllowRefinementFromExpectedWhenCoarseFails;
 
+            foreach (var key in new[] { "Stitching.EnableBlending", "DirectAlignment.Ncc.MinScore",
+                                        "DirectAlignment.Shape.MinScore", "DirectAlignment.Ecc.MinCorrelation",
+                                        "DirectAlignment.Geometry.MaxTranslationPixels",
+                                        "DirectAlignment.Geometry.MaxAbsRotationDeg",
+                                        "DirectAlignment.Policy.AllowCoarseOnlyAcceptance",
+                                        "DirectAlignment.Policy.AllowRefinementFromExpectedWhenCoarseFails" })
+                sourceByKey[key] = "ini";
+
             AlignStitchConfigMapper.EnsureComposite(baseConfig);
+            Settings.ConfigLayerLog.Dump(baseConfig, sourceByKey, options.LogWarning);
 
             // CloneForRun assigns OutputPath, locks ConfigVersion to 3, and synchronizes legacy fields, matching
             // production.

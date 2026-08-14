@@ -81,6 +81,26 @@ namespace RDL.GerberStitch.Facade
         /// <summary>Bật sinh DebugPreview_&lt;yyyyHHmm&gt;.jpg. Mặc định false.</summary>
         public bool EmitDebugPreview { get; set; } = false;
 
+        // ── Settings file ──
+
+        /// <summary>
+        /// Station-wide GerberAlignStitch.settings.json. Null or a missing file is not an error: the
+        /// pipeline then runs on code defaults plus whatever the INI and the Master payload set.
+        /// </summary>
+        public string SettingsFilePath { get; set; }
+
+        /// <summary>
+        /// Optional per-recipe override file holding only the keys to change. Applied after
+        /// SettingsFilePath and before the INI.
+        /// </summary>
+        public string RecipeSettingsPath { get; set; }
+
+        /// <summary>
+        /// Sink for configuration warnings (unknown key, duplicated key, ...) and for the
+        /// effective-config dump. Null silences both; the Worker always supplies its logger.
+        /// </summary>
+        public Action<string> LogWarning { get; set; }
+
         internal void Validate()
         {
             if (NccMinScore <= 0 || NccMinScore > 1)

@@ -76,6 +76,8 @@
     <li><a href="#entry-12">2026-08-14 (nhánh <code>Ver2_0</code>) — Task 3: <code>InMemorySampleTileSource</code> (crop trực tiếp từ raster HALCON)</a></li>
     <li><a href="#entry-13">2026-08-14 (nhánh <code>Ver2_0</code>) — Task 4: Overload <code>RunAlignStitch</code> nhận ảnh sample + rect; 2 bug <code>requireFiles</code> hardcoded phát hiện giữa chừng</a></li>
     <li><a href="#entry-14">2026-08-14 (nhánh <code>Ver2_0</code>) — Task 6: Loader file settings JSON (<code>AlignStitchSettingsReader</code> + <code>MatcherRegistry</code>) — chưa nối vào pipeline thật</a></li>
+    <li><a href="#entry-15">2026-08-14 (nhánh <code>Ver2_0</code>) — Task 7: File cấu hình thật <code>GerberAlignStitch.settings.json</code> (~124 tham số, chưa nối vào pipeline)</a></li>
+    <li><a href="#entry-16">2026-08-14 (nhánh <code>Ver2_0</code>) — Task 8: Nối file settings vào <code>BuildCoreConfig</code> + ghi <code>effective_config.json</code> (Worker-side wiring hoãn lại)</a></li>
     <li><a href="#pitfalls">Bảng tổng hợp lỗi &amp; cách fix (tra nhanh)</a></li>
   </ol>
 </div>
@@ -729,6 +731,33 @@ else if (requireFiles &amp;&amp; !string.IsNullOrWhiteSpace(t.ExpectedPath) &amp
   <div class="note">
     <strong>Chưa nối vào đường chạy thật.</strong> File này chỉ là data, không có caller nào trong production path — <code>GerberStitchFacade.BuildCoreConfig</code> chưa đọc nó. Task 8 sẽ nối dây (<code>AlignStitchSettingsReader.Read</code> → merge với ini/payload Master theo thứ tự ưu tiên đã ghi ở entry 14). Không thể verify end-to-end (pose từng tile trùng bit-by-bit với run tham chiếu) cho tới khi Task 8 xong — đây là Bước 7 của brief Task 7, đánh dấu <code>[ ]</code> do người dùng tự chạy sau khi có đường dây thật.
   </div>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="entry-16">16. 2026-08-14 (nhánh <code>Ver2_0</code>) — Task 8: Nối file settings vào <code>BuildCoreConfig</code> + ghi <code>effective_config.json</code> (Worker-side wiring hoãn lại)</h2>
+<div class="entry">
+  <div class="entry-meta"><span class="badge ok">Facade</span> Phạm vi: <code>Facade/Settings/AlignStitchSettingsReader.cs</code>, <code>Facade/AlignStitchConfig.cs</code>, <code>Facade/GerberStitchFacade.cs</code> — không đụng <code>RDL_WorkerNorthT_Ver2_SoftMerge_2026_08_09</code>.</div>
+
+  <h4>Bối cảnh</h4>
+  <p>Task 8 của plan <code>2026-08-14-in-memory-sample-crop-and-settings-file</code>, nối Task 6 (<a href="#entry-14">entry 14</a> — reader) và Task 7 (<a href="#entry-15">entry 15</a> — file settings thật) vào đường chạy sản xuất. <code>GerberStitchFacade.BuildCoreConfig</code> (dùng chung cho cả 2 overload <code>RunAlignStitch</code>) giờ áp đủ 5 tầng ưu tiên: code default &lt; file chung &lt; override recipe &lt; ini &lt; Master payload (ini/Master đã gộp sẵn vào <code>options</code> nên áp cuối cùng, đè lên kết quả 2 file settings).</p>
+
+  <h3>16.1. <code>AlignStitchSettingsReader.Read</code> thêm overload 4 tham số báo tầng nguồn</h3>
+  <p>Thêm <code>static CoreConfig Read(string globalPath, string recipeOverridePath, Action&lt;string&gt; logWarning, out IDictionary&lt;string,string&gt; sourceByKey)</code>; overload 3 tham số cũ (Task 6) forward vào bản mới, bỏ <code>sourceByKey</code> — chữ ký gọi cũ không đổi. <code>MergeFile</code> nhận thêm tham số <code>layerName</code> ("file chung" / "override recipe") và gọi <code>RecordSources</code> sau khi merge mỗi khối <code>Advanced</code>/<code>CommonlyTuned</code>, ghi <code>sources[value.Path] = layerName</code> cho từng khoá lá (<code>JValue.Path</code> khớp đúng hình dạng path mà <code>ConfigLayerLog.Walk</code> dùng, không cần bảng dịch).</p>
+
+  <h3>16.2. <code>BuildCoreConfig</code> đổi điểm khởi đầu</h3>
+  <p>Trước: khởi tạo <code>new GerberViewer.Stitching.Models.AlignStitchConfig { ConfigVersion = 3 }</code> rồi gán trực tiếp các field từ <code>options</code> (ini). Sau: khởi đầu bằng <code>AlignStitchSettingsReader.Read(options.SettingsFilePath, options.RecipeSettingsPath, options.LogWarning, out sourceByKey)</code> — 2 tầng file settings áp trước, rồi mới ghi đè các field ini/Master lên trên (giữ nguyên logic gán cũ, chỉ thêm ghi <code>sourceByKey[key] = "ini"</code> cho từng khoá), sau đó <code>EnsureComposite</code> rồi <code>ConfigLayerLog.Dump(baseConfig, sourceByKey, options.LogWarning)</code> in ra mọi giá trị khác code default kèm tầng đã set nó, cuối cùng mới <code>CloneForRun</code>. Không đổi hành vi khi <code>SettingsFilePath</code>/<code>RecipeSettingsPath</code> đều null (file thiếu không phải lỗi — <code>Read</code> trả <code>new CoreConfig{ConfigVersion=3}</code> giống hệt điểm khởi đầu cũ) và toàn bộ field ini vẫn ghi đè sau cùng như trước.</p>
+
+  <div class="note">
+    <strong>(a) <code>NccMinScore</code> của ini gán cho CẢ <code>DirectAlignment.Ncc.MinScore</code> lẫn <code>DirectAlignment.Shape.MinScore</code>.</strong> Lưu ý sai lệch với giả định của brief Task 8: brief nói dòng gán kép này "đã đúng từ trước, phải giữ nguyên khi refactor" — nhưng soát commit <code>b0f26a5</code> (ngay trước task này) cho thấy <code>BuildCoreConfig</code> khi đó CHỈ gán <code>Ncc.MinScore</code>, KHÔNG có dòng <code>Shape.MinScore</code>. Task 8 là nơi thêm dòng gán kép này lần đầu, không phải "giữ nguyên" một dòng đã tồn tại. Hành động vẫn đúng theo đúng ý đồ của brief (lý do bên dưới) nên vẫn thêm vào, chỉ ghi rõ lại thực tế vì brief mô tả sai trạng thái trước đó. Lý do bắt buộc: matcher coarse mặc định chạy production là <code>HalconShapeModel</code> (<code>DirectCoarseMatcherKind.HalconShapeModel</code>), không phải <code>HalconNcc</code> — khoá ini tên lịch sử "NccMinScore" nhưng theo <code>Processing_GerberAlignStitch.html</code> chính là ngưỡng của <code>HalconShapeModelMatcher</code>. Không gán cả hai thì đổi ini không có tác dụng gì lên pipeline thật đang chạy.</p>
+    <p><strong>(b) <code>effective_config.json</code> là snapshot chỉ-đọc, chỉ để audit.</strong> Ghi trong <code>RunCoreAsync</code> ngay sau khi <code>BuildCoreConfig</code> trả về, bọc try/catch riêng — lỗi ghi file không bao giờ được làm fail cả lô. Tuyệt đối không dùng để ghi ngược lên file settings gốc: Newtonsoft làm mất hết comment khi serialize, nên file settings annotated (Task 7) vẫn là nguồn duy nhất người vận hành chỉnh sửa.</p>
+    <p><strong>(c) Step 5 (nạp <code>SettingsFilePath</code>/<code>RecipeSettingsPath</code>/<code>LogWarning</code> vào <code>GerberStitchRunner.cs</code> phía Worker) bị hoãn</strong> — đang chờ quyết định đồng bộ kiến trúc Worker–canonical phát hiện ở Task 5 (<code>CutWorker.csproj</code> build từ 1 bản source <code>RDL.GerberStitch</code>/<code>GerberStitching.Core</code> riêng nằm trong repo Worker, không reference tới repo canonical này, và bản đó thiếu API mới của Task 4). Façade phía canonical đã sẵn sàng nhận 3 giá trị này qua <code>AlignStitchConfig</code>; chỉ còn thiếu phần Worker gán giá trị vào đó khi Task 5 xong.</p>
+  </div>
+
+  <h4>Kiểm chứng end-to-end — CHƯA THỂ CHẠY ĐẦY ĐỦ</h4>
+  <p>6 mục kiểm ở Task 7 Step 7 (đổi 1 giá trị trong file settings, xem log dump ra đúng tầng, v.v.) cần Worker thực sự gọi <code>BuildCoreConfig</code> với <code>SettingsFilePath</code> đã set — tức cần cả (i) người dùng chạy kiểm thử thật và (ii) Step 5/Task 5 hoàn thành phía Worker. Cho tới lúc đó chỉ có thể xác nhận bằng cách gọi trực tiếp <code>GerberStitchFacade</code>/<code>BuildCoreConfig</code> qua Harness hoặc đoạn code thử nghiệm nhỏ trong repo canonical, không qua Worker.</p>
+
+  <h4>Build</h4>
+  <p><span class="badge ok">PASS</span> <code>msbuild RDL.GerberStitch.sln /p:Configuration=Debug /p:Platform=x64</code>, 0 error (1 warning <code>CS0618</code> có từ trước ở <code>MatcherRegistry.cs</code>, không liên quan task này). Không build <code>RDL_Worker.sln</code> — đang tạm dừng vì lý do ở mục (c) trên, không liên quan đúng/sai thay đổi của task này.</p>
 </div>
 
 <!-- ============================================================ -->
