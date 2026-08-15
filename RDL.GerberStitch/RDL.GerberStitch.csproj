@@ -101,6 +101,7 @@
     <Compile Include="Facade\Settings\AlignStitchSettingsFile.cs" />
     <Compile Include="Facade\Settings\AlignStitchSettingsReader.cs" />
     <Compile Include="Facade\Settings\ConfigLayerLog.cs" />
+    <Compile Include="Facade\Settings\IgnoreTypeConverterResolver.cs" />
     <Compile Include="Facade\Settings\MatcherRegistry.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>

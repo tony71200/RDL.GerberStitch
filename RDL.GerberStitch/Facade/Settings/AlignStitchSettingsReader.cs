@@ -13,6 +13,15 @@ namespace RDL.GerberStitch.Facade.Settings
     /// </summary>
     public static class AlignStitchSettingsReader
     {
+        // Shared by every deserialize/populate call in this reader -- ALL of DirectAlignmentOptions,
+        // NeighborAlignmentOptions, RecoveryFallbackOptions, StitchingOptions, OutputOptions, and their nested
+        // sub-objects (CommonGeometryOptions, DirectPipelinePolicy, DirectEvaluationOptions, ...) carry the same
+        // TypeConverter attribute as the Matchers option classes, for the same WinForms PropertyGrid reason, so
+        // PopulateStage hits the identical "requires a JSON string value" failure without this resolver.
+        private static readonly JsonSerializer StructuredConfigSerializer =
+            new JsonSerializer { ContractResolver = new IgnoreTypeConverterResolver(),
+                                ObjectCreationHandling = ObjectCreationHandling.Reuse };
+
         /// <summary>Sections the file is allowed to contain. Anything else is a typo.</summary>
         private static readonly HashSet<string> KnownSections = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         { "Matchers", "DirectAlignment", "NeighborAlignment", "Recovery", "PoseGraph", "Stitching", "Output" };
@@ -72,7 +81,7 @@ namespace RDL.GerberStitch.Facade.Settings
 
             var registry = merged["Matchers"] == null
                                ? new MatcherRegistry()
-                               : merged["Matchers"].ToObject<MatcherRegistry>();
+                               : merged["Matchers"].ToObject<MatcherRegistry>(StructuredConfigSerializer);
 
             // Populate the stage trees first, so matcher references are readable, then overlay matcher params.
             PopulateStage(merged, "DirectAlignment", config.DirectAlignment);
@@ -175,7 +184,7 @@ namespace RDL.GerberStitch.Facade.Settings
             if (section == null) return;
             using (var reader = section.CreateReader())
             {
-                new JsonSerializer { ObjectCreationHandling = ObjectCreationHandling.Reuse }.Populate(reader, target);
+                StructuredConfigSerializer.Populate(reader, target);
             }
         }
     }

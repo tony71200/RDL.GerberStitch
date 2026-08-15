@@ -79,6 +79,7 @@
     <li><a href="#entry-15">2026-08-14 (nhánh <code>Ver2_0</code>) — Task 7: File cấu hình thật <code>GerberAlignStitch.settings.json</code> (~124 tham số, chưa nối vào pipeline)</a></li>
     <li><a href="#entry-16">2026-08-14 (nhánh <code>Ver2_0</code>) — Task 8: Nối file settings vào <code>BuildCoreConfig</code> + ghi <code>effective_config.json</code> (Worker-side wiring hoãn lại)</a></li>
     <li><a href="#entry-17">2026-08-15 (nhánh <code>Ver2_0</code>) — Harness: thêm mode <code>alignstitchmem</code> để test overload in-memory bằng dữ liệu thật</a></li>
+    <li><a href="#entry-18">2026-08-15 (nhánh <code>Ver2_0</code>) — Chạy thật lần đầu qua Harness <code>alignstitchmem</code>: phát hiện + sửa 2 lỗi Newtonsoft/<code>TypeConverter</code></a></li>
     <li><a href="#pitfalls">Bảng tổng hợp lỗi &amp; cách fix (tra nhanh)</a></li>
   </ol>
 </div>
@@ -784,8 +785,48 @@ else if (requireFiles &amp;&amp; !string.IsNullOrWhiteSpace(t.ExpectedPath) &amp
   <h4>Build</h4>
   <p><span class="badge ok">PASS</span> <code>msbuild RDL.GerberStitch.sln /p:Configuration=Debug /p:Platform=x64</code>, 0 error. Không có lỗi CS0246/thiếu Compile Include lần này — đã nhớ thêm <code>BatchPayload.cs</code> vào <code>.csproj</code> ngay từ đầu, tránh lặp lại pitfall đã ghi ở entry 11.</p>
 
-  <h4>Chưa chạy — cần dữ liệu thật từ người dùng</h4>
-  <p>Mode mới đã build được nhưng <strong>chưa được thực thi</strong> với dữ liệu thật. Đường dẫn trong <code>docs/GerberCommonFileInfo.json</code>/<code>sample_prepare.json</code> trỏ tới <code>D:\Share\Simulation_PCM\...</code> — cần xác nhận máy chạy Harness có mount được ổ <code>D:\Share</code> đó không, hoặc người dùng cung cấp payload trỏ tới dữ liệu cục bộ tương đương.</p>
+  <h4>Đã chạy thật — xem entry 18</h4>
+  <p>Máy chạy Harness (<code>H:\...</code>) truy cập được thẳng <code>D:\Share\...</code> trong <code>docs/sample_prepare.json</code> — không cần sửa payload. Chạy thật phát hiện thêm 2 lỗi deserialize/serialize không thấy được qua review tĩnh (chỉ lộ ra khi thực thi thật); xem <a href="#entry-18">entry 18</a> để biết chi tiết fix và kết quả cuối cùng.</p>
+</div>
+
+<h2 id="entry-18">18. 2026-08-15 (nhánh <code>Ver2_0</code>) — Chạy thật lần đầu qua Harness <code>alignstitchmem</code>: phát hiện + sửa 2 lỗi Newtonsoft/<code>TypeConverter</code></h2>
+<div class="entry">
+  <div class="entry-meta"><span class="badge ok">Facade</span> Phạm vi: <code>Facade/BatchPayload.cs</code> (Harness), <code>Facade/Settings/AlignStitchSettingsReader.cs</code>, <code>Facade/Settings/IgnoreTypeConverterResolver.cs</code> (mới), <code>Facade/GerberStitchFacade.cs</code>.</div>
+
+  <h4>Bối cảnh</h4>
+  <p>Task 6-8 (entry 14-16) được review tĩnh — đọc code, đối chiếu diff, không có test project để chạy thật. Đây là lần đầu tiên toàn bộ chuỗi (Task 4 overload in-memory + Task 6-8 settings file) chạy với dữ liệu thật: <code>docs/sample_prepare.json</code> (80 tile thật, ảnh sample 1.34 GB tại <code>D:\Share\Simulation_PCM\...</code>, có sẵn trên máy chạy Harness). Kết quả: <strong>3 lỗi thật</strong>, cả 3 đều không lộ ra qua review tĩnh vì đều chỉ xảy ra khi thực thi deserialize/serialize JSON thật.</p>
+
+  <h3>18.1. BOM trong JSON làm <code>DataContractJsonSerializer</code> throw <code>XmlException</code></h3>
+  <p><code>docs/sample_prepare.json</code> (và <code>GerberCommonFileInfo.json</code>) được lưu kèm UTF-8 BOM. <code>BatchPayload.ReadOrNull</code> (Harness) đọc trực tiếp <code>File.OpenRead</code> vào <code>DataContractJsonSerializer</code> — serializer đọc byte BOM như ký tự JSON đầu tiên, throw <code>"Encountered unexpected character 'ï'"</code>. Fix: đọc qua <code>File.ReadAllText(path, Encoding.UTF8)</code> trước (tự động bỏ BOM), rồi encode lại thành <code>MemoryStream</code> cho serializer.</p>
+
+  <h3>18.2. <code>[TypeConverter(typeof(ExpandableObjectConverter))]</code> đánh lừa Newtonsoft — cả 2 chiều đọc/ghi</h3>
+  <p>Toàn bộ lớp option của Core dùng bởi Task 6/7/8 (<code>HalconNccOptions</code>, <code>HalconShapeModelOptions</code>, <code>EccOptions</code>, <code>PhaseCorrelationOptions</code>, <code>DirectAlignmentOptions</code>, <code>NeighborAlignmentOptions</code>, <code>RecoveryFallbackOptions</code>, <code>StitchingOptions</code>, <code>OutputOptions</code> và các sub-object lồng bên trong) mang <code>[TypeConverter(typeof(ExpandableObjectConverter))]</code> — có sẵn để hỗ trợ PropertyGrid WinForms bên GerberViewer gốc, <strong>không được đụng vào Core</strong> (AGENTS.md §3.1). <code>System.ComponentModel.TypeConverter.CanConvertTo(string)</code> mặc định luôn trả <code>true</code> (mọi object đều có <code>ToString()</code>), và <code>Newtonsoft.Json</code> mặc định coi bất kỳ type nào có <code>TypeConverter</code> với <code>CanConvertTo(string)=true</code> là kiểu "chuyển được thành chuỗi" — áp dụng cả 2 chiều:</p>
+  <ul>
+    <li><strong>Đọc</strong> (<code>AlignStitchSettingsReader.Read</code>): <code>merged["Matchers"].ToObject&lt;MatcherRegistry&gt;()</code> và <code>PopulateStage</code> đều throw <code>"Cannot deserialize/populate ... type requires a JSON string value"</code> ngay khi gặp object JSON thật (<code>{ "MinScore": 0.1, ... }</code>) cho field mang attribute này.</li>
+    <li><strong>Ghi</strong> (<code>GerberStitchFacade</code> ghi <code>effective_config.json</code>): <code>JsonConvert.SerializeObject(coreConfig, ...)</code> không throw, nhưng âm thầm ghi ra <em>chuỗi tóm tắt</em> từ <code>ToString()</code> có sẵn của các lớp option (vd <code>"DirectAlignment": "HalconShapeModel -> PyramidEcc"</code>) thay vì object lồng đầy đủ tham số — làm file audit vô dụng cho mục đích truy vết mà Task 8 §4 đặt ra. Lỗi này <strong>không throw</strong> nên chỉ phát hiện được bằng cách mở file kết quả ra đọc, không phải bằng build hay review diff.</li>
+  </ul>
+  <p>Fix: <code>IgnoreTypeConverterResolver.cs</code> (file mới, dùng chung) — <code>IContractResolver</code> override <code>CreateContract</code>: nếu type mang <code>TypeConverterAttribute</code>, ép về <code>CreateObjectContract</code> (object contract bình thường) thay vì để Newtonsoft tự suy ra string contract. Áp dụng ở cả 2 nơi: <code>AlignStitchSettingsReader.StructuredConfigSerializer</code> (đọc, dùng cho cả <code>ToObject&lt;MatcherRegistry&gt;</code> lẫn <code>PopulateStage</code>) và <code>GerberStitchFacade</code>'s <code>JsonSerializerSettings.ContractResolver</code> khi ghi <code>effective_config.json</code>.</p>
+
+  <div class="note">
+    <strong>Vì sao đây là bằng chứng cho việc "chạy thật" quan trọng hơn review tĩnh:</strong> cả 3 task review (entry 14, 15, 16) đều "Approved", vì reviewer đọc diff và đối chiếu code sống — không có cách nào phát hiện lỗi runtime thuần Newtonsoft/reflection này chỉ bằng đọc mã nguồn. Repo không có test project (AGENTS.md §4) nên không có unit test nào bắt lỗi này sớm hơn. Đây chính là lý do Harness mode mới (entry 17) đáng làm dù tốn thời gian.
+  </div>
+
+  <h4>Kết quả chạy thật — lô <code>sample_prepare.json</code> (80 tile)</h4>
+  <table>
+    <tr><th>Chỉ số</th><th>Giá trị</th><th>Đối chiếu <code>Processing_GerberAlignStitch.html</code></th></tr>
+    <tr><td>TileCount</td><td>80</td><td>khớp</td></tr>
+    <tr><td>AlignedTiles</td><td>54</td><td>khớp</td></tr>
+    <tr><td>BlankTiles</td><td>26</td><td>khớp</td></tr>
+    <tr><td>FailedTiles</td><td>0</td><td>khớp</td></tr>
+    <tr><td>ErrorCode</td><td>0</td><td>khớp</td></tr>
+    <tr><td>PeakWorkingSet</td><td>7989 MB (tại <code>GlobalPose summary</code>)</td><td>tài liệu ghi 7185 MB — <strong>cao hơn ~800 MB (~11%)</strong>, xem ghi chú dưới</td></tr>
+  </table>
+  <div class="note">
+    <strong>Chưa xác nhận nguyên nhân lệch PeakWorkingSet.</strong> Không giống pose từng tile (đối chiếu bit-by-bit chưa làm ở lần chạy này — chỉ đối chiếu số liệu tổng), lệch RAM có thể đến từ: máy/phiên chạy khác, hoặc do cơ chế crop-in-RAM (Task 3) giữ <code>Mat</code> cache trong suốt Recovery+PoseGraph thay vì đọc từ đĩa theo yêu cầu như trước — đúng như đánh đổi đã ghi trong spec §3.4, nhưng con số thật cao hơn ước tính lúc thiết kế. Cần đối chiếu thêm với một lần chạy <code>alignstitch</code> (đường manifest cũ) trên cùng máy, cùng dữ liệu, để tách bạch "chênh do máy" khỏi "chênh do cơ chế mới" — chưa làm trong entry này.
+  </div>
+
+  <h4>Build</h4>
+  <p><span class="badge ok">PASS</span> <code>msbuild RDL.GerberStitch.sln /p:Configuration=Debug /p:Platform=x64</code>, 0 error (1 warning <code>CS0618</code> có từ trước, không liên quan). Đã thêm <code>IgnoreTypeConverterResolver.cs</code> vào <code>.csproj</code> ngay từ đầu.</p>
 </div>
 
 <!-- ============================================================ -->
@@ -802,6 +843,8 @@ else if (requireFiles &amp;&amp; !string.IsNullOrWhiteSpace(t.ExpectedPath) &amp
   <tr><td>Field mới trên <code>AlignStitchConfig</code> âm thầm bị reset về default khi chạy thật</td><td><code>AlignStitchConfigMapper.CloneForRun</code> build lại config mới từ stage options, không copy field phẳng nào không có bản sao ở stage options — trong khi <code>BuildCoreConfig</code> (façade) luôn gọi <code>CloneForRun</code> ở bước cuối</td><td>Khi thêm field phẳng mới không thuộc stage nào, phải copy tay trong <code>CloneForRun</code>; kiểm tra ngay chỗ này mỗi khi thêm field mới vào <code>AlignStitchConfig</code></td><td><a href="#entry-6">6</a></td></tr>
   <tr><td><code>CS0246: type or namespace 'ISampleTileSource' could not be found</code> dù file/namespace đúng</td><td>Old-style <code>.csproj</code> liệt kê tường minh từng file qua <code>&lt;Compile Include&gt;</code> — không tự glob thư mục, file mới tạo không tự được biên dịch</td><td>Thêm dòng <code>&lt;Compile Include="..." /&gt;</code> cho mọi file <code>.cs</code> mới trong <code>GerberStitching.Core.csproj</code>/<code>RDL.GerberStitch.csproj</code></td><td><a href="#entry-11">11</a></td></tr>
   <tr><td><code>InvalidOperationException: Invalid sample manifest: ExpectedPath missing at order N</code> khi chạy manifest dựng trong bộ nhớ (không có file trên đĩa)</td><td><code>SampleManifestValidator.Validate</code> có nhiều call site hardcode <code>requireFiles: true</code> viết từ trước khi khái niệm in-memory manifest tồn tại; riêng dòng kiểm tra "<code>ExpectedPath</code> có rỗng không" còn không hề gate theo <code>requireFiles</code> (khác 3 check anh em cùng hàm) — 2 vị trí phát hiện: <code>SampleManifest.cs:221-222</code> và <code>WorkflowImageMap.cs:31</code> (gọi từ <code>AlignStitchWorkflowService.cs</code> vô điều kiện)</td><td>Gate check theo <code>requireFiles</code>; thread <code>requireFiles</code> xuyên <code>ValidateAndMap</code>, lấy giá trị từ <code>_externalTileSource == null</code> (disk giữ <code>true</code>, in-memory dùng <code>false</code>) — cả 2 fix đều xin xác nhận người dùng trước khi sửa vì ngoài phạm vi file ban đầu của task</td><td><a href="#entry-13">13</a></td></tr>
+  <tr><td><code>System.Xml.XmlException: Encountered unexpected character 'ï'</code> khi <code>DataContractJsonSerializer</code> đọc file JSON thật</td><td>File có UTF-8 BOM; serializer đọc byte BOM như ký tự JSON đầu tiên</td><td>Đọc qua <code>File.ReadAllText(path, Encoding.UTF8)</code> trước để tự bỏ BOM, rồi mới đưa vào serializer</td><td><a href="#entry-18">18</a></td></tr>
+  <tr><td><code>"...type requires a JSON string value to deserialize correctly"</code> khi Newtonsoft đọc object JSON thật, hoặc <code>effective_config.json</code> ghi ra chuỗi tóm tắt (<code>ToString()</code>) thay vì object đầy đủ tham số</td><td>Lớp Core mang <code>[TypeConverter(typeof(ExpandableObjectConverter))]</code> (cho WinForms PropertyGrid) — <code>TypeConverter.CanConvertTo(string)</code> mặc định luôn <code>true</code>, Newtonsoft hiểu nhầm type "chuyển được thành chuỗi" ở cả 2 chiều đọc/ghi</td><td><code>IgnoreTypeConverterResolver</code> (mới) ép <code>CreateObjectContract</code> cho type mang <code>TypeConverterAttribute</code>; áp dụng ở cả <code>AlignStitchSettingsReader</code> (đọc) lẫn chỗ ghi <code>effective_config.json</code> trong <code>GerberStitchFacade</code></td><td><a href="#entry-18">18</a></td></tr>
 </table>
 
 <footer>

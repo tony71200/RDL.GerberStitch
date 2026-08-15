@@ -648,11 +648,22 @@ namespace RDL.GerberStitch.Facade
 
                 // The settings file itself is never rewritten -- Newtonsoft drops comments on write. This is a
                 // comment-free snapshot of the merged result, for audit only.
+                //
+                // [Claude] [Change time: 2026-08-15] [Purpose: coreConfig's option classes carry
+                // [TypeConverter(typeof(ExpandableObjectConverter))] for the WinForms PropertyGrid; Newtonsoft's
+                // default resolver treats that as "serializes to a string" and calls each type's ToString()
+                // override (e.g. "DirectAlignment": "HalconShapeModel -> PyramidEcc") instead of writing out its
+                // real property values -- confirmed by actually running the harness and reading the output file,
+                // not caught by any code review. Same fix as AlignStitchSettingsReader's read side.]
                 try
                 {
+                    var writeSettings = new Newtonsoft.Json.JsonSerializerSettings
+                    {
+                        ContractResolver = new Settings.IgnoreTypeConverterResolver(),
+                        Formatting = Newtonsoft.Json.Formatting.Indented
+                    };
                     File.WriteAllText(Path.Combine(creatingDir, "effective_config.json"),
-                                      Newtonsoft.Json.JsonConvert.SerializeObject(
-                                          coreConfig, Newtonsoft.Json.Formatting.Indented));
+                                      Newtonsoft.Json.JsonConvert.SerializeObject(coreConfig, writeSettings));
                 }
                 catch (Exception ex)
                 {

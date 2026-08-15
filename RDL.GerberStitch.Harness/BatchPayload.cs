@@ -35,7 +35,14 @@ namespace RDL.GerberStitch.Harness
         public static BatchPayload ReadOrNull(string path)
         {
             if (string.IsNullOrWhiteSpace(path) || !File.Exists(path)) return null;
-            using (var stream = File.OpenRead(path))
+            // [Claude] [Change time: 2026-08-15] [Purpose: Real payload files (docs/sample_prepare.json,
+            // docs/GerberCommonFileInfo.json) are saved with a UTF-8 BOM. DataContractJsonSerializer reads the
+            // BOM bytes as the start of JSON content and throws XmlException("Encountered unexpected character
+            // 'ï'") instead of skipping them, unlike a text reader configured with encoding detection. Read the
+            // bytes through Encoding.UTF8.GetString first so the BOM is stripped before the JSON parser sees it.]
+            var text = File.ReadAllText(path, System.Text.Encoding.UTF8);
+            var bytes = System.Text.Encoding.UTF8.GetBytes(text);
+            using (var stream = new MemoryStream(bytes))
                 return (BatchPayload)new DataContractJsonSerializer(typeof(BatchPayload)).ReadObject(stream);
         }
     }
