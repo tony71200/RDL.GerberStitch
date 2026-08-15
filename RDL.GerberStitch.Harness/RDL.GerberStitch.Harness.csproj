@@ -81,6 +81,7 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="BatchPayload.cs" />
     <Compile Include="GlobalConfig.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="RunReport.cs" />

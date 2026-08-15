@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Reflection;
@@ -27,6 +28,9 @@ namespace RDL.GerberStitch.Harness
 
             if (string.Equals(mode, "createsample", StringComparison.OrdinalIgnoreCase))
                 return RunCreateSample(args, config);
+
+            if (string.Equals(mode, "alignstitchmem", StringComparison.OrdinalIgnoreCase))
+                return RunAlignStitchMem(args, config);
 
             return RunAlignStitch(args, config);
         }
@@ -158,6 +162,165 @@ namespace RDL.GerberStitch.Harness
             }
         }
 
+        // ── Mode: alignstitchmem ─────────────────────────────────────────────────
+
+        // [Claude] [Change time: 2026-08-14] [Purpose: Exercise the in-memory RunAlignStitch(sampleImagePath,
+        // tiles, ...) overload (Task 4 of the settings-file plan) against real Master-shaped payload data,
+        // side by side with the unchanged "alignstitch" (manifest-path) mode above -- so a tester can diff
+        // Debug_<date>.html's Dx/Dy/DAngle between the two modes to confirm the Task 2 safety checkpoint
+        // (crop-in-RAM must be pixel-identical to crop-to-disk) on real data, not just on the build gate.]
+        private static int RunAlignStitchMem(string[] args, GlobalConfig config)
+        {
+            var memCfg = config != null ? config.AlignStitchMem : null;
+            var payloadPath = GetArg(args, "--payload", memCfg != null ? memCfg.PayloadPath : null);
+            if (string.IsNullOrWhiteSpace(payloadPath) || !File.Exists(payloadPath))
+            {
+                Console.Error.WriteLine("Missing or missing-on-disk --payload (GerberCommonFileInfo-shaped JSON), " +
+                                        "or configure the \"AlignStitchMem\" section in global_config.json.");
+                return 2;
+            }
+            var payload = BatchPayload.ReadOrNull(payloadPath);
+            if (payload == null) { Console.Error.WriteLine("Could not parse payload: " + payloadPath); return 2; }
+
+            var sampleImagePath = payload.GerberSampleImagePath;
+            var imagesFolder = GetArg(args, "--images", memCfg != null ? memCfg.ImagesPath : null) ?? payload.Folder_CaptureImages;
+            var outputRoot = GetArg(args, "--out", memCfg != null ? memCfg.OutputPath : null) ?? payload.GerberManifestOutputDir;
+
+            if (string.IsNullOrWhiteSpace(sampleImagePath) || string.IsNullOrWhiteSpace(imagesFolder) || string.IsNullOrWhiteSpace(outputRoot))
+            {
+                Console.Error.WriteLine("Payload/config did not resolve sampleImagePath/imagesFolder/outputRoot.");
+                return 2;
+            }
+            if (payload.GerberTiles == null || payload.GerberTiles.Length == 0)
+            {
+                Console.Error.WriteLine("Payload has no GerberTiles.");
+                return 2;
+            }
+
+            Console.WriteLine("mode     = alignstitchmem");
+            Console.WriteLine("payload  = " + payloadPath);
+            Console.WriteLine("sample   = " + sampleImagePath);
+            Console.WriteLine("images   = " + imagesFolder);
+            Console.WriteLine("output   = " + outputRoot);
+            Console.WriteLine("tiles    = " + payload.GerberTiles.Length);
+            Console.WriteLine();
+
+            if (!File.Exists(sampleImagePath)) { Console.Error.WriteLine("Sample image not found: " + sampleImagePath); return 2; }
+            if (!Directory.Exists(imagesFolder)) { Console.Error.WriteLine("Images folder not found: " + imagesFolder); return 2; }
+            Directory.CreateDirectory(outputRoot);
+
+            var facade = new GerberStitchFacade();
+            var options = ReadAlignStitchOptions(args);
+
+            // [Claude] [Change time: 2026-08-14] [Purpose: Test Task 6/7/8's settings-file precedence chain.
+            // Command-line/global_config.json paths win; the ini's own [GerberAlignStitch] section has no
+            // SettingsPath key in this harness (that wiring is Worker-side, deferred), so this is the harness's
+            // only way to point at a settings file.]
+            options.SettingsFilePath = GetArg(args, "--settings", memCfg != null ? memCfg.SettingsPath : null);
+            options.RecipeSettingsPath = GetArg(args, "--recipe-settings", memCfg != null ? memCfg.RecipeSettingsPath : null);
+            options.LogWarning = text => Console.WriteLine("[settings] " + text);
+            if (HasFlag(args, "--debug")) options.EmitDebugPreview = true;
+            if (options.EmitDebugPreview && !string.IsNullOrWhiteSpace(payloadPath) && payload.DebugMode)
+                Console.WriteLine("(DebugMode=true from payload)");
+
+            Console.WriteLine("engine   = " + options.StitchingEngine + " (CalculateTimeDetail=" + options.CalculateTimeDetail +
+                              ", EmitDebugPreview=" + options.EmitDebugPreview + ")");
+            if (!string.IsNullOrWhiteSpace(options.SettingsFilePath)) Console.WriteLine("settings = " + options.SettingsFilePath);
+            if (!string.IsNullOrWhiteSpace(options.RecipeSettingsPath)) Console.WriteLine("recipe   = " + options.RecipeSettingsPath);
+            Console.WriteLine();
+
+            var tiles = new List<TileRect>(payload.GerberTiles.Length);
+            foreach (var t in payload.GerberTiles)
+            {
+                tiles.Add(new TileRect
+                {
+                    OrderIndex = t.OrderIndex, Row = t.Row, Column = t.Column,
+                    X = t.ExpectedX, Y = t.ExpectedY, Width = t.Width, Height = t.Height
+                });
+            }
+
+            var cts = new CancellationTokenSource();
+            Console.CancelKeyPress += (s, e) => { e.Cancel = true; cts.Cancel(); };
+
+            var proc = Process.GetCurrentProcess();
+            long peakWorkingSetBytes = 0;
+            var peakAtStage = "-";
+            var lastStage = "startup";
+            using (var sampler = new Timer(_ =>
+            {
+                proc.Refresh();
+                if (proc.WorkingSet64 > peakWorkingSetBytes)
+                {
+                    peakWorkingSetBytes = proc.WorkingSet64;
+                    peakAtStage = lastStage;
+                }
+            }, null, 0, 500))
+            {
+                var progress = new Progress<AlignStitchProgress>(p =>
+                {
+                    lastStage = p.Stage ?? lastStage;
+                    Console.Write("\r{0,-28} {1,5}/{2,-5}    ", p.Stage ?? "-", p.Current, p.Total);
+                });
+
+                var stopwatch = Stopwatch.StartNew();
+                AlignStitchResult result;
+                try
+                {
+                    result = facade.RunAlignStitch(sampleImagePath, tiles, imagesFolder, options, outputRoot, progress, cts.Token)
+                        .GetAwaiter().GetResult();
+                }
+                catch (OperationCanceledException)
+                {
+                    Console.WriteLine();
+                    Console.WriteLine("Cancelled.");
+                    return 3;
+                }
+                stopwatch.Stop();
+                Console.WriteLine();
+                proc.Refresh();
+
+                Console.WriteLine("=== RESULT ===");
+                Console.WriteLine("Success        : " + result.Success);
+                Console.WriteLine("TiffPath       : " + result.TiffPath);
+                Console.WriteLine("ElapsedMs      : " + result.ElapsedMs + " (wall clock " + stopwatch.ElapsedMilliseconds + " ms)");
+                Console.WriteLine("TileCount      : " + result.TileCount);
+                Console.WriteLine("AlignedTiles   : " + result.AlignedTileCount);
+                Console.WriteLine("BlankTiles     : " + result.BlankTileCount);
+                Console.WriteLine("FailedTiles    : " + result.FailedTiles.Count);
+                foreach (var f in result.FailedTiles)
+                    Console.WriteLine("  - OrderIndex=" + f.OrderIndex + " Row=" + f.Row + " Col=" + f.Column + " Reason=" + f.Reason);
+                Console.WriteLine("ErrorCode      : " + result.ErrorCode);
+                if (!string.IsNullOrEmpty(result.ErrorMessage))
+                    Console.WriteLine("ErrorMessage   : " + result.ErrorMessage);
+                Console.WriteLine("Warnings       : " + result.Warnings.Count);
+                foreach (var w in result.Warnings)
+                    Console.WriteLine("  - " + w);
+                Console.WriteLine("PeakWorkingSet : " + (peakWorkingSetBytes / 1024 / 1024) + " MB (at stage: " + peakAtStage + ")");
+
+                var reportFolder = !string.IsNullOrWhiteSpace(result.TiffPath) ? Path.GetDirectoryName(result.TiffPath) : outputRoot;
+                RunReport.WriteTo(reportFolder, new RunReport
+                {
+                    Mode = "alignstitchmem",
+                    RunUtc = DateTime.UtcNow.ToString("O"),
+                    ElapsedMs = result.ElapsedMs,
+                    WallClockMs = stopwatch.ElapsedMilliseconds,
+                    PeakWorkingSetMb = peakWorkingSetBytes / 1024 / 1024,
+                    PeakAtStage = peakAtStage,
+                    Success = result.Success,
+                    TiffPath = result.TiffPath,
+                    TileCount = result.TileCount,
+                    AlignedTileCount = result.AlignedTileCount,
+                    BlankTileCount = result.BlankTileCount,
+                    FailedTileCount = result.FailedTiles.Count,
+                    ErrorCode = result.ErrorCode,
+                    WarningCount = result.Warnings.Count,
+                    ErrorMessage = result.ErrorMessage
+                });
+
+                return result.Success ? 0 : 1;
+            }
+        }
+
         // ── Mode: createsample ─────────────────────────────────────────────────
 
         private static int RunCreateSample(string[] args, GlobalConfig config)
@@ -242,6 +405,14 @@ namespace RDL.GerberStitch.Harness
                 if (string.Equals(args[i], name, StringComparison.OrdinalIgnoreCase))
                     return args[i + 1];
             return defaultValue;
+        }
+
+        private static bool HasFlag(string[] args, string name)
+        {
+            foreach (var a in args)
+                if (string.Equals(a, name, StringComparison.OrdinalIgnoreCase))
+                    return true;
+            return false;
         }
 
         // [Claude] [Change time: 2026-08-07] [Purpose: The standalone harness has no production Master/Worker deployment folder containing HALCON assemblies. Because the library references intentionally use Private=False, resolve them from HALCONROOT at runtime.]

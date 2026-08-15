@@ -78,6 +78,7 @@
     <li><a href="#entry-14">2026-08-14 (nhánh <code>Ver2_0</code>) — Task 6: Loader file settings JSON (<code>AlignStitchSettingsReader</code> + <code>MatcherRegistry</code>) — chưa nối vào pipeline thật</a></li>
     <li><a href="#entry-15">2026-08-14 (nhánh <code>Ver2_0</code>) — Task 7: File cấu hình thật <code>GerberAlignStitch.settings.json</code> (~124 tham số, chưa nối vào pipeline)</a></li>
     <li><a href="#entry-16">2026-08-14 (nhánh <code>Ver2_0</code>) — Task 8: Nối file settings vào <code>BuildCoreConfig</code> + ghi <code>effective_config.json</code> (Worker-side wiring hoãn lại)</a></li>
+    <li><a href="#entry-17">2026-08-15 (nhánh <code>Ver2_0</code>) — Harness: thêm mode <code>alignstitchmem</code> để test overload in-memory bằng dữ liệu thật</a></li>
     <li><a href="#pitfalls">Bảng tổng hợp lỗi &amp; cách fix (tra nhanh)</a></li>
   </ol>
 </div>
@@ -762,6 +763,29 @@ else if (requireFiles &amp;&amp; !string.IsNullOrWhiteSpace(t.ExpectedPath) &amp
   <div class="note">
     <strong>Fix sau review: bổ sung 2 khoá còn thiếu trong <code>sourceByKey</code> bookkeeping.</strong> Review phát hiện <code>baseConfig.EmitDebugPreview = options.EmitDebugPreview;</code> và <code>baseConfig.CalculateTimeDetail = options.CalculateTimeDetail;</code> gán từ <code>options</code> vô điều kiện (đúng như thiết kế — không đổi) nhưng KHÔNG được ghi vào mảng <code>sourceByKey[key] = "ini"</code>, nên <code>ConfigLayerLog.Dump</code> báo 2 khoá này là "không rõ" thay vì "ini" dù giá trị thật sự luôn đến từ ini/Master. Riêng <code>Stitching.EnableBlending</code> mà review cũng nêu tên hoá ra đã có sẵn trong mảng từ bản gốc — kiểm tra lại thấy không thiếu, chỉ 2 khoá kia thực sự thiếu. Đã thêm <code>"EmitDebugPreview"</code> và <code>"CalculateTimeDetail"</code> vào đầu mảng khoá trong <code>BuildCoreConfig</code> (path dạng tên property trần vì đây là property top-level trên <code>AlignStitchConfig</code> của Core, không lồng trong sub-object — khớp cách <code>ConfigLayerLog.Walk</code> dựng path khi <code>prefix</code> rỗng). <strong>Không đổi logic ưu tiên</strong> — <code>options.*</code> vẫn thắng vô điều kiện với 2 khoá này như trước, chỉ sửa phần ghi log cho đúng tầng nguồn.
   </div>
+</div>
+
+<h2 id="entry-17">17. 2026-08-15 (nhánh <code>Ver2_0</code>) — Harness: thêm mode <code>alignstitchmem</code> để test overload in-memory bằng dữ liệu thật</h2>
+<div class="entry">
+  <div class="entry-meta"><span class="badge ok">Harness</span> Phạm vi: <code>RDL.GerberStitch.Harness/BatchPayload.cs</code> (mới), <code>GlobalConfig.cs</code>, <code>Program.cs</code>.</div>
+
+  <h4>Bối cảnh</h4>
+  <p>Sau khi Task 0-8 của plan <code>2026-08-14-in-memory-sample-crop-and-settings-file</code> hoàn tất (trừ phần Worker), chưa có cách nào chạy thử overload mới <code>RunAlignStitch(sampleImagePath, tiles, ...)</code> (Task 4) với dữ liệu thật ngoài Worker — mà Worker đang tạm dừng (Task 5). Thêm mode mới vào Harness để test trực tiếp qua façade, không cần Worker.</p>
+
+  <h3>17.1. Đọc thẳng khuôn payload Master thật, không bày định dạng mới</h3>
+  <p><code>BatchPayload.cs</code> đọc JSON theo đúng khuôn <code>GerberCommonFileInfo</code> (<code>GerberSampleImagePath</code>, <code>GerberTiles[]</code> với <code>ExpectedX</code>/<code>ExpectedY</code>, <code>Folder_CaptureImages</code>, <code>GerberManifestOutputDir</code>, <code>DebugMode</code>) — đúng khuôn <code>docs/GerberCommonFileInfo.json</code> và <code>docs/sample_prepare.json</code> đã có sẵn trong repo (80 tile, dữ liệu thật). Dùng <code>DataContractJsonSerializer</code> giống <code>GlobalConfig.cs</code> có sẵn — field lạ trong payload (JobName, workmode, resolution_umPx_X, ...) bị bỏ qua tự động, không cần khai hết.</p>
+
+  <h3>17.2. Mode mới <code>--mode alignstitchmem</code>, giữ nguyên mode cũ để đối chiếu</h3>
+  <p><code>RunAlignStitchMem</code> map <code>TileRectPayload.ExpectedX/ExpectedY</code> → <code>TileRect.X/Y</code> rồi gọi thẳng overload Task 4. Mode <code>alignstitch</code> (đường manifest cũ) giữ nguyên không đổi — cho phép chạy cả hai mode trên cùng máy, cùng dữ liệu, rồi so <code>Debug_&lt;date&gt;.html</code> để xác nhận điểm kiểm an toàn của Task 2 (pose phải trùng bit-by-bit) bằng dữ liệu thật, không chỉ bằng build gate.</p>
+
+  <h3>17.3. Nối luôn dây Task 6-8 (settings file) qua <code>--settings</code>/<code>--recipe-settings</code></h3>
+  <p><code>options.SettingsFilePath</code>/<code>RecipeSettingsPath</code>/<code>LogWarning</code> được set trực tiếp trong <code>RunAlignStitchMem</code> — đây là cách duy nhất hiện tại để test chuỗi 5 tầng ưu tiên của Task 8 bằng dữ liệu thật, vì phần Worker (nơi lẽ ra đọc <code>SettingsPath</code> từ ini) đang tạm hoãn ở Task 5. <code>LogWarning</code> in thẳng ra console với tiền tố <code>[settings]</code> để thấy log dump/cảnh báo khoá lạ ngay trên terminal.</p>
+
+  <h4>Build</h4>
+  <p><span class="badge ok">PASS</span> <code>msbuild RDL.GerberStitch.sln /p:Configuration=Debug /p:Platform=x64</code>, 0 error. Không có lỗi CS0246/thiếu Compile Include lần này — đã nhớ thêm <code>BatchPayload.cs</code> vào <code>.csproj</code> ngay từ đầu, tránh lặp lại pitfall đã ghi ở entry 11.</p>
+
+  <h4>Chưa chạy — cần dữ liệu thật từ người dùng</h4>
+  <p>Mode mới đã build được nhưng <strong>chưa được thực thi</strong> với dữ liệu thật. Đường dẫn trong <code>docs/GerberCommonFileInfo.json</code>/<code>sample_prepare.json</code> trỏ tới <code>D:\Share\Simulation_PCM\...</code> — cần xác nhận máy chạy Harness có mount được ổ <code>D:\Share</code> đó không, hoặc người dùng cung cấp payload trỏ tới dữ liệu cục bộ tương đương.</p>
 </div>
 
 <!-- ============================================================ -->
