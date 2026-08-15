@@ -1920,6 +1920,43 @@ def index_of(payload, row, column):
 
 - [ ] **Bước 5.6: `app.py` — UI Tkinter**
 
+**Bố cục đã được user duyệt ngày 2026-08-15. Không tự đổi cấu trúc panel/tab.**
+
+```
+┌─ RDL.GerberStitch — ECC / Preprocessing Sandbox ───────────────────────────┐
+│ ┌── panel trái (~212px) ──┐ ┌── panel phải (giãn) ────────────────────────┐│
+│ │ [Dữ liệu]               │ │ ( Tiền xử lý ) ( Kết quả match ) ( Ma trận )││
+│ │   Payload JSON  + nút   │ │ ┌─────────────────────────────────────────┐ ││
+│ │   Thư mục ảnh   + nút   │ │ │ Tab 1: lưới 2 hàng × N cột              │ ││
+│ │   Raster Gerber + nút   │ │ │   hàng trên = reference (tile Gerber)   │ ││
+│ │   Đuôi file             │ │ │   hàng dưới = moving (ảnh chụp)         │ ││
+│ │ [Cặp kiểm tra]          │ │ │   cột = raw · contrast · flattened      │ ││
+│ │   ◉ Direct  ○ Neighbor  │ │ │         · binary (chỉ khi bật)          │ ││
+│ │   Row / Column          │ │ │ Tab 2: overlay 2 kênh, TRƯỚC | SAU      │ ││
+│ │   Hướng neighbor        │ │ │ Tab 3: correlation TỪNG level pyramid,  │ ││
+│ │   Step ghi đè  ← nổi bật│ │ │         ma trận 3×3, kết luận màu       │ ││
+│ │ [Tiền xử lý (§8.3)]     │ │ └─────────────────────────────────────────┘ ││
+│ │ [PyramidECC (từ ini)]   │ │                                             ││
+│ │ [        CHẠY        ]  │ │                                             ││
+│ └─────────────────────────┘ └─────────────────────────────────────────────┘│
+└────────────────────────────────────────────────────────────────────────────┘
+```
+
+Bốn quyết định thiết kế đã chốt, **giữ nguyên khi cài đặt**:
+
+1. **Ô `Step ghi đè` phải nổi bật khác các ô còn lại** (đổi màu viền/chữ). Nó là tham số duy nhất
+   không tương ứng với bất kỳ setting nào trong C# — nó tồn tại để so `4096` với `4031.5` tại chỗ.
+2. **Tab 1 luôn có dòng nhắc dưới lưới**: cột `binary` không bao giờ đi vào ECC (Findings §8.2).
+   Đặt cảnh báo ngay chỗ dễ phạm lỗi nhất.
+3. **Tab 2 dùng overlay hai kênh màu, KHÔNG phải hai ảnh cạnh nhau.** Đặt cạnh nhau thì mắt không
+   thấy lệch 10 px trên khung 4096; overlay thì trùng ra xám, lệch thì hiện viền màu.
+4. **Tab 3 in correlation của TỪNG level pyramid**, không chỉ số cuối. Chuỗi tăng dần
+   (`0.712 → 0.839 → 0.908`) nghĩa là hội tụ tốt; chuỗi *giảm* khi xuống level mịn hơn là dấu hiệu
+   bám cực trị cục bộ. `processing_report.json` hiện không có thông tin này.
+
+Dùng **ô nhập số**, không dùng thanh trượt, cho các tham số tiền xử lý — vì giá trị đã thử phải chép
+được nguyên văn vào bảng kết quả ở Bước 5.10.
+
 ```python
 """Sandbox UI: chon cap -> tien xu ly -> PyramidECC -> xem ma tran + ket qua match."""
 import os
@@ -2388,6 +2425,7 @@ git commit -m "Record grid pitch calibration sweep results for four FOV configs"
 | 2026-08-15 | — | `633bb96` | Viết spec thiết kế | — |
 | 2026-08-15 | — | (plan này) | Viết implementation plan. Xác minh trước khi viết: `UseRejectedEdges=true` đã giữ measured transform, 142/142 cạnh có phép đo thật ⇒ Task 4 thu hẹp còn sửa báo cáo. | — |
 | 2026-08-15 | — | (plan này) | Chèn Task 5 mới (sandbox Python: tiền xử lý §8.3 + PyramidECC có UI). Task "Sweep 4 FOV" cũ dời thành Task 6, các bước đánh lại số 6.x. | — |
+| 2026-08-15 | 5 | (plan này) | User đã duyệt bố cục UI của `app.py`. Chốt 4 quyết định thiết kế ở Bước 5.6 — không tự đổi cấu trúc panel/tab khi cài đặt. | — |
 | | | | | |
 
 ### Ghi chú cho người thực thi
