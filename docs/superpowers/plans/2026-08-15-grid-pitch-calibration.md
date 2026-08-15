@@ -634,7 +634,7 @@ git add RDL.GerberStitch/Facade/CaptureGridSpec.cs RDL.GerberStitch/Facade/Captu
 git commit -m "Add CaptureGridCalculator using the Master pitch formula"
 ```
 
-- [ ] **Bước 1.13: Ghi §Lịch sử thay đổi** (commit hash, số đo thực tế, lỗi gặp phải)
+- [x] **Bước 1.13: Ghi §Lịch sử thay đổi** (commit hash, số đo thực tế, lỗi gặp phải)
 
 ### Checklist bàn giao Task 1
 
@@ -2426,7 +2426,7 @@ git commit -m "Record grid pitch calibration sweep results for four FOV configs"
 | 2026-08-15 | — | (plan này) | Viết implementation plan. Xác minh trước khi viết: `UseRejectedEdges=true` đã giữ measured transform, 142/142 cạnh có phép đo thật ⇒ Task 4 thu hẹp còn sửa báo cáo. | — |
 | 2026-08-15 | — | (plan này) | Chèn Task 5 mới (sandbox Python: tiền xử lý §8.3 + PyramidECC có UI). Task "Sweep 4 FOV" cũ dời thành Task 6, các bước đánh lại số 6.x. | — |
 | 2026-08-15 | 5 | (plan này) | User đã duyệt bố cục UI của `app.py`. Chốt 4 quyết định thiết kế ở Bước 5.6 — không tự đổi cấu trúc panel/tab khi cài đặt. | — |
-| 2026-08-15 | 1 | commit sau | `CaptureGridCalculator`/`CaptureGridSpec`/`CaptureGridResult` (mới) + `GerberStitchFacade.BuildCaptureGrid` + harness mode `createsamplemem`. Build x64 PASS, 0 lỗi mới. Bước 1.9/1.10 ([USER]) đang chờ user chạy `RDL.GerberStitch.Harness.exe --mode createsamplemem` để đối chiếu `Clamped tiles = 0` và sweep `--tile`. | Không gặp lỗi build nào (đã thêm `<Compile Include>` cho 3 file mới vào `.csproj` ngay từ đầu, tránh lặp lại CS0246 đã gặp ở entry 11 trong `implement_code.html`). |
+| 2026-08-15 | 1 | `bd3dbe6` | `CaptureGridCalculator`/`CaptureGridSpec`/`CaptureGridResult` (mới) + `GerberStitchFacade.BuildCaptureGrid` + harness mode `createsamplemem`. Build x64 PASS, 0 lỗi mới. Bước 1.9/1.10 ([USER]) đang chờ user chạy `RDL.GerberStitch.Harness.exe --mode createsamplemem` để đối chiếu `Clamped tiles = 0` và sweep `--tile`. | Không gặp lỗi build nào (đã thêm `<Compile Include>` cho 3 file mới vào `.csproj` ngay từ đầu, tránh lặp lại CS0246 đã gặp ở entry 11 trong `implement_code.html`). |
 | | | | | |
 
 ### Ghi chú cho người thực thi
