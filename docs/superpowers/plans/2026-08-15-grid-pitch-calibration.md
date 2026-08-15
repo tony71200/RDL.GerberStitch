@@ -1243,7 +1243,7 @@ git commit -m "Add grid calibration probe that measures the real capture step"
 
 ---
 
-- [ ] **Bước 4.1: Thêm field vào `PoseGraphReport.cs`**
+- [x] **Bước 4.1: Thêm field vào `PoseGraphReport.cs`**
 
 ```csharp
         // [Claude] [Change time: 2026-08-15] [Purpose: EdgesTotal/EdgesUsed không phân biệt được "cạnh có phép đo
@@ -1267,7 +1267,7 @@ Trong `PoseGraphTileEntry`:
         public int ExistingNeighborCount { get; set; }
 ```
 
-- [ ] **Bước 4.2: Đếm trong `GlobalPoseGraphOptimizer.cs`**
+- [x] **Bước 4.2: Đếm trong `GlobalPoseGraphOptimizer.cs`** (đính chính: `ExistingNeighborCounts` dùng thẳng `tiles`, không cần `states`+`tileByOrder` như brief mô tả — xem §Lịch sử thay đổi)
 
 Trong vòng `foreach (var kv in dedup...)` (dòng 98), sau khi lấy `e`, cộng dồn:
 
@@ -1363,7 +1363,7 @@ Tại chỗ tạo entry (dòng 295–301), bổ sung hai dòng:
 (cùng biến đang điền `OrderIndex = ...` trong khối `new PoseGraphTileEntry`). Khai
 `neighborCounts` **trước** vòng `for` để không tính lại mỗi tile.
 
-- [ ] **Bước 4.3: Cảnh báo khi không hội tụ**
+- [x] **Bước 4.3: Cảnh báo khi không hội tụ**
 
 Sau khi solver chạy xong, nơi `report.Converged` được gán:
 
@@ -1375,7 +1375,7 @@ Sau khi solver chạy xong, nơi `report.Converged` được gán:
                                     " vòng lặp. Kết quả vẫn được áp dụng nhưng nên xem lại chất lượng cạnh.");
 ```
 
-- [ ] **Bước 4.4: `MaxPoseCorrectionPixels` suy từ `CaptureOverlap`**
+- [x] **Bước 4.4: `MaxPoseCorrectionPixels` suy từ `CaptureOverlap`** (đính chính: `capturedImageWidthPxForPoseGraph` phải lấy TRƯỚC dòng `_imageCache = null` (~322), không phải ngay trước `Optimize` (~380) như brief — xem §Lịch sử thay đổi)
 
 Trong `PoseGraphOptions.cs`, đổi mô tả và thêm cơ chế suy:
 
@@ -1421,7 +1421,7 @@ và đổi chỗ đọc bên trong optimizer sang property mới.
 Khi `captureOverlapPx <= 0` (probe `Inconclusive`, không có `DeclaredStepX`), hàm trả về `351.0` —
 đúng hành vi cũ, không có regression.
 
-- [ ] **Bước 4.5: Build**
+- [x] **Bước 4.5: Build**
 
 ```bash
 msbuild RDL.GerberStitch.sln /p:Configuration=Debug /p:Platform=x64
@@ -1445,28 +1445,28 @@ Kiểm bằng:
 python -c "import json;d=json.load(open('processing_report.json',encoding='utf-8-sig'));p=d['poseGraph'];print({k:p[k] for k in p if k.startswith('edges')});t=p['tiles'];print('bac<2:',[x['orderIndex'] for x in t if x['measuredEdgeCount']<2])"
 ```
 
-- [ ] **Bước 4.7: Ghi `docs/implement_code.html`**
+- [x] **Bước 4.7: Ghi `docs/implement_code.html`**
 
-- [ ] **Bước 4.8: Commit**
+- [x] **Bước 4.8: Commit**
 
 ```bash
-git add GerberStitching.Core/Alignment/Graph/PoseGraphReport.cs GerberStitching.Core/Alignment/Graph/PoseGraphOptions.cs GerberStitching.Core/Alignment/Graph/GlobalPoseGraphOptimizer.cs docs/implement_code.html
+git add GerberStitching.Core/Alignment/Graph/PoseGraphReport.cs GerberStitching.Core/Alignment/Graph/PoseGraphOptions.cs GerberStitching.Core/Alignment/Graph/GlobalPoseGraphOptimizer.cs GerberStitching.Core/Alignment/AlignStitchWorkflowService.cs docs/implement_code.html
 git commit -m "Report edge measurement state and vertex degree in the pose graph"
 ```
 
-- [ ] **Bước 4.9: Ghi §Lịch sử thay đổi**
+- [x] **Bước 4.9: Ghi §Lịch sử thay đổi**
 
 ### Checklist bàn giao Task 4
 
-- [ ] **Không** đổi thuật toán solver, **không** thêm cạnh chéo, **không** bật bậc tự do scale
-- [ ] `MaxIterations` giữ nguyên 8
-- [ ] `EdgesMeasured` / `EdgesExpectedOnly` / `EdgesRejectedByLegacyClosure` có trong report
-- [ ] `MeasuredEdgeCount` / `ExistingNeighborCount` có trên từng tile
-- [ ] `converged == false` sinh warning
-- [ ] `MaxPoseCorrectionPixels = -1` suy ra `2 × CaptureOverlap`
-- [ ] Build x64 thành công
+- [x] **Không** đổi thuật toán solver, **không** thêm cạnh chéo, **không** bật bậc tự do scale
+- [x] `MaxIterations` giữ nguyên 8
+- [x] `EdgesMeasured` / `EdgesExpectedOnly` / `EdgesRejectedByLegacyClosure` có trong report
+- [x] `MeasuredEdgeCount` / `ExistingNeighborCount` có trên từng tile
+- [x] `converged == false` sinh warning
+- [x] `MaxPoseCorrectionPixels = -1` suy ra `2 × CaptureOverlap`
+- [x] Build x64 thành công
 - [ ] [USER] report có đủ số mới
-- [ ] Entry `implement_code.html` + commit + §Lịch sử thay đổi
+- [x] Entry `implement_code.html` + commit + §Lịch sử thay đổi
 
 ---
 
@@ -2429,6 +2429,7 @@ git commit -m "Record grid pitch calibration sweep results for four FOV configs"
 | 2026-08-15 | 1 | `bd3dbe6` | `CaptureGridCalculator`/`CaptureGridSpec`/`CaptureGridResult` (mới) + `GerberStitchFacade.BuildCaptureGrid` + harness mode `createsamplemem`. Build x64 PASS, 0 lỗi mới. Bước 1.9/1.10 ([USER]) đang chờ user chạy `RDL.GerberStitch.Harness.exe --mode createsamplemem` để đối chiếu `Clamped tiles = 0` và sweep `--tile`. | Không gặp lỗi build nào (đã thêm `<Compile Include>` cho 3 file mới vào `.csproj` ngay từ đầu, tránh lặp lại CS0246 đã gặp ở entry 11 trong `implement_code.html`). |
 | 2026-08-15 | 2 | `137f40d` | `CaptureGridJsonWriter` (mới, merge trên `JObject`) + gọi trong `RunCreateSampleMem` + thêm reference `Newtonsoft.Json` (`Private=True`) vào `RDL.GerberStitch.Harness.csproj` + `<Compile Include>` cho file mới vào `RDL.GerberStitch.csproj`. Build x64 PASS, 0 lỗi mới, xác nhận `Newtonsoft.Json.dll` đã copy vào `RDL.GerberStitch.Harness/bin/x64/Debug/`. Bước 2.5/2.6 ([USER]) đang chờ user chạy `--mode createsamplemem --tile <4096/4192/4240/4320>` để đối chiếu nội dung 4 file `sample_<fov>_o<overlap>.json`. | Không gặp lỗi build nào — đã chủ động thêm reference Newtonsoft.Json + `<Compile Include>` ngay từ đầu theo đúng brief nên tránh trước 2 lỗi đã biết (`FileNotFoundException` lúc chạy do thiếu Newtonsoft; `CS0246` do old-style `.csproj` không tự glob). |
 | 2026-08-15 | 3 | `1d92dff` | `GridCalibrationProbe` (mới, matchTemplate dải rộng đo bước lưới thật) + `GridCalibrationReport`/`GridCalibrationStatus` trong `WorkflowModels.cs` + gọi probe trong `AlignStitchWorkflowService.RunAsync` (sau kiểm `ModelGeneration=Pregenerate`, trước vòng `for` Direct Alignment) + `<Compile Include>` vào `GerberStitching.Core.csproj`. Build x64 PASS, 0 lỗi mới. Bước 3.5/3.6 ([USER]) đang chờ user chạy Harness với payload lưới cũ (kỳ vọng `Mismatch`, Δ≈−64px) và payload mới `sample_4096_o63.json` (kỳ vọng `Ok`, measuredStepX/Y chưa có số thật — user điền vào bảng này sau khi chạy). | `CS0051 Inconsistent accessibility`: `GridCalibrationProbe.Run` (public) nhận tham số `WorkflowImageCache` (internal) — brief không lường trước. Fix: đổi `GridCalibrationProbe` thành `internal static class` (chỉ gọi nội bộ cùng assembly, không cần expose qua façade). Xem entry 21 trong `implement_code.html`. |
+| 2026-08-15 | 4 | `PENDING_COMMIT` | Thêm `EdgesMeasured`/`EdgesExpectedOnly`/`EdgesRejectedByLegacyClosure` vào `PoseGraphReport` + `MeasuredEdgeCount`/`ExistingNeighborCount` vào `PoseGraphTileEntry`; đếm trong `GlobalPoseGraphOptimizer.Optimize` (đo `hasMeasurement` theo lệch tx/ty >1e-6, `measuredDegree` qua `dedup`, `ExistingNeighborCounts(tiles)` qua Row/Column toàn lưới); cảnh báo khi `!report.Converged`; `PoseGraphOptions.MaxPoseCorrectionPixels` mặc định đổi `351.0`→`-1.0` (sentinel) + `ResolveMaxPoseCorrectionPixels`/`ResolvedMaxPoseCorrectionPixels`; `AlignStitchWorkflowService` lưu `capturedImageWidthPxForPoseGraph` lúc `_imageCache` còn sống (ngay sau `GridCalibrationProbe.Run`), suy `captureOverlapPxForPoseGraph` và gán `config.PoseGraph.ResolvedMaxPoseCorrectionPixels` ngay trước khi gọi `Optimize`. Build x64 PASS, 0 lỗi mới. Bước 4.6 ([USER]) đang chờ user chạy Harness kiểm `processing_report.json.poseGraph`. | **2 đính chính brief phát hiện TRƯỚC khi code (không phải build error):** (1) brief nói cần thêm tham số `tileByOrder` vào signature `Optimize(...)` — SAI, signature đã nhận dictionary này qua tham số `tiles` sẵn có; không đổi signature, `ExistingNeighborCounts` viết lại chỉ nhận `tiles` thay vì `states`+`tileByOrder`. (2) brief lấy `capturedImageWidthPx` qua `_imageCache.GetMono8(...)` ngay trước dòng gọi `Optimize` (~380) — SAI, `_imageCache` đã bị dispose/`null` ở dòng ~322 trước đó, sẽ ném `NullReferenceException`; fix bằng cách lưu bề rộng ảnh vào biến cục bộ khai NGOÀI khối `using`, đọc NGAY SAU `GridCalibrationProbe.Run` lúc cache còn sống. Xem entry 22 trong `implement_code.html`. |
 | | | | | |
 
 ### Ghi chú cho người thực thi

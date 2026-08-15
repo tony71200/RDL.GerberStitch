@@ -98,6 +98,18 @@ namespace GerberViewer.Stitching.Alignment.Graph
             foreach (var kv in dedup.OrderBy(x => x.Key))
             {
                 var e = kv.Value;
+                // [Claude] [Change time: 2026-08-15] [Purpose: Phân biệt cạnh có phép đo thật với cạnh rơi về lưới.]
+                bool hasMeasurement =
+                    e.MeasuredTargetToAnchorTransform != null &&
+                    Homography.IsFinite(e.MeasuredTargetToAnchorTransform) &&
+                    e.ExpectedTargetToAnchorTransform != null &&
+                    (Math.Abs(e.MeasuredTargetToAnchorTransform[0, 2] -
+                              e.ExpectedTargetToAnchorTransform[0, 2]) > 1e-6 ||
+                     Math.Abs(e.MeasuredTargetToAnchorTransform[1, 2] -
+                              e.ExpectedTargetToAnchorTransform[1, 2]) > 1e-6);
+                if (hasMeasurement) report.EdgesMeasured++;
+                else report.EdgesExpectedOnly++;
+                if (!e.Accepted) report.EdgesRejectedByLegacyClosure++;
                 var entry =
                     new PoseGraphEdgeEntry { AnchorOrderIndex = e.AnchorOrderIndex,
                                              TargetOrderIndex = e.TargetOrderIndex, Direction = e.Direction,
@@ -159,6 +171,22 @@ namespace GerberViewer.Stitching.Alignment.Graph
             report.EdgesGatedOut = report.EdgesTotal - report.EdgesUsed;
             report.EdgeGateReasons = edgeGateReasons;
 
+            // [Claude] [Change time: 2026-08-15] [Purpose: Bậc đỉnh đo được: cho thấy ngay tile nào chỉ được giữ
+            // bằng 1 cạnh có phép đo ảnh thật duy nhất, khác với EdgeCount (đếm cả cạnh expected-only).]
+            var measuredDegree = new Dictionary<int, int>();
+            foreach (var kv in dedup)
+            {
+                var e = kv.Value;
+                if (e.MeasuredTargetToAnchorTransform == null) continue;
+                Increment(measuredDegree, e.AnchorOrderIndex);
+                Increment(measuredDegree, e.TargetOrderIndex);
+            }
+            // [Claude] [Change time: 2026-08-15] [Purpose: Bậc "đáng lẽ có" của mỗi đỉnh (4-neighbour tồn tại
+            // trong lưới), để so với bậc "đo được" (measuredDegree). Dùng thẳng `tiles` (đã có Row/Column của
+            // toàn bộ lưới) thay vì suy từ states -- đơn giản hơn cách plan gốc mô tả và không cần đổi
+            // signature Optimize.]
+            var neighborCounts = ExistingNeighborCounts(tiles);
+
             var edgeCountByNode = new int[nodes.Length];
             var union
             = new int[nodes.Length];
@@ -194,6 +222,11 @@ namespace GerberViewer.Stitching.Alignment.Graph
 
             report.Iterations = solveStats.Iterations;
             report.Converged = solveStats.Converged;
+            // [Claude] [Change time: 2026-08-15] [Purpose: converged=false ở cả 6 run tham chiếu mà runStatus vẫn
+            // báo thành công. Không hội tụ phải nhìn thấy được.]
+            if (!report.Converged)
+                report.Warnings.Add("PoseGraph không hội tụ sau " + report.Iterations +
+                                    " vòng lặp. Kết quả vẫn được áp dụng nhưng nên xem lại chất lượng cạnh.");
             report.GlobalScale = solveStats.GlobalScale;
             report.GlobalRotationDeg = solveStats.GlobalRotationDeg;
             report.GlobalOffsetX = solveStats.GlobalOffsetX;
@@ -223,16 +256,16 @@ namespace GerberViewer.Stitching.Alignment.Graph
             report.PoseDeltaMax = deltaMax;
 
             var applied = true;
-            if (options.MaxPoseCorrectionPixels > 0)
+            if (options.ResolvedMaxPoseCorrectionPixels > 0)
             {
                 for (var i = 0; i < nodes.Length; i++)
                 {
-                    if (deltas[i] <= options.MaxPoseCorrectionPixels)
+                    if (deltas[i] <= options.ResolvedMaxPoseCorrectionPixels)
                         continue;
                     applied = false;
                     report.Warnings.Add("Pose graph guard: OrderIndex " + nodes[i].OrderIndex + " would move " +
                                         deltas[i].ToString("0.###") + " px, exceeding MaxPoseCorrectionPixels " +
-                                        options.MaxPoseCorrectionPixels.ToString("0.###") +
+                                        options.ResolvedMaxPoseCorrectionPixels.ToString("0.###") +
                                         ". Result discarded; legacy poses kept.");
                 }
             }
@@ -298,7 +331,11 @@ namespace GerberViewer.Stitching.Alignment.Graph
                         BeforeRotationDeg = originalTheta[i] * 180.0 / Math.PI, AfterTx = node.Tx, AfterTy = node.Ty,
                         AfterRotationDeg = node.Theta * 180.0 / Math.PI, DeltaPixels = deltas[i],
                         DeltaRotationDeg = (node.Theta - originalTheta[i]) * 180.0 / Math.PI, Lambda = node.Lambda,
-                        EdgeCount = edgeCountByNode[i]
+                        EdgeCount = edgeCountByNode[i],
+                        MeasuredEdgeCount =
+                            measuredDegree.ContainsKey(node.OrderIndex) ? measuredDegree[node.OrderIndex] : 0,
+                        ExistingNeighborCount =
+                            neighborCounts.ContainsKey(node.OrderIndex) ? neighborCounts[node.OrderIndex] : 0
                     });
                 }
             }
@@ -340,6 +377,38 @@ namespace GerberViewer.Stitching.Alignment.Graph
         private static double Clamp(double value, double min, double max)
         {
             return value < min ? min : value > max ? max : value;
+        }
+
+        private static void Increment(IDictionary<int, int> counter, int key)
+        {
+            int current;
+            counter[key] = counter.TryGetValue(key, out current) ? current + 1 : 1;
+        }
+
+        // [Claude] [Change time: 2026-08-15] [Purpose: Bậc "đáng lẽ có" của mỗi đỉnh (4-neighbour tồn tại
+        // trong lưới), để so với bậc "đo được" (measuredDegree). Dùng thẳng `tiles` (đã có Row/Column của
+        // toàn bộ lưới) thay vì suy từ states -- đơn giản hơn cách plan gốc mô tả và không cần đổi
+        // signature Optimize.]
+        private static Dictionary<int, int> ExistingNeighborCounts(IDictionary<int, SampleTileInfo> tiles)
+        {
+            var result = new Dictionary<int, int>();
+            if (tiles == null) return result;
+
+            var occupied = new HashSet<long>();
+            foreach (var kv in tiles)
+                occupied.Add(((long)kv.Value.Row << 32) ^ (uint)kv.Value.Column);
+
+            foreach (var kv in tiles)
+            {
+                var t = kv.Value;
+                int n = 0;
+                if (occupied.Contains(((long)t.Row << 32) ^ (uint)(t.Column + 1))) n++;
+                if (occupied.Contains(((long)t.Row << 32) ^ (uint)(t.Column - 1))) n++;
+                if (occupied.Contains(((long)(t.Row + 1) << 32) ^ (uint)t.Column)) n++;
+                if (occupied.Contains(((long)(t.Row - 1) << 32) ^ (uint)t.Column)) n++;
+                result[kv.Key] = n;
+            }
+            return result;
         }
 
         private static long KeyFor(int a, int b)

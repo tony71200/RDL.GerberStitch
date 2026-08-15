@@ -149,6 +149,9 @@ namespace GerberViewer.Stitching.Alignment
                 "alignment warps each captured MovingImage into its reference tile coordinate system, then composes " +
                 "the tile ExpectedX/ExpectedY offset for global stitching.");
             var solved = new Dictionary<int, TileWorkflowState>();
+            // [Claude] [Change time: 2026-08-15] [Purpose: Bề rộng ảnh chụp thật cho pose graph guard (Task 4).
+            // Phải lưu ở đây vì _imageCache bị dispose và set null trước dòng gọi optimizer.Optimize(...).]
+            double capturedImageWidthPxForPoseGraph = 0d;
             var tileByOrder = imageMap.TileByOrder;
             var capturedByOrder = imageMap.CapturedByOrder;
             var ordered = imageMap.OrderedCaptured;
@@ -192,6 +195,16 @@ namespace GerberViewer.Stitching.Alignment
                         report.Warnings.Add("GridCalibration: " + calibration.Message);
                     else
                         report.Messages.Add("GridCalibration: " + calibration.Message);
+                }
+
+                // [Claude] [Change time: 2026-08-15] [Purpose: Lấy bề rộng ảnh chụp thật trong lúc _imageCache còn
+                // sống -- nó bị dispose và set null ở dòng ~322, TRƯỚC chỗ gọi pose graph optimizer (~dòng 380).
+                // Mat mượn từ cache, KHÔNG dispose.]
+                if (ordered.Count > 0)
+                {
+                    var firstMat = _imageCache.GetMono8(ordered[0].FilePath);
+                    if (firstMat != null && !firstMat.Empty())
+                        capturedImageWidthPxForPoseGraph = firstMat.Cols;
                 }
 
                 for (int i = 0; i < ordered.Count; i++)
@@ -377,6 +390,19 @@ namespace GerberViewer.Stitching.Alignment
                 // instead of single-path propagation.]
                 if (config.PoseGraph.Enabled)
                 {
+                    // [Claude] [Change time: 2026-08-15] [Purpose: Guard dịch-pose suy từ overlap chụp thật thay vì
+                    // hằng số chọn tay 351.0. CaptureOverlap = ImageWidth thật - bước lưới khai (declaredStepX từ
+                    // probe Task 3), không phải TileWidth (đổi theo cấu hình FOV sweep) -- xem spec §3.2.1. Mutate
+                    // config.PoseGraph tại chỗ là chủ đích: một lần RunAsync sở hữu riêng config của nó.]
+                    double captureOverlapPxForPoseGraph = 0d;
+                    var calibForPoseGraph = report.GridCalibration;
+                    if (calibForPoseGraph != null && !double.IsNaN(calibForPoseGraph.DeclaredStepX) &&
+                        capturedImageWidthPxForPoseGraph > 0d)
+                        captureOverlapPxForPoseGraph =
+                            capturedImageWidthPxForPoseGraph - calibForPoseGraph.DeclaredStepX;
+                    config.PoseGraph.ResolvedMaxPoseCorrectionPixels =
+                        config.PoseGraph.ResolveMaxPoseCorrectionPixels(captureOverlapPxForPoseGraph);
+
                     var optimizer = new GerberViewer.Stitching.Alignment.Graph.GlobalPoseGraphOptimizer();
                     report.PoseGraph = optimizer.Optimize(config, tileByOrder, outputStates, report.RecoveryEdges);
                     foreach (var w in report.PoseGraph.Warnings)

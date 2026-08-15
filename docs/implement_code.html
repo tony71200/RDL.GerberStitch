@@ -922,6 +922,37 @@ else if (requireFiles &amp;&amp; !string.IsNullOrWhiteSpace(t.ExpectedPath) &amp
 </div>
 
 <!-- ============================================================ -->
+<h2 id="entry-22">22. 2026-08-15 (nhánh <code>Ver2_4</code>) — Task 4: Báo cáo pose graph trung thực + <code>MaxPoseCorrectionPixels</code> suy từ overlap chụp thật</h2>
+<div class="entry">
+  <div class="entry-meta"><span class="badge ok">Core</span> Phạm vi: <code>GerberStitching.Core/Alignment/Graph/PoseGraphReport.cs</code>, <code>GerberStitching.Core/Alignment/Graph/PoseGraphOptions.cs</code>, <code>GerberStitching.Core/Alignment/Graph/GlobalPoseGraphOptimizer.cs</code>, <code>GerberStitching.Core/Alignment/AlignStitchWorkflowService.cs</code>. Không có file mới nên <code>GerberStitching.Core.csproj</code> không đổi. Task 4 của plan <code>docs/superpowers/plans/2026-08-15-grid-pitch-calibration.md</code>.</div>
+
+  <h4>Bối cảnh</h4>
+  <p>Task 4 KHÔNG đổi thuật toán pose graph solver. Chỉ (a) làm báo cáo trung thực hơn — phân biệt cạnh có phép đo ảnh thật (<code>EdgesMeasured</code>) với cạnh chỉ rơi về lưới (<code>EdgesExpectedOnly</code>), tách riêng cờ legacy cycle-closure (<code>EdgesRejectedByLegacyClosure</code>, KHÔNG có nghĩa cạnh đó bị loại khỏi pose graph khi <code>UseRejectedEdges=true</code>), thêm bậc đỉnh đo được/đáng-lẽ-có trên từng tile (<code>MeasuredEdgeCount</code>/<code>ExistingNeighborCount</code>), và cảnh báo khi solver không hội tụ; và (b) đổi <code>MaxPoseCorrectionPixels</code> mặc định từ hằng số cố định <code>351.0</code> sang sentinel <code>-1.0</code> = suy từ overlap chụp thật (<code>2 × CaptureOverlap</code>, qua <code>ResolveMaxPoseCorrectionPixels</code>).</p>
+
+  <h3>22.1. Hai đính chính so với brief/plan gốc — plan sai, đã tự kiểm code thật trước khi sửa</h3>
+  <p><span class="badge warn">Plan sai, đã fix trước khi code</span> Trước khi triển khai, brief gốc (<code>.superpowers/sdd/2026-08-15-grid-pitch-calibration/task-4-brief.md</code>) đã được người điều phối tự đối chiếu lại với code thật và phát hiện 2 điểm sai, ghi rõ ở đây theo đúng tinh thần AGENTS.md/CLAUDE.md (giữ lại loại thông tin dễ mất nhất giữa các phiên):</p>
+  <ul>
+    <li><strong>Đính chính 1 — KHÔNG cần đổi signature <code>Optimize(...)</code>.</strong> Brief mô tả "cần thêm tham số <code>IDictionary&lt;int, SampleTileInfo&gt; tileByOrder</code> vào signature" — SAI. Signature hiện tại (<code>GlobalPoseGraphOptimizer.cs:14-15</code>) đã nhận đúng dictionary này qua tham số <code>tiles</code> (<code>optimizer.Optimize(config, tileByOrder, outputStates, report.RecoveryEdges)</code> ở <code>AlignStitchWorkflowService.cs</code>). Không sửa signature, không sửa chỗ gọi ở dòng ~380/381. Hệ quả: <code>ExistingNeighborCounts</code> được viết đơn giản hơn nhiều so với brief mô tả (brief dùng <code>states</code> + <code>tileByOrder</code> hai tham số, code thật chỉ cần một tham số <code>tiles</code> — dictionary đã có sẵn <code>Row</code>/<code>Column</code> của TOÀN BỘ lưới kể cả tile chưa align).</li>
+    <li><strong>Đính chính 2 — <code>_imageCache</code> đã bị dispose và <code>null</code> trước dòng gọi <code>Optimize</code>.</strong> Brief mô tả lấy <code>capturedImageWidthPx</code> bằng <code>_imageCache.GetMono8(...)</code> ngay TRƯỚC chỗ gọi <code>optimizer.Optimize(...)</code> (~dòng 380) — SAI, sẽ ném <code>NullReferenceException</code> vì <code>_imageCache</code> bị set <code>null</code> ở dòng ~322 (sau khối <code>using</code>), TRƯỚC dòng gọi <code>Optimize</code>. <strong>Fix:</strong> khai biến cục bộ <code>capturedImageWidthPxForPoseGraph</code> NGOÀI khối <code>using (_imageCache = ...)</code> (cạnh <code>solved</code>), lấy giá trị NGAY SAU lời gọi <code>GridCalibrationProbe.Run(...)</code> của Task 3 (vẫn còn trong khối <code>using</code>, cache còn sống, mượn <code>Mat</code> không dispose), rồi dùng biến cục bộ đã lưu ở chỗ gọi <code>Optimize</code> sau này.</li>
+  </ul>
+
+  <h3>22.2. Đánh đổi thiết kế</h3>
+  <ul>
+    <li><strong>Không đổi thuật toán solver</strong> — không thêm cạnh chéo, không bật bậc tự do scale, <code>MaxIterations</code> giữ nguyên 8. Toàn bộ thay đổi chỉ ở lớp báo cáo (report fields) và một giá trị mặc định (<code>MaxPoseCorrectionPixels</code>).</li>
+    <li><code>PoseGraphOptions.ResolvedMaxPoseCorrectionPixels</code> là property thường (không logic bên trong), được <code>AlignStitchWorkflowService</code> gán trước khi gọi <code>Optimize</code> — cách ít xâm lấn nhất để truyền giá trị đã suy ra xuống optimizer mà không đổi signature <code>Optimize</code>. Mutate <code>config.PoseGraph</code> tại chỗ là chủ đích: một lần <code>RunAsync</code> sở hữu riêng <code>config</code> của nó (không phải side-effect vô tình, không có tái sử dụng config giữa nhiều run song song trong thiết kế hiện tại).</li>
+    <li><code>CaptureOverlap = ImageWidth chụp thật − DeclaredStepX</code> (bước lưới khai từ <code>GridCalibrationProbe</code> của Task 3, đã lấy median trên toàn lưới) — KHÔNG dùng <code>TileWidth</code> vì giá trị đó đổi theo cấu hình FOV sweep (Task 6), còn overlap thật gắn với ảnh camera chụp ra.</li>
+    <li>Khi <code>captureOverlapPx &lt;= 0</code> (probe <code>Inconclusive</code>, không có <code>DeclaredStepX</code>, hoặc <code>capturedImageWidthPxForPoseGraph</code> chưa đo được vì <code>ordered.Count == 0</code>), <code>ResolveMaxPoseCorrectionPixels</code> trả về <code>351.0</code> — đúng hành vi cũ, không có regression cho payload/luồng nào chưa chạy qua <code>GridCalibrationProbe</code>.</li>
+    <li><code>EdgesMeasured</code>/<code>EdgesExpectedOnly</code> xét trên tập <code>dedup</code> (đã khử trùng lặp theo cặp anchor/target, giữ bản có <code>PhaseScore</code> cao nhất) — cùng nguồn dữ liệu <code>report.EdgesTotal</code> đang dùng, không tính lại từ <code>edges</code> gốc.</li>
+  </ul>
+
+  <h4>Build</h4>
+  <p><span class="badge ok">PASS</span> <code>msbuild RDL.GerberStitch.sln /p:Configuration=Debug /p:Platform=x64</code> — build sạch cả 4 project, 0 error, chỉ còn các warning có sẵn từ trước (<code>CS0162</code>, <code>CS0618</code>, <code>CS0067</code> — không liên quan Task 4).</p>
+
+  <h4>Chưa xác nhận (chờ user)</h4>
+  <p>Bước 4.6 của plan (chạy Harness với payload mới, kiểm <code>processing_report.json</code> mục <code>poseGraph</code> có <code>edgesMeasured</code>/<code>edgesExpectedOnly</code>/<code>edgesRejectedByLegacyClosure</code> và <code>tiles[].measuredEdgeCount</code>/<code>.existingNeighborCount</code> đúng số) là việc user tự chạy — xem báo cáo Task 4 tại <code>.superpowers/sdd/2026-08-15-grid-pitch-calibration/task-4-report.md</code> để biết lệnh chính xác và số liệu kỳ vọng.</p>
+</div>
+
+<!-- ============================================================ -->
 <h2 id="pitfalls">6. Bảng tổng hợp lỗi &amp; cách fix (tra nhanh)</h2>
 <table>
   <tr><th>Triệu chứng</th><th>Nguyên nhân gốc</th><th>Fix</th><th>Entry</th></tr>

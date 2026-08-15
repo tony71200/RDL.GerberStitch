@@ -17,6 +17,17 @@ namespace GerberViewer.Stitching.Alignment.Graph
         public int EdgesGatedOut { get; set; }
         public IList<string> EdgeGateReasons { get; set; } = new List<string>();
 
+        // [Claude] [Change time: 2026-08-15] [Purpose: EdgesTotal/EdgesUsed không phân biệt được "cạnh có phép đo
+        // ảnh thật" với "cạnh rơi về lưới". Dòng log "rejected=120" của legacy closure đã bị đọc nhầm thành
+        // "120 cạnh bị vứt", trong khi pose graph vẫn dùng đủ 142. Ba số dưới nói đúng chuyện gì xảy ra.]
+        /// <summary>Cạnh có phép đo ảnh riêng (measured khác expected và hữu hạn).</summary>
+        public int EdgesMeasured { get; set; }
+        /// <summary>Cạnh không đo được, measured trùng expected — chỉ mang thông tin lưới.</summary>
+        public int EdgesExpectedOnly { get; set; }
+        /// <summary>Cạnh bị legacy cycle-closure đánh dấu không accepted. KHÔNG có nghĩa là bị loại khỏi
+        /// pose graph: khi UseRejectedEdges=true chúng vẫn được dùng kèm phép đo của chính chúng.</summary>
+        public int EdgesRejectedByLegacyClosure { get; set; }
+
         public double GlobalScale { get; set; } = 1.0;
         public double GlobalRotationDeg { get; set; }
         public double GlobalOffsetX { get; set; }
@@ -57,6 +68,10 @@ namespace GerberViewer.Stitching.Alignment.Graph
         public double DeltaRotationDeg { get; set; }
         public double Lambda { get; set; }
         public int EdgeCount { get; set; }
+        /// <summary>Số cạnh có phép đo ảnh thật nối vào đỉnh này.</summary>
+        public int MeasuredEdgeCount { get; set; }
+        /// <summary>Số neighbor trực giao tồn tại trong lưới (4 ở giữa, 3 ở cạnh, 2 ở góc).</summary>
+        public int ExistingNeighborCount { get; set; }
     }
 
     public sealed class PoseGraphEdgeEntry

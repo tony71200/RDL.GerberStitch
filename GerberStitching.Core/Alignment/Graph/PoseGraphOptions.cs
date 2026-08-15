@@ -72,10 +72,26 @@ namespace GerberViewer.Stitching.Alignment.Graph
         [Category("Edge gate")]
         public double MaxEdgeRotationDeg { get; set; } = 0.1;
 
+        // [Claude] [Change time: 2026-08-15] [Purpose: 351.0 là hằng số chọn tay không theo dữ liệu chụp thật. Đổi
+        // sentinel âm mặc định để suy ra 2×CaptureOverlap thay vì đoán -- xem ResolveMaxPoseCorrectionPixels.]
         [Category("Safety")]
-        [Description("Aborts the pose-graph result and keeps legacy poses when any tile would move more than this. " +
-                     "Zero disables the guard.")]
-        public double MaxPoseCorrectionPixels { get; set; } = 351.0;
+        [Description("Huỷ kết quả pose-graph và giữ pose cũ khi một tile bất kỳ dịch quá ngưỡng này. " +
+                     "Zero tắt guard. Âm (mặc định -1) nghĩa là SUY TỪ overlap chụp thật: " +
+                     "2 × CaptureOverlap. Một pose dịch quá 2 lần overlap thì chắc chắn đã mất khớp, " +
+                     "nên không cần chọn hằng số bằng tay.")]
+        public double MaxPoseCorrectionPixels { get; set; } = -1.0;
+
+        /// <summary>Giá trị dùng thật, sau khi suy từ overlap khi MaxPoseCorrectionPixels &lt; 0.</summary>
+        public double ResolveMaxPoseCorrectionPixels(double captureOverlapPixels)
+        {
+            if (MaxPoseCorrectionPixels >= 0d) return MaxPoseCorrectionPixels;
+            return captureOverlapPixels > 0d ? 2d * captureOverlapPixels : 351.0;
+        }
+
+        // [Claude] [Change time: 2026-08-15] [Purpose: Giá trị đã suy ra thật sự dùng trong Optimize, gán bởi
+        // AlignStitchWorkflowService trước khi gọi optimizer -- tránh phải đổi signature Optimize.]
+        /// <summary>Giá trị MaxPoseCorrectionPixels đã suy ra, được gán bởi caller trước khi gọi Optimize.</summary>
+        public double ResolvedMaxPoseCorrectionPixels { get; set; } = 351.0;
 
         [Category("Diagnostics")]
         [Description("Emits a report warning for any used edge whose post-solve translation residual still exceeds " +
