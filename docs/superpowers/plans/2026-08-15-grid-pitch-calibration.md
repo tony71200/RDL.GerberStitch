@@ -647,7 +647,7 @@ git commit -m "Add CaptureGridCalculator using the Master pitch formula"
 - [ ] [USER] `Clamped tiles = 0`, `Required` < kích thước raster
 - [ ] [USER] `CaptureOverlap` không đổi khi sweep `--tile`
 - [x] Entry `docs/implement_code.html` đã thêm
-- [ ] Commit xong, §Lịch sử thay đổi đã cập nhật
+- [x] Commit xong, §Lịch sử thay đổi đã cập nhật
 
 ---
 
