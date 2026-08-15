@@ -301,7 +301,7 @@ namespace RDL.GerberStitch.Harness
                 RunReport.WriteTo(reportFolder, new RunReport
                 {
                     Mode = "alignstitchmem",
-                    RunUtc = DateTime.UtcNow.ToString("O"),
+                    RunUtc = DateTime.Now.ToString("O"),
                     ElapsedMs = result.ElapsedMs,
                     WallClockMs = stopwatch.ElapsedMilliseconds,
                     PeakWorkingSetMb = peakWorkingSetBytes / 1024 / 1024,
