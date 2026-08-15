@@ -666,7 +666,7 @@ git commit -m "Add CaptureGridCalculator using the Master pitch formula"
 
 ---
 
-- [ ] **Bước 2.1: Đảm bảo Newtonsoft.Json có trong output của Harness**
+- [x] **Bước 2.1: Đảm bảo Newtonsoft.Json có trong output của Harness**
 
 `RDL.GerberStitch.csproj` đã reference `..\..\Lib_Supporter\dll\Newtonsoft.Json.dll` (dòng 62–64).
 `RDL.GerberStitch.Harness.csproj` **chưa** reference. Vì Harness là copy-local (CLAUDE.md), thêm:
@@ -681,7 +681,7 @@ git commit -m "Add CaptureGridCalculator using the Master pitch formula"
 Không thêm sẽ gặp `FileNotFoundException: Could not load file or assembly 'Newtonsoft.Json'` **lúc chạy**,
 không phải lúc build — đúng loại lỗi phải ghi vào `implement_code.html`.
 
-- [ ] **Bước 2.2: Tạo `CaptureGridJsonWriter.cs`**
+- [x] **Bước 2.2: Tạo `CaptureGridJsonWriter.cs`**
 
 Dùng `JObject` để **merge**, không serialize từ DTO — vì `DataContractJsonSerializer` sẽ nuốt mất
 mọi trường thuộc về Master (`JobName`, `workmode`, `preProcessing`, các `Save*Folder`…) mà ta không sở hữu.
@@ -764,7 +764,7 @@ namespace RDL.GerberStitch.Facade
 }
 ```
 
-- [ ] **Bước 2.3: Gọi writer trong `RunCreateSampleMem`**
+- [x] **Bước 2.3: Gọi writer trong `RunCreateSampleMem`**
 
 Thêm ngay trước `return 0;`:
 
@@ -787,7 +787,7 @@ Thêm ngay trước `return 0;`:
             }
 ```
 
-- [ ] **Bước 2.4: Build**
+- [x] **Bước 2.4: Build**
 
 ```bash
 msbuild RDL.GerberStitch.sln /p:Configuration=Debug /p:Platform=x64
@@ -819,27 +819,27 @@ RDL.GerberStitch.Harness.exe --mode createsamplemem --tile 4320
 Ra `sample_4192_o159.json`, `sample_4240_o207.json`, `sample_4320_o287.json`.
 Trong **cả bốn** file, `OVerLapX_EdgePath` phải bằng **63** — vì đó là `CaptureOverlap`, không đổi theo tile.
 
-- [ ] **Bước 2.7: Ghi `docs/implement_code.html`** (nhớ ghi lỗi Newtonsoft nếu gặp)
+- [x] **Bước 2.7: Ghi `docs/implement_code.html`** (nhớ ghi lỗi Newtonsoft nếu gặp)
 
-- [ ] **Bước 2.8: Commit**
+- [x] **Bước 2.8: Commit**
 
 ```bash
 git add RDL.GerberStitch/Facade/CaptureGridJsonWriter.cs RDL.GerberStitch.Harness/Program.cs RDL.GerberStitch.Harness/RDL.GerberStitch.Harness.csproj docs/implement_code.html
 git commit -m "Emit sample_<fov>_o<overlap>.json from the capture grid"
 ```
 
-- [ ] **Bước 2.9: Ghi §Lịch sử thay đổi**
+- [x] **Bước 2.9: Ghi §Lịch sử thay đổi**
 
 ### Checklist bàn giao Task 2
 
-- [ ] Harness có reference Newtonsoft.Json với `<Private>True</Private>`
-- [ ] Writer dùng `JObject` merge, không serialize từ DTO
-- [ ] Template đọc bằng `File.ReadAllText(..., Encoding.UTF8)` để bóc BOM
-- [ ] Ghi file bằng `new UTF8Encoding(true)` (giữ BOM như payload thật)
-- [ ] `OVerLapX/Y_EdGePath` = `CaptureOverlap`, **không** phải `TileOverlap`
-- [ ] Tên file dùng `TileOverlap`
+- [x] Harness có reference Newtonsoft.Json với `<Private>True</Private>`
+- [x] Writer dùng `JObject` merge, không serialize từ DTO
+- [x] Template đọc bằng `File.ReadAllText(..., Encoding.UTF8)` để bóc BOM
+- [x] Ghi file bằng `new UTF8Encoding(true)` (giữ BOM như payload thật)
+- [x] `OVerLapX/Y_EdGePath` = `CaptureOverlap`, **không** phải `TileOverlap`
+- [x] Tên file dùng `TileOverlap`
 - [ ] [USER] 4 file sinh ra, trường của Master còn nguyên
-- [ ] Entry `implement_code.html` + commit + §Lịch sử thay đổi
+- [x] Entry `implement_code.html` + commit + §Lịch sử thay đổi
 
 ---
 
@@ -2427,6 +2427,7 @@ git commit -m "Record grid pitch calibration sweep results for four FOV configs"
 | 2026-08-15 | — | (plan này) | Chèn Task 5 mới (sandbox Python: tiền xử lý §8.3 + PyramidECC có UI). Task "Sweep 4 FOV" cũ dời thành Task 6, các bước đánh lại số 6.x. | — |
 | 2026-08-15 | 5 | (plan này) | User đã duyệt bố cục UI của `app.py`. Chốt 4 quyết định thiết kế ở Bước 5.6 — không tự đổi cấu trúc panel/tab khi cài đặt. | — |
 | 2026-08-15 | 1 | `bd3dbe6` | `CaptureGridCalculator`/`CaptureGridSpec`/`CaptureGridResult` (mới) + `GerberStitchFacade.BuildCaptureGrid` + harness mode `createsamplemem`. Build x64 PASS, 0 lỗi mới. Bước 1.9/1.10 ([USER]) đang chờ user chạy `RDL.GerberStitch.Harness.exe --mode createsamplemem` để đối chiếu `Clamped tiles = 0` và sweep `--tile`. | Không gặp lỗi build nào (đã thêm `<Compile Include>` cho 3 file mới vào `.csproj` ngay từ đầu, tránh lặp lại CS0246 đã gặp ở entry 11 trong `implement_code.html`). |
+| 2026-08-15 | 2 | `137f40d` | `CaptureGridJsonWriter` (mới, merge trên `JObject`) + gọi trong `RunCreateSampleMem` + thêm reference `Newtonsoft.Json` (`Private=True`) vào `RDL.GerberStitch.Harness.csproj` + `<Compile Include>` cho file mới vào `RDL.GerberStitch.csproj`. Build x64 PASS, 0 lỗi mới, xác nhận `Newtonsoft.Json.dll` đã copy vào `RDL.GerberStitch.Harness/bin/x64/Debug/`. Bước 2.5/2.6 ([USER]) đang chờ user chạy `--mode createsamplemem --tile <4096/4192/4240/4320>` để đối chiếu nội dung 4 file `sample_<fov>_o<overlap>.json`. | Không gặp lỗi build nào — đã chủ động thêm reference Newtonsoft.Json + `<Compile Include>` ngay từ đầu theo đúng brief nên tránh trước 2 lỗi đã biết (`FileNotFoundException` lúc chạy do thiếu Newtonsoft; `CS0246` do old-style `.csproj` không tự glob). |
 | | | | | |
 
 ### Ghi chú cho người thực thi
