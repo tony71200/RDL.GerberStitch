@@ -1510,7 +1510,7 @@ Không vi phạm AGENTS.md §4 (đây không phải test project).
 
 ---
 
-- [ ] **Bước 5.1: `requirements.txt`**
+- [x] **Bước 5.1: `requirements.txt`**
 
 ```
 opencv-python>=4.8
@@ -1525,7 +1525,7 @@ Tkinter đi kèm Python trên Windows, không cần cài. Cài bằng:
 python -m pip install -r tools/ecc_sandbox/requirements.txt
 ```
 
-- [ ] **Bước 5.2: `config.py` — đọc đúng config đang dùng**
+- [x] **Bước 5.2: `config.py` — đọc đúng config đang dùng**
 
 ```python
 """Doc cau hinh tu align_stitch.ini, fallback ve DUNG mac dinh cua C#."""
@@ -1587,7 +1587,7 @@ def load(ini_path=None):
     return cfg
 ```
 
-- [ ] **Bước 5.3: `preprocess.py` — port §8.3**
+- [x] **Bước 5.3: `preprocess.py` — port §8.3**
 
 ```python
 """Port 1:1 cua CapturedImagePreprocessor de xuat o Findings §8.3.
@@ -1662,7 +1662,7 @@ def build_variants(mono8, cfg, flatten=True, binarize=False):
     return out
 ```
 
-- [ ] **Bước 5.4: `pyramid_ecc.py` — port 1:1 `PyramidEccMatcher.cs`**
+- [x] **Bước 5.4: `pyramid_ecc.py` — port 1:1 `PyramidEccMatcher.cs`**
 
 Đối chiếu từng dòng với `GerberStitching.Core/Matching/OpenCv/PyramidEccMatcher.cs`.
 Ba chỗ dễ sai nhất, đã đánh dấu trong code:
@@ -1822,7 +1822,7 @@ def warp_moving_to_reference(moving_mono8, matrix, size_wh):
     return cv2.warpAffine(moving_mono8, m, size_wh, flags=cv2.INTER_LINEAR)
 ```
 
-- [ ] **Bước 5.5: `pairs.py` — liệt kê cặp cho người dùng chọn**
+- [x] **Bước 5.5: `pairs.py` — liệt kê cặp cho người dùng chọn**
 
 ```python
 """Sinh danh sach cap de kiem tra.
@@ -1918,7 +1918,7 @@ def index_of(payload, row, column):
     return None
 ```
 
-- [ ] **Bước 5.6: `app.py` — UI Tkinter**
+- [x] **Bước 5.6: `app.py` — UI Tkinter**
 
 **Bố cục đã được user duyệt ngày 2026-08-15. Không tự đổi cấu trúc panel/tab.**
 
@@ -2276,7 +2276,7 @@ if __name__ == "__main__":
     main()
 ```
 
-- [ ] **Bước 5.7: `README.md`**
+- [x] **Bước 5.7: `README.md`**
 
 Ghi rõ: đây là công cụ khảo sát, không phải code sản phẩm; không nằm trong `.sln`; cách chạy;
 ý nghĩa ô "Step ghi đè"; và cảnh báo **không** bật `ToBinaryTraces` rồi đưa vào ECC (Findings §8.2 —
@@ -2308,31 +2308,31 @@ trên 5–6 tile. Ghi bảng `rawScore` trước/sau.
 **Tiêu chí của Findings §8.5: ECC correlation không được GIẢM.** Nếu giảm ⇒ tiền xử lý đang phá
 gradient, không đưa vào C#.
 
-- [ ] **Bước 5.11: Ghi `docs/implement_code.html`** — kèm bảng số liệu thu được
+- [x] **Bước 5.11: Ghi `docs/implement_code.html`** — kèm bảng số liệu thu được
 
-- [ ] **Bước 5.12: Commit**
+- [x] **Bước 5.12: Commit**
 
 ```bash
 git add tools/ecc_sandbox docs/implement_code.html
 git commit -m "Add Python sandbox for preprocessing and pyramid ECC experiments"
 ```
 
-- [ ] **Bước 5.13: Ghi §Lịch sử thay đổi**
+- [x] **Bước 5.13: Ghi §Lịch sử thay đổi**
 
 ### Checklist bàn giao Task 5
 
-- [ ] Sandbox nằm ngoài `.sln`, không sửa file C# nào
-- [ ] `config.py` đọc `align_stitch.ini`, fallback đúng mặc định C# (không phải mặc định OpenCV)
-- [ ] `pyramid_ecc.py` truyền `gaussFiltSize=5` tường minh
-- [ ] Thứ tự `findTransformECC(reference, moving, …)` đúng chiều template/input
-- [ ] Pyramid index 0 = full resolution, duyệt từ index lớn về 0
-- [ ] `scale` chỉ nhân/chia phần translation
-- [ ] Chuỗi kiểm tra ValidateMovingToReference đúng thứ tự như C#
-- [ ] UI có: chọn cặp, cửa sổ tiền xử lý, cửa sổ match trước/sau, ma trận 3×3, kết luận accept/reject
+- [x] Sandbox nằm ngoài `.sln`, không sửa file C# nào
+- [x] `config.py` đọc `align_stitch.ini`, fallback đúng mặc định C# (không phải mặc định OpenCV)
+- [x] `pyramid_ecc.py` truyền `gaussFiltSize=5` tường minh
+- [x] Thứ tự `findTransformECC(reference, moving, …)` đúng chiều template/input
+- [x] Pyramid index 0 = full resolution, duyệt từ index lớn về 0
+- [x] `scale` chỉ nhân/chia phần translation
+- [x] Chuỗi kiểm tra ValidateMovingToReference đúng thứ tự như C#
+- [x] UI có: chọn cặp, cửa sổ tiền xử lý, cửa sổ match trước/sau, ma trận 3×3, kết luận accept/reject
 - [ ] [USER] `rawScore` sandbox khớp `eccCorrelation` trong report (lệch < 0.02)
 - [ ] [USER] step 4031.5 cho score cao hơn step 4096
 - [ ] [USER] bảng dò tham số đã ghi; ECC correlation **không giảm**
-- [ ] Entry `implement_code.html` + commit + §Lịch sử thay đổi
+- [x] Entry `implement_code.html` + commit + §Lịch sử thay đổi
 
 ---
 
@@ -2430,6 +2430,7 @@ git commit -m "Record grid pitch calibration sweep results for four FOV configs"
 | 2026-08-15 | 2 | `137f40d` | `CaptureGridJsonWriter` (mới, merge trên `JObject`) + gọi trong `RunCreateSampleMem` + thêm reference `Newtonsoft.Json` (`Private=True`) vào `RDL.GerberStitch.Harness.csproj` + `<Compile Include>` cho file mới vào `RDL.GerberStitch.csproj`. Build x64 PASS, 0 lỗi mới, xác nhận `Newtonsoft.Json.dll` đã copy vào `RDL.GerberStitch.Harness/bin/x64/Debug/`. Bước 2.5/2.6 ([USER]) đang chờ user chạy `--mode createsamplemem --tile <4096/4192/4240/4320>` để đối chiếu nội dung 4 file `sample_<fov>_o<overlap>.json`. | Không gặp lỗi build nào — đã chủ động thêm reference Newtonsoft.Json + `<Compile Include>` ngay từ đầu theo đúng brief nên tránh trước 2 lỗi đã biết (`FileNotFoundException` lúc chạy do thiếu Newtonsoft; `CS0246` do old-style `.csproj` không tự glob). |
 | 2026-08-15 | 3 | `1d92dff` | `GridCalibrationProbe` (mới, matchTemplate dải rộng đo bước lưới thật) + `GridCalibrationReport`/`GridCalibrationStatus` trong `WorkflowModels.cs` + gọi probe trong `AlignStitchWorkflowService.RunAsync` (sau kiểm `ModelGeneration=Pregenerate`, trước vòng `for` Direct Alignment) + `<Compile Include>` vào `GerberStitching.Core.csproj`. Build x64 PASS, 0 lỗi mới. Bước 3.5/3.6 ([USER]) đang chờ user chạy Harness với payload lưới cũ (kỳ vọng `Mismatch`, Δ≈−64px) và payload mới `sample_4096_o63.json` (kỳ vọng `Ok`, measuredStepX/Y chưa có số thật — user điền vào bảng này sau khi chạy). | `CS0051 Inconsistent accessibility`: `GridCalibrationProbe.Run` (public) nhận tham số `WorkflowImageCache` (internal) — brief không lường trước. Fix: đổi `GridCalibrationProbe` thành `internal static class` (chỉ gọi nội bộ cùng assembly, không cần expose qua façade). Xem entry 21 trong `implement_code.html`. |
 | 2026-08-15 | 4 | `33b58b8` | Thêm `EdgesMeasured`/`EdgesExpectedOnly`/`EdgesRejectedByLegacyClosure` vào `PoseGraphReport` + `MeasuredEdgeCount`/`ExistingNeighborCount` vào `PoseGraphTileEntry`; đếm trong `GlobalPoseGraphOptimizer.Optimize` (đo `hasMeasurement` theo lệch tx/ty >1e-6, `measuredDegree` qua `dedup`, `ExistingNeighborCounts(tiles)` qua Row/Column toàn lưới); cảnh báo khi `!report.Converged`; `PoseGraphOptions.MaxPoseCorrectionPixels` mặc định đổi `351.0`→`-1.0` (sentinel) + `ResolveMaxPoseCorrectionPixels`/`ResolvedMaxPoseCorrectionPixels`; `AlignStitchWorkflowService` lưu `capturedImageWidthPxForPoseGraph` lúc `_imageCache` còn sống (ngay sau `GridCalibrationProbe.Run`), suy `captureOverlapPxForPoseGraph` và gán `config.PoseGraph.ResolvedMaxPoseCorrectionPixels` ngay trước khi gọi `Optimize`. Build x64 PASS, 0 lỗi mới. Bước 4.6 ([USER]) đang chờ user chạy Harness kiểm `processing_report.json.poseGraph`. | **2 đính chính brief phát hiện TRƯỚC khi code (không phải build error):** (1) brief nói cần thêm tham số `tileByOrder` vào signature `Optimize(...)` — SAI, signature đã nhận dictionary này qua tham số `tiles` sẵn có; không đổi signature, `ExistingNeighborCounts` viết lại chỉ nhận `tiles` thay vì `states`+`tileByOrder`. (2) brief lấy `capturedImageWidthPx` qua `_imageCache.GetMono8(...)` ngay trước dòng gọi `Optimize` (~380) — SAI, `_imageCache` đã bị dispose/`null` ở dòng ~322 trước đó, sẽ ném `NullReferenceException`; fix bằng cách lưu bề rộng ảnh vào biến cục bộ khai NGOÀI khối `using`, đọc NGAY SAU `GridCalibrationProbe.Run` lúc cache còn sống. Xem entry 22 trong `implement_code.html`. |
+| 2026-08-15 | 5 | `PENDING_COMMIT_HASH` | Tạo sandbox Python `tools/ecc_sandbox/` (7 file: `requirements.txt`, `config.py`, `preprocess.py`, `pyramid_ecc.py`, `pairs.py`, `app.py`, `README.md`) — port 1:1 `PyramidEccMatcher.cs` + tiền xử lý §8.3, UI Tkinter theo đúng 4 quyết định thiết kế đã user duyệt ở Bước 5.6 (panel trái/phải, 3 tab, ô "Step ghi đè" nổi bật nền vàng, ô nhập số thay slider). Không sửa file `.cs`/`.csproj`/`.sln` nào. `py_compile` PASS cả 5 file `.py`. Bước 5.8/5.9/5.10 ([USER]) đang chờ user chạy sandbox để đối chiếu `rawScore` với `eccCorrelation`, so step 4096 vs 4031.5, và dò `BackgroundSigma`/`ClaheClipLimit`. | Không lỗi cú pháp. Một điểm bổ sung so với code mẫu trong brief: ô "Step ghi đè" cài bằng `tk.Frame`/`tk.Entry` nền vàng riêng (thay vì `self._row()` dùng chung) và `_draw_preprocess` có thêm dòng cảnh báo màu đỏ dưới lưới ảnh — để thỏa đúng 2 trong 4 quyết định thiết kế đã chốt với user (ô nổi bật + cảnh báo "binary không vào ECC") mà khối code minh hoạ trong brief chưa thể hiện. Xem entry 23 trong `implement_code.html`. |
 | | | | | |
 
 ### Ghi chú cho người thực thi

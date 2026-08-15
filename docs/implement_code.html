@@ -81,6 +81,7 @@
     <li><a href="#entry-17">2026-08-15 (nhánh <code>Ver2_0</code>) — Harness: thêm mode <code>alignstitchmem</code> để test overload in-memory bằng dữ liệu thật</a></li>
     <li><a href="#entry-18">2026-08-15 (nhánh <code>Ver2_0</code>) — Chạy thật lần đầu qua Harness <code>alignstitchmem</code>: phát hiện + sửa 2 lỗi Newtonsoft/<code>TypeConverter</code></a></li>
     <li><a href="#entry-19">2026-08-15 (nhánh <code>Ver2_1</code>) — Task 1: <code>CaptureGridCalculator</code> — sửa công thức bước lưới theo Master</a></li>
+    <li><a href="#entry-23">2026-08-15 (nhánh <code>Ver2_5</code>) — Task 5: Sandbox Python <code>tools/ecc_sandbox/</code> — mô phỏng tiền xử lý + PyramidECC có UI</a></li>
     <li><a href="#pitfalls">Bảng tổng hợp lỗi &amp; cách fix (tra nhanh)</a></li>
   </ol>
 </div>
@@ -950,6 +951,44 @@ else if (requireFiles &amp;&amp; !string.IsNullOrWhiteSpace(t.ExpectedPath) &amp
 
   <h4>Chưa xác nhận (chờ user)</h4>
   <p>Bước 4.6 của plan (chạy Harness với payload mới, kiểm <code>processing_report.json</code> mục <code>poseGraph</code> có <code>edgesMeasured</code>/<code>edgesExpectedOnly</code>/<code>edgesRejectedByLegacyClosure</code> và <code>tiles[].measuredEdgeCount</code>/<code>.existingNeighborCount</code> đúng số) là việc user tự chạy — xem báo cáo Task 4 tại <code>.superpowers/sdd/2026-08-15-grid-pitch-calibration/task-4-report.md</code> để biết lệnh chính xác và số liệu kỳ vọng.</p>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="entry-23">23. 2026-08-15 (nhánh <code>Ver2_5</code>) — Task 5: Sandbox Python <code>tools/ecc_sandbox/</code> — mô phỏng tiền xử lý + PyramidECC có UI</h2>
+<div class="entry">
+  <div class="entry-meta"><span class="badge ok">Tool (Python, ngoài .sln)</span> Phạm vi: file mới <code>tools/ecc_sandbox/{requirements.txt,config.py,preprocess.py,pyramid_ecc.py,pairs.py,app.py,README.md}</code>. <strong>Không sửa file <code>.cs</code>/<code>.csproj</code>/<code>.sln</code> nào</strong> — Task 5 của plan <code>docs/superpowers/plans/2026-08-15-grid-pitch-calibration.md</code>, brief đầy đủ ở <code>.superpowers/sdd/2026-08-15-grid-pitch-calibration/task-5-brief.md</code>.</div>
+
+  <h4>Bối cảnh</h4>
+  <p>Đây là công cụ <strong>khảo sát</strong> (survey tool), không phải code sản phẩm: dò tham số tiền xử lý ảnh (Findings §8.3) và quan sát thuật toán <code>PyramidEccMatcher</code> (ECC pyramid align) trước khi đổi bất kỳ dòng C# nào. Vòng lặp thử–sai trong Python mất vài giây so với vài phút build + chạy cả lô 80 tile trong C#. Không vi phạm AGENTS.md §4 (đây không phải test project C#/NUnit/xUnit) — cũng không tự chạy UI Tkinter (không có màn hình trong môi trường agent), chỉ kiểm cú pháp bằng <code>py_compile</code>.</p>
+
+  <h3>23.1. Đánh đổi thiết kế</h3>
+  <ul>
+    <li><strong>Port 1:1, không viết lại thuật toán.</strong> <code>pyramid_ecc.py</code> dịch từng dòng từ <code>GerberStitching.Core/Matching/OpenCv/PyramidEccMatcher.cs</code> — ba chỗ dễ sai nhất khi port ECC giữa OpenCV Python và OpenCvSharp C# đã xử lý đúng theo brief: (1) <code>cv2.findTransformECC(templateImage=reference, inputImage=moving, ...)</code> — thứ tự ngược trực giác; (2) pyramid index 0 = full resolution, vòng lặp chạy từ index lớn nhất (thô nhất) về 0 (mịn nhất); (3) <code>scale</code> trong <code>_to_warp_at_scale</code> chỉ nhân vào phần translation (<code>m[0,2]</code>, <code>m[1,2]</code>), không đụng phần xoay/scale.</li>
+    <li><code>config.py</code> lấy mặc định đúng từ code C# thật (<code>AlignStitchStageOptions.cs</code>, <code>MatcherOptions.cs</code>) — <strong>không phải mặc định OpenCV</strong> — quan trọng nhất là <code>gaussFiltSize=5</code> (mặc định riêng của OpenCvSharp, Python phải truyền tường minh vì <code>cv2.findTransformECC</code> không tự áp).</li>
+    <li><code>ValidateMovingToReference</code> trong <code>pyramid_ecc.match()</code> giữ đúng thứ tự kiểm tra như C# (<code>MaxTranslationPixels</code> → <code>MinCorrelation</code>/NaN/Inf → <code>MaxAbsRotationDeg</code> → <code>MinScale</code>/<code>MaxScale</code>) — thứ tự này quyết định <code>failure_reason</code> nào được báo cáo khi nhiều điều kiện cùng sai, nên giữ nguyên để so sánh 1:1 với C#.</li>
+    <li><strong>UI (<code>app.py</code>) bám đúng 4 quyết định thiết kế đã user duyệt</strong> trong brief (Bước 5.6): panel trái cố định ~212px (Dữ liệu → Cặp kiểm tra → Tiền xử lý → PyramidECC → nút CHẠY), panel phải 3 tab (Tiền xử lý / Kết quả match / Ma trận &amp; log), ô "Step ghi đè" tô nền vàng nổi bật (đây là tham số DUY NHẤT không tương ứng setting nào trong C#, dùng so bước lưới 4096 vs 4031.5 tại chỗ), và mọi tham số tiền xử lý/ECC dùng ô nhập số (không dùng thanh trượt) để giá trị thử chép được nguyên văn vào bảng kết quả.</li>
+    <li><strong>Khác 1 điểm nhỏ so với code mẫu trong brief (bổ sung, không bớt):</strong> khối code Python trong brief Bước 5.6 tạo ô "Step ghi đè" bằng <code>self._row(...)</code> dùng chung style <code>ttk.Entry</code> như các ô khác, và <code>_draw_preprocess</code> không có dòng cảnh báo chữ dưới lưới ảnh — nhưng ngay phía trên, brief liệt kê rõ 2 quyết định thiết kế bắt buộc: "Ô Step ghi đè phải NỔI BẬT khác các ô khác" và "Tab 1 LUÔN có dòng cảnh báo dưới lưới: cột binary không bao giờ được đưa vào ECC". Đã cài đặt riêng ô "Step ghi đè" bằng <code>tk.Frame</code>/<code>tk.Entry</code> nền vàng (<code>#fff3cd</code>, viền <code>#e0a800</code>) thay vì tái dùng <code>self._row(...)</code>, và thêm <code>self.fig_pre.text(...)</code> màu đỏ dưới lưới ảnh ở <code>_draw_preprocess</code> — để thỏa đúng 2 quyết định đã chốt với user mà code mẫu (chỉ minh hoạ cấu trúc chung) chưa thể hiện hết. Toàn bộ logic còn lại của <code>app.py</code> giữ nguyên văn theo brief.</li>
+  </ul>
+
+  <h4>Kiểm tra cú pháp (<code>py_compile</code> — tương đương "build" cho Python)</h4>
+  <p><span class="badge ok">PASS</span> Chạy <code>python -m py_compile tools/ecc_sandbox/&lt;file&gt;.py</code> cho cả 5 file — không lỗi cú pháp:</p>
+  <table>
+    <tr><th>File</th><th>Kết quả</th></tr>
+    <tr><td><code>config.py</code></td><td>OK</td></tr>
+    <tr><td><code>preprocess.py</code></td><td>OK</td></tr>
+    <tr><td><code>pyramid_ecc.py</code></td><td>OK</td></tr>
+    <tr><td><code>pairs.py</code></td><td>OK</td></tr>
+    <tr><td><code>app.py</code></td><td>OK</td></tr>
+  </table>
+  <p>Đây chỉ là kiểm cú pháp tĩnh — <strong>chưa chạy thử UI thật</strong> (không có màn hình trong môi trường agent). Không tương đương xác nhận "đã test pass" theo nghĩa AGENTS.md §4.</p>
+
+  <h4>Chưa xác nhận (chờ user — Bước 5.8/5.9/5.10 của plan, đánh dấu [USER])</h4>
+  <ul>
+    <li><strong>5.8 — Kiểm chứng port đúng:</strong> chạy sandbox Direct, <code>FlattenAndEnhance=tắt</code>, <code>Contrast=100</code> trên một tile có <code>eccCorrelation</code> trong <code>processing_report.json</code>; so <code>rawScore</code> sandbox với <code>eccCorrelation</code> — lệch dưới ~0.02 là port đúng.</li>
+    <li><strong>5.9 — Thí nghiệm bước lưới:</strong> cùng một tile, chạy 2 lần với ô "Step ghi đè" = <code>4096</code> rồi <code>4031.5</code> — <code>rawScore</code> phải cao hơn rõ rệt ở <code>4031.5</code>.</li>
+    <li><strong>5.10 — Dò tham số tiền xử lý:</strong> bật <code>FlattenAndEnhance</code>, quét <code>BackgroundSigma</code> (31/51/81) và <code>ClaheClipLimit</code> (2/3/4) trên 5–6 tile, ghi bảng <code>rawScore</code> trước/sau — tiêu chí Findings §8.5: ECC correlation <strong>không được giảm</strong>.</li>
+  </ul>
+  <p>Chi tiết lệnh chạy chính xác + tiêu chí đối chiếu: xem <code>.superpowers/sdd/2026-08-15-grid-pitch-calibration/task-5-report.md</code>.</p>
 </div>
 
 <!-- ============================================================ -->
