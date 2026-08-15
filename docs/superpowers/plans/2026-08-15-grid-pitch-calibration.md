@@ -6,7 +6,7 @@
 
 **Architecture:** Ba lớp tách rời. (1) `CaptureGridCalculator` — thuần số học trong façade, không I/O, không HALCON/OpenCV, sinh `TileRect[]` mà hai đường vào sẵn có (`GenerateSampleManifestFromRects`, overload in-memory `RunAlignStitch`) đã nhận. (2) `CaptureGridJsonWriter` — merge kết quả vào một file template theo schema `sample_prepare.json`, giữ nguyên mọi trường thuộc về Master. (3) `GridCalibrationProbe` trong Core — đo bước thật từ ảnh chụp bằng `matchTemplate`, ghi vào report, fail sớm khi lệch quá ngưỡng. Pose graph **không đổi thuật toán**, chỉ sửa phần báo cáo và một giá trị mặc định.
 
-**Tech Stack:** C# 7.3, .NET Framework 4.8, x64. OpenCvSharp4 4.13 (`Cv2.MatchTemplate`), Newtonsoft.Json (chỉ ở project `RDL.GerberStitch`), HALCON 25.05 Progress (không dùng thêm call site mới).
+**Tech Stack:** C# 7.3, .NET Framework 4.8, x64. OpenCvSharp4 4.13 (`Cv2.MatchTemplate`), Newtonsoft.Json (chỉ ở project `RDL.GerberStitch`), HALCON 25.05 Progress (không dùng thêm call site mới). Task 5 dùng Python 3 + opencv-python + numpy + matplotlib + Tkinter, nằm ngoài solution.
 
 **Spec:** [`docs/superpowers/specs/2026-08-15-grid-pitch-calibration-design.md`](../specs/2026-08-15-grid-pitch-calibration-design.md)
 
@@ -20,7 +20,7 @@
 - **Không đổi hành vi pipeline matcher** trong đợt này (AGENTS.md §3.1) — chỉ hình học lưới + báo cáo.
 - **Không thêm cơ chế license-check HALCON mới** (AGENTS.md §3.3).
 - **Convention:** PascalCase public, camelCase local, `_camelCase` private field. Code debug-only bọc `#if DEBUG`. Bám convention của file đang sửa.
-- **Comment đầu mỗi khối sửa:** `// [Claude] [Change time: YYYY-MM-DD] [Purpose: ...]` theo mẫu đang có trong repo.
+- **Comment đầu mỗi khối sửa:** `// [Tony YYYY-MM-DD] [Purpose: ...]` theo mẫu đang có trong repo.
 - **BẮT BUỘC:** sau mỗi task, thêm entry mới vào `docs/implement_code.html` (không ghi đè entry cũ) — gồm ngày, phạm vi, file đã đổi, đánh đổi thiết kế, và **mọi lỗi build/chạy gặp phải kèm cách fix**.
 
 ## Quy tắc thực thi (bắt buộc)
@@ -74,7 +74,16 @@ So với đo được 4031.3 / 4031.7 → **Δ ≈ 1.7 / 1.3 px** → probe tr�
 | `GerberStitching.Core/Alignment/AlignStitchWorkflowService.cs` | **Sửa.** Gọi probe; đếm bậc đỉnh. | 3, 4 |
 | `GerberStitching.Core/Alignment/Graph/PoseGraphOptions.cs` | **Sửa.** `MaxPoseCorrectionPixels` suy từ `CaptureOverlap`. | 4 |
 | `GerberStitching.Core/Alignment/Graph/PoseGraphReport.cs` | **Sửa.** Đếm cạnh theo trạng thái + bậc đỉnh. | 4 |
-| `docs/implement_code.html` | **Sửa.** Entry mới mỗi task. | 1–5 |
+| `tools/ecc_sandbox/config.py` | **Tạo.** Đọc `align_stitch.ini`, fallback đúng mặc định C#. | 5 |
+| `tools/ecc_sandbox/preprocess.py` | **Tạo.** Port `FlattenAndEnhance` / `ToBinaryTraces` (Findings §8.3). | 5 |
+| `tools/ecc_sandbox/pyramid_ecc.py` | **Tạo.** Port 1:1 `PyramidEccMatcher.cs`. | 5 |
+| `tools/ecc_sandbox/pairs.py` | **Tạo.** Liệt kê cặp Direct / Neighbor từ payload. | 5 |
+| `tools/ecc_sandbox/app.py` | **Tạo.** UI Tkinter + matplotlib. | 5 |
+| `tools/ecc_sandbox/README.md`, `requirements.txt` | **Tạo.** Hướng dẫn chạy. | 5 |
+| `docs/implement_code.html` | **Sửa.** Entry mới mỗi task. | 1–6 |
+
+> `tools/ecc_sandbox/` là công cụ khảo sát bằng Python, **không** nằm trong `RDL.GerberStitch.sln`
+> và không ảnh hưởng build. Không phải test project nên không vi phạm AGENTS.md §4.
 
 ---
 
@@ -87,7 +96,7 @@ Sau khi sửa lưới (Task 1), số liệu residual mà pipeline tự báo **c�
 
 **Nếu thấy `edgesGatedOut` tăng vọt sau Task 1, KHÔNG được nới `MaxEdgeResidualPixels`.** Đó là bằng chứng bug alias ROI vẫn còn, và là dữ liệu đầu vào cho quyết định ở §7 spec (ngoài phạm vi đợt này). Ghi số vào §Lịch sử thay đổi và báo user.
 
-Ngược lại, khả năng cao alias sẽ **tự hết** với `TileWidth = ImageWidth = 4096`: khi đó ROI rộng đúng `CaptureOverlap = 64.5 px`, trùng khít vùng chồng thật, phase correlation tìm shift ≈ 0. Đây là lý do Task 5 chạy case 4096 **trước tiên**.
+Ngược lại, khả năng cao alias sẽ **tự hết** với `TileWidth = ImageWidth = 4096`: khi đó ROI rộng đúng `CaptureOverlap = 64.5 px`, trùng khít vùng chồng thật, phase correlation tìm shift ≈ 0. Đây là lý do Task 6 chạy case 4096 **trước tiên**.
 
 ---
 
@@ -108,7 +117,7 @@ Ngược lại, khả năng cao alias sẽ **tự hết** với `TileWidth = Ima
   - `CaptureGridCalculator.Build(CaptureGridSpec) → CaptureGridResult`
   - `GerberStitchFacade.BuildCaptureGrid(CaptureGridSpec) → CaptureGridResult`
   - `CaptureGridResult.Tiles` là `IList<TileRect>`, `OrderIndex` liên tục `0..N-1`
-  - Task 2 dùng `CaptureGridResult` để ghi JSON; Task 5 dùng `BuildCaptureGrid` để sweep FOV.
+  - Task 2 dùng `CaptureGridResult` để ghi JSON; Task 6 dùng `BuildCaptureGrid` để sweep FOV.
 
 ---
 
@@ -653,7 +662,7 @@ git commit -m "Add CaptureGridCalculator using the Master pitch formula"
 **Interfaces:**
 - Consumes: `CaptureGridResult`, `CaptureGridSpec` (Task 1).
 - Produces: `CaptureGridJsonWriter.Write(templatePath, outputDirectory, sampleImagePath, spec, grid) → string`
-  (trả về đường dẫn file đã ghi). Task 5 dùng để sinh 4 payload.
+  (trả về đường dẫn file đã ghi). Task 5 đọc payload này; Task 6 dùng để sinh 4 payload.
 
 ---
 
@@ -1461,7 +1470,836 @@ git commit -m "Report edge measurement state and vertex degree in the pose graph
 
 ---
 
-## Task 5: Sweep 4 FOV và tổng kết
+## Task 5: Sandbox Python — mô phỏng tiền xử lý + PyramidECC có UI
+
+**Mục đích:** dò tham số tiền xử lý (§8 của `RDL_GerberStitch_Findings.md`) và quan sát ECC **trước khi**
+viết bất kỳ dòng C# nào. Vòng lặp thử–sai trong Python mất vài giây; trong C# mất vài phút build + vài
+phút chạy cả lô 80 tile. Đây là công cụ khảo sát, **không** phải code sản phẩm.
+
+**Ràng buộc:** nằm ngoài `RDL.GerberStitch.sln`, không thêm project vào solution, không đụng code C#.
+Không vi phạm AGENTS.md §4 (đây không phải test project).
+
+**Files:**
+- Create: `tools/ecc_sandbox/requirements.txt`
+- Create: `tools/ecc_sandbox/config.py`
+- Create: `tools/ecc_sandbox/preprocess.py`
+- Create: `tools/ecc_sandbox/pyramid_ecc.py`
+- Create: `tools/ecc_sandbox/pairs.py`
+- Create: `tools/ecc_sandbox/app.py`
+- Create: `tools/ecc_sandbox/README.md`
+- Modify: `docs/implement_code.html`
+
+**Interfaces:**
+- Consumes: payload `sample_<fov>_o<overlap>.json` (Task 2), thư mục ảnh chụp, raster Gerber,
+  `RDL.GerberStitch.Harness/align_stitch.ini`.
+- Produces: không có API cho C#. Đầu ra là **số liệu** để quyết định tham số ở đợt sau.
+
+**Đối chiếu 1:1 với C# — mọi con số dưới đây lấy từ code thật, không phải mặc định của OpenCV:**
+
+| Tham số | Giá trị | Nguồn |
+|---|---|---|
+| `MotionModel` | `Euclidean` | `AlignStitchStageOptions.cs:92` |
+| `PyramidLevels` | 3 | `AlignStitchStageOptions.cs:93` |
+| `MaxIterations` | 80 | `AlignStitchStageOptions.cs:94` |
+| `Epsilon` | 1e-5 | `AlignStitchStageOptions.cs:95` |
+| `MinCorrelation` | 0.13 | `AlignStitchStageOptions.cs:96` + `align_stitch.ini` |
+| `MaxAbsRotationDeg` | 0.1 | `MatcherOptions.cs:21` + `align_stitch.ini` |
+| `MinScale` / `MaxScale` | 0.90 / 1.10 | `MatcherOptions.cs:22-23` |
+| `MaxTranslationPixels` | 300 | `align_stitch.ini` |
+| `gaussFiltSize` của ECC | **5** | mặc định của OpenCvSharp — Python phải truyền tường minh |
+
+---
+
+- [ ] **Bước 5.1: `requirements.txt`**
+
+```
+opencv-python>=4.8
+numpy>=1.24
+matplotlib>=3.7
+Pillow>=10.0
+```
+
+Tkinter đi kèm Python trên Windows, không cần cài. Cài bằng:
+
+```bash
+python -m pip install -r tools/ecc_sandbox/requirements.txt
+```
+
+- [ ] **Bước 5.2: `config.py` — đọc đúng config đang dùng**
+
+```python
+"""Doc cau hinh tu align_stitch.ini, fallback ve DUNG mac dinh cua C#."""
+import configparser
+import os
+
+# Mac dinh lay tu code C# that -- KHONG phai mac dinh cua OpenCV.
+DEFAULTS = {
+    # EccOptions (Configuration/AlignStitchStageOptions.cs:90-99)
+    "EccMotionModel": "Euclidean",   # Translation | Euclidean | Affine
+    "EccPyramidLevels": 3,
+    "EccMaxIterations": 80,
+    "EccEpsilon": 1e-5,
+    "EccMinCorrelation": 0.13,
+    "EccGaussFiltSize": 5,           # mac dinh cua OpenCvSharp Cv2.FindTransformECC
+    # MatcherOptions.cs:21-23
+    "MaxAbsRotationDeg": 0.1,
+    "MinScale": 0.90,
+    "MaxScale": 1.10,
+    "MaxTranslationPixels": 300.0,
+    # AlignmentPreprocessingOptions.Contrast -- 100 nghia la KHONG lam gi
+    "Contrast": 100.0,
+    # Findings §8.3 -- gia tri de xuat, PHAI hieu chinh tren anh that (§8.4)
+    "BackgroundSigma": 51.0,
+    "ClaheClipLimit": 3.0,
+    "ClaheTile": 16,
+    "AdaptiveBlockSize": 51,
+    "AdaptiveC": -5.0,
+    "CloseKernel": 5,
+    "CloseIterations": 2,
+}
+
+_INI_MAP = {
+    "eccmincorrelation": ("EccMinCorrelation", float),
+    "maxtranslationpixels": ("MaxTranslationPixels", float),
+    "maxabsrotationdeg": ("MaxAbsRotationDeg", float),
+}
+
+
+def load(ini_path=None):
+    """Tra ve dict cau hinh. Key thieu trong ini giu nguyen mac dinh C#."""
+    cfg = dict(DEFAULTS)
+    if not ini_path or not os.path.exists(ini_path):
+        return cfg
+    parser = configparser.ConfigParser()
+    # File ini cua repo co dong comment bat dau bang ';' -- configparser xu ly duoc.
+    parser.read(ini_path, encoding="utf-8")
+    if not parser.has_section("GerberAlignStitch"):
+        return cfg
+    for raw_key, raw_value in parser.items("GerberAlignStitch"):
+        mapped = _INI_MAP.get(raw_key.lower())
+        if mapped is None:
+            continue
+        name, caster = mapped
+        try:
+            cfg[name] = caster(raw_value)
+        except ValueError:
+            pass
+    return cfg
+```
+
+- [ ] **Bước 5.3: `preprocess.py` — port §8.3**
+
+```python
+"""Port 1:1 cua CapturedImagePreprocessor de xuat o Findings §8.3.
+
+Thu tu co y: san phang illumination TRUOC khi tang tuong phan, vi CLAHE tren nen
+chua phang se khuech dai chinh bong do.
+"""
+import cv2
+import numpy as np
+
+
+def increase_contrast(mono8, contrast_percent):
+    """Tuong duong ModalityAwarePreprocessor.IncreaseContrast.
+    100% => tra ve nguyen ban (dung nhu C# return som o dong 156)."""
+    if abs(contrast_percent - 100.0) < 1e-9:
+        return mono8.copy()
+    alpha = contrast_percent / 100.0
+    beta = 128.0 * (1.0 - alpha)
+    return cv2.convertScaleAbs(mono8, alpha=alpha, beta=beta)
+
+
+def flatten_and_enhance(mono8, bg_sigma=51.0, clip_limit=3.0, clahe_tile=16):
+    """Buoc 1+2. AN TOAN cho ECC va phase correlation -- giu gradient lien tuc.
+
+    bg_sigma phai LON hon nhieu lan be rong trace, neu khong se xoa luon ca trace.
+    """
+    if mono8 is None or mono8.size == 0:
+        raise ValueError("mono8 rong")
+    # 1. Chia cho chinh nen da blur manh => khu bong do va nen xam khong deu.
+    bg = cv2.GaussianBlur(mono8, (0, 0), bg_sigma)
+    src = mono8.astype(np.float32)
+    den = bg.astype(np.float32)
+    den[den < 1.0] = 1.0
+    flat = np.clip(src / den * 255.0, 0, 255).astype(np.uint8)
+
+    # 2. Tang tuong phan CUC BO. ConvertTo tuyen tinh toan cuc khong xu ly duoc nen khong deu.
+    clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=(clahe_tile, clahe_tile))
+    return clahe.apply(flat)
+
+
+def to_binary_traces(enhanced_mono8, block_size=51, c=-5.0,
+                     close_kernel=5, close_iterations=2):
+    """Buoc 3+4. CHI dung cho chamfer / Hausdorff / ICP / skeleton.
+
+    KHONG duoc dua ket qua nay vao ECC: anh nhi phan co gradient bang 0 o moi noi
+    tru bien 1 pixel, ECC se khong hoi tu (Findings §8.2).
+    """
+    if block_size % 2 == 0:
+        block_size += 1
+    binary = cv2.adaptiveThreshold(enhanced_mono8, 255,
+                                   cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                                   cv2.THRESH_BINARY, block_size, c)
+    if close_kernel <= 1 or close_iterations <= 0:
+        return binary
+    k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (close_kernel, close_kernel))
+    return cv2.morphologyEx(binary, cv2.MORPH_CLOSE, k, iterations=close_iterations)
+
+
+def build_variants(mono8, cfg, flatten=True, binarize=False):
+    """Tra ve dict cac buoc trung gian de UI hien tung cua so."""
+    out = {"raw": mono8}
+    stage = increase_contrast(mono8, cfg["Contrast"])
+    out["contrast"] = stage
+    if flatten:
+        stage = flatten_and_enhance(stage, cfg["BackgroundSigma"],
+                                    cfg["ClaheClipLimit"], cfg["ClaheTile"])
+        out["flattened"] = stage
+    if binarize:
+        out["binary"] = to_binary_traces(stage, cfg["AdaptiveBlockSize"], cfg["AdaptiveC"],
+                                         cfg["CloseKernel"], cfg["CloseIterations"])
+    out["final"] = stage
+    return out
+```
+
+- [ ] **Bước 5.4: `pyramid_ecc.py` — port 1:1 `PyramidEccMatcher.cs`**
+
+Đối chiếu từng dòng với `GerberStitching.Core/Matching/OpenCv/PyramidEccMatcher.cs`.
+Ba chỗ dễ sai nhất, đã đánh dấu trong code:
+
+1. `cv2.findTransformECC(templateImage=reference, inputImage=moving, ...)` — **thứ tự này ngược trực giác**.
+2. Pyramid index 0 = **full resolution**; vòng lặp chạy từ index lớn nhất (nhỏ nhất về kích thước) về 0.
+3. `scale` chỉ nhân/chia phần **translation**, không đụng phần xoay.
+
+```python
+"""Port 1:1 cua GerberStitching.Core/Matching/OpenCv/PyramidEccMatcher.cs."""
+import math
+import numpy as np
+import cv2
+
+MOTION = {
+    "Translation": cv2.MOTION_TRANSLATION,
+    "Euclidean": cv2.MOTION_EUCLIDEAN,
+    "Affine": cv2.MOTION_AFFINE,
+}
+
+
+def _restrict_motion(m, motion_model):
+    """RestrictMotion (PyramidEccMatcher.cs:277)."""
+    if motion_model == "Translation":
+        return np.array([[1.0, 0.0, m[0, 2]], [0.0, 1.0, m[1, 2]], [0.0, 0.0, 1.0]])
+    if motion_model == "Euclidean":
+        angle = math.atan2(m[1, 0], m[0, 0])
+        c, s = math.cos(angle), math.sin(angle)
+        return np.array([[c, -s, m[0, 2]], [s, c, m[1, 2]], [0.0, 0.0, 1.0]])
+    return np.array([[m[0, 0], m[0, 1], m[0, 2]],
+                     [m[1, 0], m[1, 1], m[1, 2]],
+                     [0.0, 0.0, 1.0]])
+
+
+def _to_warp_at_scale(full, scale, motion_model):
+    """ToWarpMatAtScale (:256) -- CHI translation duoc nhan scale."""
+    r = _restrict_motion(full, motion_model)
+    return np.array([[r[0, 0], r[0, 1], r[0, 2] * scale],
+                     [r[1, 0], r[1, 1], r[1, 2] * scale]], dtype=np.float32)
+
+
+def _from_warp_at_scale(warp, scale):
+    """FromWarpMatAtScale (:269)."""
+    s = 1.0 if abs(scale) < 1e-12 else scale
+    return np.array([[float(warp[0, 0]), float(warp[0, 1]), float(warp[0, 2]) / s],
+                     [float(warp[1, 0]), float(warp[1, 1]), float(warp[1, 2]) / s],
+                     [0.0, 0.0, 1.0]])
+
+
+def _build_pyramids(ref32, mov32, levels):
+    """BuildPyramids (:219). Index 0 = FULL resolution."""
+    rp, mp = [ref32.copy()], [mov32.copy()]
+    for _ in range(1, max(1, levels)):
+        if rp[-1].shape[1] < 32 or rp[-1].shape[0] < 32:
+            break
+        rp.append(cv2.pyrDown(rp[-1]))
+        mp.append(cv2.pyrDown(mp[-1]))
+    return rp, mp
+
+
+def match(reference_mono8, moving_mono8, cfg, initial_moving_to_reference=None):
+    """Tra ve dict ket qua, mo phong MatchResult cua C#.
+
+    reference = tile Gerber, moving = anh chup. Transform tra ve la MovingImage -> ReferenceImage,
+    dung contract ghi o Diagnostics["TransformDirection"] (:122).
+    """
+    result = {"success": False, "matcher": "PyramidEccMatcher", "levels": [],
+              "failure_reason": None, "message": None}
+
+    if reference_mono8.shape != moving_mono8.shape:
+        result["failure_reason"] = "SizeMismatch"
+        result["message"] = ("ReferenceImage va MovingImage phai cung kich thuoc "
+                             "(MatcherGeometryValidator.ValidatePreparedPair). "
+                             "reference=%s moving=%s" % (reference_mono8.shape, moving_mono8.shape))
+        return result
+
+    ref32 = reference_mono8.astype(np.float32)
+    mov32 = moving_mono8.astype(np.float32)
+
+    motion_model = cfg["EccMotionModel"]
+    motion_type = MOTION[motion_model]
+    rp, mp = _build_pyramids(ref32, mov32, cfg["EccPyramidLevels"])
+
+    if initial_moving_to_reference is None:
+        full_ref_to_mov = np.eye(3)
+    else:
+        full_ref_to_mov = np.linalg.inv(np.asarray(initial_moving_to_reference, dtype=float))
+    full_ref_to_mov = _restrict_motion(full_ref_to_mov, motion_model)
+
+    correlation = float("nan")
+    criteria = (cv2.TERM_CRITERIA_COUNT | cv2.TERM_CRITERIA_EPS,
+                max(1, int(cfg["EccMaxIterations"])), float(cfg["EccEpsilon"]))
+
+    # Chay tu muc THO nhat (index lon nhat) ve muc day du (index 0).
+    for level in range(len(rp) - 1, -1, -1):
+        scale = rp[level].shape[1] / float(max(1, ref32.shape[1]))
+        warp = _to_warp_at_scale(full_ref_to_mov, scale, motion_model)
+        try:
+            # THU TU: template = reference, input = moving. gaussFiltSize=5 khop OpenCvSharp.
+            correlation, warp = cv2.findTransformECC(
+                rp[level], mp[level], warp, motion_type, criteria,
+                None, int(cfg["EccGaussFiltSize"]))
+        except cv2.error as ex:
+            result["failure_reason"] = "RuntimeFailure"
+            result["message"] = "ECC khong hoi tu o level %d: %s" % (level, ex)
+            result["levels"].append({"level": level, "size": rp[level].shape[::-1],
+                                     "scale": scale, "correlation": None})
+            return result
+        full_ref_to_mov = _from_warp_at_scale(warp, scale)
+        result["levels"].append({"level": level, "size": rp[level].shape[::-1],
+                                 "scale": scale, "correlation": float(correlation)})
+
+    moving_to_reference = np.linalg.inv(full_ref_to_mov)
+    tx = moving_to_reference[0, 2]
+    ty = moving_to_reference[1, 2]
+    rotation_deg = math.degrees(math.atan2(moving_to_reference[1, 0], moving_to_reference[0, 0]))
+    scale_value = math.hypot(moving_to_reference[0, 0], moving_to_reference[1, 0])
+
+    result.update({
+        "matrix": moving_to_reference,
+        "translation_x": tx,
+        "translation_y": ty,
+        "rotation_deg": rotation_deg,
+        "scale": scale_value,
+        "raw_score": float(correlation),
+        "normalized_confidence": max(0.0, min(1.0, (correlation + 1.0) / 2.0)),
+        "pyramid_levels": len(rp),
+    })
+
+    # ValidateMovingToReference (:161) -- dung thu tu kiem tra nhu C#.
+    if abs(tx) > cfg["MaxTranslationPixels"] or abs(ty) > cfg["MaxTranslationPixels"]:
+        result["failure_reason"] = "NonFiniteTransform"
+        result["message"] = "Translation vuot MaxTranslationPixels (%.1f)." % cfg["MaxTranslationPixels"]
+        return result
+    if math.isnan(correlation) or math.isinf(correlation) or correlation < cfg["EccMinCorrelation"]:
+        result["failure_reason"] = "CorrelationBelowThreshold"
+        result["message"] = "Correlation %.4f < MinCorrelation %.4f." % (correlation, cfg["EccMinCorrelation"])
+        return result
+    if abs(rotation_deg) > cfg["MaxAbsRotationDeg"]:
+        result["failure_reason"] = "GeometryRejected"
+        result["message"] = "Rotation %.4f deg vuot MaxAbsRotationDeg %.4f." % (
+            rotation_deg, cfg["MaxAbsRotationDeg"])
+        return result
+    if scale_value < cfg["MinScale"] or scale_value > cfg["MaxScale"]:
+        result["failure_reason"] = "GeometryRejected"
+        result["message"] = "Scale %.6f ngoai khoang [%.2f, %.2f]." % (
+            scale_value, cfg["MinScale"], cfg["MaxScale"])
+        return result
+
+    result["success"] = True
+    return result
+
+
+def warp_moving_to_reference(moving_mono8, matrix, size_wh):
+    """Dung de ve ket qua: dua anh moving ve he toa do reference."""
+    m = np.asarray(matrix, dtype=np.float32)[:2, :]
+    return cv2.warpAffine(moving_mono8, m, size_wh, flags=cv2.INTER_LINEAR)
+```
+
+- [ ] **Bước 5.5: `pairs.py` — liệt kê cặp cho người dùng chọn**
+
+```python
+"""Sinh danh sach cap de kiem tra.
+
+Direct   : tile Gerber (crop tu raster) <-> anh chup cung orderIndex
+Neighbor : anh chup <-> anh chup ke ben
+"""
+import json
+import os
+import cv2
+import numpy as np
+from PIL import Image
+
+Image.MAX_IMAGE_PIXELS = None
+
+
+def load_payload(path):
+    with open(path, "r", encoding="utf-8-sig") as fh:
+        data = json.load(fh)
+    tiles = sorted(data["GerberTiles"], key=lambda t: t["OrderIndex"])
+    return {
+        "tiles": tiles,
+        "sample_path": data.get("GerberSampleImagePath"),
+        "image_width": data.get("Width_CaptureImages", 4096),
+        "image_height": data.get("Height_CaptureImages", 4096),
+        "overlap_x": data.get("OVerLapX_EdgePath"),
+        "overlap_y": data.get("OVerLapY_EdgePath"),
+    }
+
+
+class RasterSource(object):
+    """Doc crop tu raster Gerber ma khong nap ca anh 40418x32364 vao RAM."""
+
+    def __init__(self, path):
+        self.image = Image.open(path)
+        self.width, self.height = self.image.size
+
+    def crop_mono8(self, x, y, w, h):
+        x0 = max(0, min(self.width - 1, int(x)))
+        y0 = max(0, min(self.height - 1, int(y)))
+        x1 = min(self.width, x0 + int(w))
+        y1 = min(self.height, y0 + int(h))
+        patch = self.image.crop((x0, y0, x1, y1)).convert("L")
+        arr = np.asarray(patch, dtype=np.uint8)
+        if arr.shape[0] != h or arr.shape[1] != w:
+            padded = np.full((int(h), int(w)), 255, dtype=np.uint8)
+            padded[:arr.shape[0], :arr.shape[1]] = arr
+            return padded
+        return arr
+
+
+def captured_path(folder, order_index, extension=".bmp"):
+    return os.path.join(folder, str(order_index) + extension)
+
+
+def load_captured(folder, order_index, extension=".bmp"):
+    path = captured_path(folder, order_index, extension)
+    img = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
+    if img is None:
+        raise IOError("Khong doc duoc " + path)
+    return img
+
+
+def direct_pair(payload, raster, images_folder, order_index, step_override=None, extension=".bmp"):
+    """Reference = crop raster tai vet chan danh nghia cua anh chup, CUNG kich thuoc anh chup.
+
+    step_override cho phep so sanh buoc luoi khac nhau (vd 4096 vs 4031.5) ma khong phai
+    sinh lai payload -- dung de nhin tan mat anh huong cua sai buoc len ECC.
+    """
+    tile = next(t for t in payload["tiles"] if t["OrderIndex"] == order_index)
+    w, h = payload["image_width"], payload["image_height"]
+    if step_override is None:
+        x = tile["ExpectedX"] + (tile["Width"] - w) // 2
+        y = tile["ExpectedY"] + (tile["Height"] - h) // 2
+    else:
+        x = int(tile["Column"] * step_override)
+        y = int(tile["Row"] * step_override)
+    reference = raster.crop_mono8(x, y, w, h)
+    moving = load_captured(images_folder, order_index, extension)
+    return reference, moving, {"reference_origin": (x, y), "tile": tile}
+
+
+def neighbor_pair(payload, images_folder, anchor_index, target_index, extension=".bmp"):
+    return (load_captured(images_folder, anchor_index, extension),
+            load_captured(images_folder, target_index, extension),
+            {"anchor": anchor_index, "target": target_index})
+
+
+def index_of(payload, row, column):
+    for t in payload["tiles"]:
+        if t["Row"] == row and t["Column"] == column:
+            return t["OrderIndex"]
+    return None
+```
+
+- [ ] **Bước 5.6: `app.py` — UI Tkinter**
+
+```python
+"""Sandbox UI: chon cap -> tien xu ly -> PyramidECC -> xem ma tran + ket qua match."""
+import os
+import sys
+import traceback
+import tkinter as tk
+from tkinter import ttk, filedialog, messagebox
+
+import cv2
+import numpy as np
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from matplotlib.figure import Figure
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import config as cfg_mod
+import pairs as pairs_mod
+import preprocess as pre
+import pyramid_ecc as ecc
+
+PREVIEW = 512
+
+
+def thumb(img):
+    if img is None:
+        return np.zeros((8, 8), dtype=np.uint8)
+    scale = PREVIEW / float(max(img.shape[0], img.shape[1]))
+    if scale >= 1.0:
+        return img
+    return cv2.resize(img, (int(img.shape[1] * scale), int(img.shape[0] * scale)),
+                      interpolation=cv2.INTER_AREA)
+
+
+class App(object):
+    def __init__(self, root):
+        self.root = root
+        root.title("RDL.GerberStitch — ECC / Preprocessing Sandbox")
+        self.cfg = cfg_mod.load(self._guess_ini())
+        self.payload = None
+        self.raster = None
+        self.vars = {}
+
+        outer = ttk.Frame(root, padding=6)
+        outer.pack(fill="both", expand=True)
+        left = ttk.Frame(outer)
+        left.pack(side="left", fill="y", padx=(0, 8))
+        right = ttk.Frame(outer)
+        right.pack(side="left", fill="both", expand=True)
+
+        self._build_inputs(left)
+        self._build_params(left)
+        self._build_tabs(right)
+
+    # ---------- helpers ----------
+    def _guess_ini(self):
+        here = os.path.dirname(os.path.abspath(__file__))
+        candidate = os.path.abspath(os.path.join(
+            here, "..", "..", "RDL.GerberStitch.Harness", "align_stitch.ini"))
+        return candidate if os.path.exists(candidate) else None
+
+    def _row(self, parent, label, key, default, width=10):
+        frame = ttk.Frame(parent)
+        frame.pack(fill="x", pady=1)
+        ttk.Label(frame, text=label, width=22).pack(side="left")
+        var = tk.StringVar(value=str(default))
+        ttk.Entry(frame, textvariable=var, width=width).pack(side="left", fill="x", expand=True)
+        self.vars[key] = var
+        return var
+
+    def _num(self, key, caster=float):
+        return caster(self.vars[key].get())
+
+    # ---------- panels ----------
+    def _build_inputs(self, parent):
+        box = ttk.LabelFrame(parent, text="Dữ liệu", padding=6)
+        box.pack(fill="x")
+        self._row(box, "Payload JSON", "payload", "", 32)
+        ttk.Button(box, text="Chọn payload…", command=self.pick_payload).pack(fill="x", pady=2)
+        self._row(box, "Thư mục ảnh chụp", "images", "", 32)
+        ttk.Button(box, text="Chọn thư mục…", command=self.pick_images).pack(fill="x", pady=2)
+        self._row(box, "Raster Gerber", "raster", "", 32)
+        ttk.Button(box, text="Chọn raster…", command=self.pick_raster).pack(fill="x", pady=2)
+        self._row(box, "Đuôi file ảnh", "ext", ".bmp")
+
+        sel = ttk.LabelFrame(parent, text="Cặp kiểm tra", padding=6)
+        sel.pack(fill="x", pady=(8, 0))
+        self.mode = tk.StringVar(value="direct")
+        ttk.Radiobutton(sel, text="Direct  (tile Gerber ↔ ảnh chụp)",
+                        variable=self.mode, value="direct").pack(anchor="w")
+        ttk.Radiobutton(sel, text="Neighbor (ảnh chụp ↔ ảnh chụp)",
+                        variable=self.mode, value="neighbor").pack(anchor="w")
+        self._row(sel, "Row", "row", 1, 6)
+        self._row(sel, "Column", "col", 1, 6)
+        self._row(sel, "Hướng neighbor", "dir", "right", 8)
+        self._row(sel, "Step ghi đè (0=payload)", "step", 0, 10)
+
+    def _build_params(self, parent):
+        pp = ttk.LabelFrame(parent, text="Tiền xử lý (§8.3)", padding=6)
+        pp.pack(fill="x", pady=(8, 0))
+        self.flatten = tk.BooleanVar(value=True)
+        ttk.Checkbutton(pp, text="FlattenAndEnhance", variable=self.flatten).pack(anchor="w")
+        self.binarize = tk.BooleanVar(value=False)
+        ttk.Checkbutton(pp, text="ToBinaryTraces (chỉ để xem)",
+                        variable=self.binarize).pack(anchor="w")
+        self._row(pp, "Contrast (%)", "contrast", self.cfg["Contrast"])
+        self._row(pp, "Background sigma", "bgsigma", self.cfg["BackgroundSigma"])
+        self._row(pp, "CLAHE clip limit", "clip", self.cfg["ClaheClipLimit"])
+        self._row(pp, "CLAHE tile", "clahetile", self.cfg["ClaheTile"])
+        self._row(pp, "Adaptive blockSize", "block", self.cfg["AdaptiveBlockSize"])
+        self._row(pp, "Adaptive C", "cval", self.cfg["AdaptiveC"])
+        self._row(pp, "Close kernel", "ck", self.cfg["CloseKernel"])
+
+        ep = ttk.LabelFrame(parent, text="PyramidECC (từ align_stitch.ini)", padding=6)
+        ep.pack(fill="x", pady=(8, 0))
+        frame = ttk.Frame(ep)
+        frame.pack(fill="x", pady=1)
+        ttk.Label(frame, text="MotionModel", width=22).pack(side="left")
+        self.motion = tk.StringVar(value=self.cfg["EccMotionModel"])
+        ttk.Combobox(frame, textvariable=self.motion, width=12, state="readonly",
+                     values=["Translation", "Euclidean", "Affine"]).pack(side="left")
+        self._row(ep, "PyramidLevels", "levels", self.cfg["EccPyramidLevels"])
+        self._row(ep, "MaxIterations", "iters", self.cfg["EccMaxIterations"])
+        self._row(ep, "Epsilon", "eps", self.cfg["EccEpsilon"])
+        self._row(ep, "MinCorrelation", "mincorr", self.cfg["EccMinCorrelation"])
+        self._row(ep, "MaxAbsRotationDeg", "maxrot", self.cfg["MaxAbsRotationDeg"])
+        self._row(ep, "MaxTranslationPixels", "maxtrans", self.cfg["MaxTranslationPixels"])
+
+        ttk.Button(parent, text="CHẠY", command=self.run).pack(fill="x", pady=8)
+
+    def _build_tabs(self, parent):
+        self.tabs = ttk.Notebook(parent)
+        self.tabs.pack(fill="both", expand=True)
+
+        self.fig_pre = Figure(figsize=(9, 5.2), dpi=90)
+        self.canvas_pre = self._add_tab(self.fig_pre, "Tiền xử lý")
+
+        self.fig_match = Figure(figsize=(9, 5.2), dpi=90)
+        self.canvas_match = self._add_tab(self.fig_match, "Kết quả match")
+
+        text_tab = ttk.Frame(self.tabs)
+        self.tabs.add(text_tab, text="Ma trận & log")
+        self.log = tk.Text(text_tab, wrap="none", font=("Consolas", 9))
+        self.log.pack(fill="both", expand=True)
+
+    def _add_tab(self, figure, title):
+        tab = ttk.Frame(self.tabs)
+        self.tabs.add(tab, text=title)
+        canvas = FigureCanvasTkAgg(figure, master=tab)
+        canvas.get_tk_widget().pack(fill="both", expand=True)
+        return canvas
+
+    # ---------- file pickers ----------
+    def pick_payload(self):
+        path = filedialog.askopenfilename(filetypes=[("JSON", "*.json")])
+        if path:
+            self.vars["payload"].set(path)
+
+    def pick_images(self):
+        path = filedialog.askdirectory()
+        if path:
+            self.vars["images"].set(path)
+
+    def pick_raster(self):
+        path = filedialog.askopenfilename(
+            filetypes=[("Ảnh", "*.tif *.tiff *.png *.bmp *.jpg")])
+        if path:
+            self.vars["raster"].set(path)
+
+    def say(self, text):
+        self.log.insert("end", text + "\n")
+        self.log.see("end")
+
+    # ---------- run ----------
+    def current_cfg(self):
+        c = dict(self.cfg)
+        c.update({
+            "Contrast": self._num("contrast"),
+            "BackgroundSigma": self._num("bgsigma"),
+            "ClaheClipLimit": self._num("clip"),
+            "ClaheTile": self._num("clahetile", int),
+            "AdaptiveBlockSize": self._num("block", int),
+            "AdaptiveC": self._num("cval"),
+            "CloseKernel": self._num("ck", int),
+            "EccMotionModel": self.motion.get(),
+            "EccPyramidLevels": self._num("levels", int),
+            "EccMaxIterations": self._num("iters", int),
+            "EccEpsilon": self._num("eps"),
+            "EccMinCorrelation": self._num("mincorr"),
+            "MaxAbsRotationDeg": self._num("maxrot"),
+            "MaxTranslationPixels": self._num("maxtrans"),
+        })
+        return c
+
+    def run(self):
+        try:
+            self._run()
+        except Exception as ex:
+            self.say("LỖI: " + str(ex))
+            self.say(traceback.format_exc())
+            messagebox.showerror("Lỗi", str(ex))
+
+    def _run(self):
+        self.log.delete("1.0", "end")
+        c = self.current_cfg()
+        payload_path = self.vars["payload"].get()
+        images = self.vars["images"].get()
+        ext = self.vars["ext"].get() or ".bmp"
+        if not payload_path or not images:
+            raise ValueError("Cần chọn payload JSON và thư mục ảnh chụp.")
+
+        payload = pairs_mod.load_payload(payload_path)
+        row, col = self._num("row", int), self._num("col", int)
+        order = pairs_mod.index_of(payload, row, col)
+        if order is None:
+            raise ValueError("Không có tile ở (row=%d, col=%d)." % (row, col))
+
+        step = self._num("step")
+        step = None if step <= 0 else step
+
+        if self.mode.get() == "direct":
+            raster_path = self.vars["raster"].get()
+            if not raster_path:
+                raise ValueError("Mode Direct cần raster Gerber.")
+            raster = pairs_mod.RasterSource(raster_path)
+            reference, moving, meta = pairs_mod.direct_pair(
+                payload, raster, images, order, step, ext)
+            self.say("Direct: tile order=%d (row=%d, col=%d), reference origin=%s"
+                     % (order, row, col, meta["reference_origin"]))
+        else:
+            direction = self.vars["dir"].get().strip().lower()
+            delta = {"right": (0, 1), "left": (0, -1),
+                     "bottom": (1, 0), "top": (-1, 0)}[direction]
+            target = pairs_mod.index_of(payload, row + delta[0], col + delta[1])
+            if target is None:
+                raise ValueError("Không có neighbor hướng " + direction)
+            reference, moving, meta = pairs_mod.neighbor_pair(payload, images, order, target, ext)
+            self.say("Neighbor: anchor=%d target=%d (%s)" % (order, target, direction))
+
+        ref_v = pre.build_variants(reference, c, self.flatten.get(), self.binarize.get())
+        mov_v = pre.build_variants(moving, c, self.flatten.get(), self.binarize.get())
+        self._draw_preprocess(ref_v, mov_v)
+
+        result = ecc.match(ref_v["final"], mov_v["final"], c)
+        self._report(result)
+        self._draw_match(ref_v["final"], mov_v["final"], result)
+
+    def _draw_preprocess(self, ref_v, mov_v):
+        keys = [k for k in ("raw", "contrast", "flattened", "binary") if k in ref_v]
+        self.fig_pre.clear()
+        for i, key in enumerate(keys):
+            for j, (name, variants) in enumerate((("reference", ref_v), ("moving", mov_v))):
+                ax = self.fig_pre.add_subplot(2, len(keys), j * len(keys) + i + 1)
+                ax.imshow(thumb(variants[key]), cmap="gray", vmin=0, vmax=255)
+                ax.set_title("%s · %s" % (name, key), fontsize=8)
+                ax.axis("off")
+        self.fig_pre.tight_layout()
+        self.canvas_pre.draw()
+
+    def _draw_match(self, reference, moving, result):
+        self.fig_match.clear()
+        h, w = reference.shape
+        before = cv2.merge([thumb(reference), thumb(moving), thumb(reference)])
+        ax1 = self.fig_match.add_subplot(1, 2, 1)
+        ax1.imshow(before)
+        ax1.set_title("TRƯỚC — magenta=reference, xanh=moving", fontsize=8)
+        ax1.axis("off")
+
+        ax2 = self.fig_match.add_subplot(1, 2, 2)
+        if result.get("matrix") is not None:
+            warped = ecc.warp_moving_to_reference(moving, result["matrix"], (w, h))
+            after = cv2.merge([thumb(reference), thumb(warped), thumb(reference)])
+            ax2.imshow(after)
+            ax2.set_title("SAU — trùng nhau ⇒ xám, lệch ⇒ viền màu", fontsize=8)
+        else:
+            ax2.text(0.5, 0.5, "Không có ma trận", ha="center", va="center")
+        ax2.axis("off")
+        self.fig_match.tight_layout()
+        self.canvas_match.draw()
+
+    def _report(self, r):
+        self.say("")
+        self.say("=== PyramidECC ===")
+        for lv in r["levels"]:
+            corr = lv["correlation"]
+            self.say("  level %d  size=%sx%s  scale=%.4f  corr=%s"
+                     % (lv["level"], lv["size"][0], lv["size"][1], lv["scale"],
+                        "n/a" if corr is None else "%.5f" % corr))
+        self.say("")
+        if r.get("matrix") is None:
+            self.say("THẤT BẠI: %s — %s" % (r["failure_reason"], r["message"]))
+            return
+        m = r["matrix"]
+        self.say("Ma trận MovingImage -> ReferenceImage:")
+        for i in range(3):
+            self.say("   [ %12.6f  %12.6f  %12.4f ]" % (m[i, 0], m[i, 1], m[i, 2]))
+        self.say("")
+        self.say("  translation = (%.3f, %.3f) px" % (r["translation_x"], r["translation_y"]))
+        self.say("  rotation    = %.5f deg" % r["rotation_deg"])
+        self.say("  scale       = %.8f" % r["scale"])
+        self.say("  rawScore    = %.5f   (MinCorrelation %.3f)"
+                 % (r["raw_score"], self.current_cfg()["EccMinCorrelation"]))
+        self.say("  confidence  = %.5f" % r["normalized_confidence"])
+        self.say("")
+        if r["success"]:
+            self.say("KẾT LUẬN: ACCEPTED")
+        else:
+            self.say("KẾT LUẬN: REJECTED — %s: %s" % (r["failure_reason"], r["message"]))
+
+
+def main():
+    root = tk.Tk()
+    root.geometry("1400x900")
+    App(root)
+    root.mainloop()
+
+
+if __name__ == "__main__":
+    main()
+```
+
+- [ ] **Bước 5.7: `README.md`**
+
+Ghi rõ: đây là công cụ khảo sát, không phải code sản phẩm; không nằm trong `.sln`; cách chạy;
+ý nghĩa ô "Step ghi đè"; và cảnh báo **không** bật `ToBinaryTraces` rồi đưa vào ECC (Findings §8.2 —
+ảnh nhị phân có gradient bằng 0 nên ECC không hội tụ).
+
+```bash
+python tools/ecc_sandbox/app.py
+```
+
+- [ ] **Bước 5.8: [USER] Kiểm chứng port đúng — đối chiếu với C#**
+
+Đây là bước quan trọng nhất của task. Chạy sandbox ở **Direct**, `FlattenAndEnhance = tắt`,
+`Contrast = 100` (tức không tiền xử lý gì, đúng hiện trạng pipeline), trên một tile mà
+`processing_report.json` có `eccCorrelation`. So `rawScore` của sandbox với `eccCorrelation` trong report.
+
+Lệch dưới ~0.02 là port đúng. Lệch nhiều hơn ⇒ kiểm ba chỗ đã đánh dấu ở Bước 5.4
+(thứ tự template/input, chiều duyệt pyramid, scale chỉ nhân translation).
+
+- [ ] **Bước 5.9: [USER] Thí nghiệm bước lưới**
+
+Cùng một tile, chạy hai lần với ô **Step ghi đè**: `4096` rồi `4031.5`.
+`rawScore` phải **cao hơn rõ rệt** ở 4031.5. Đây là xác nhận trực quan cho toàn bộ Task 1–3.
+
+- [ ] **Bước 5.10: [USER] Dò tham số tiền xử lý**
+
+Bật `FlattenAndEnhance`, quét `BackgroundSigma` (31 / 51 / 81) và `ClaheClipLimit` (2 / 3 / 4)
+trên 5–6 tile. Ghi bảng `rawScore` trước/sau.
+
+**Tiêu chí của Findings §8.5: ECC correlation không được GIẢM.** Nếu giảm ⇒ tiền xử lý đang phá
+gradient, không đưa vào C#.
+
+- [ ] **Bước 5.11: Ghi `docs/implement_code.html`** — kèm bảng số liệu thu được
+
+- [ ] **Bước 5.12: Commit**
+
+```bash
+git add tools/ecc_sandbox docs/implement_code.html
+git commit -m "Add Python sandbox for preprocessing and pyramid ECC experiments"
+```
+
+- [ ] **Bước 5.13: Ghi §Lịch sử thay đổi**
+
+### Checklist bàn giao Task 5
+
+- [ ] Sandbox nằm ngoài `.sln`, không sửa file C# nào
+- [ ] `config.py` đọc `align_stitch.ini`, fallback đúng mặc định C# (không phải mặc định OpenCV)
+- [ ] `pyramid_ecc.py` truyền `gaussFiltSize=5` tường minh
+- [ ] Thứ tự `findTransformECC(reference, moving, …)` đúng chiều template/input
+- [ ] Pyramid index 0 = full resolution, duyệt từ index lớn về 0
+- [ ] `scale` chỉ nhân/chia phần translation
+- [ ] Chuỗi kiểm tra ValidateMovingToReference đúng thứ tự như C#
+- [ ] UI có: chọn cặp, cửa sổ tiền xử lý, cửa sổ match trước/sau, ma trận 3×3, kết luận accept/reject
+- [ ] [USER] `rawScore` sandbox khớp `eccCorrelation` trong report (lệch < 0.02)
+- [ ] [USER] step 4031.5 cho score cao hơn step 4096
+- [ ] [USER] bảng dò tham số đã ghi; ECC correlation **không giảm**
+- [ ] Entry `implement_code.html` + commit + §Lịch sử thay đổi
+
+---
+
+## Task 6: Sweep 4 FOV và tổng kết
 
 **Files:**
 - Modify: `docs/implement_code.html`
@@ -1471,16 +2309,16 @@ git commit -m "Report edge measurement state and vertex degree in the pose graph
 
 ---
 
-- [ ] **Bước 5.1: [USER] Chạy case 4096 trước tiên**
+- [ ] **Bước 6.1: [USER] Chạy case 4096 trước tiên**
 
 Chạy `alignstitchmem` với `sample_4096_o63.json`. Case này quan trọng nhất: `TileWidth = ImageWidth`
 nên ROI của Neighbor Recovery rộng đúng `CaptureOverlap` — nếu alias tự hết thì thấy ở đây.
 
-- [ ] **Bước 5.2: [USER] Chạy 3 case còn lại**
+- [ ] **Bước 6.2: [USER] Chạy 3 case còn lại**
 
 `sample_4192_o159.json`, `sample_4240_o207.json`, `sample_4320_o287.json`.
 
-- [ ] **Bước 5.3: Thu thập số liệu**
+- [ ] **Bước 6.3: Thu thập số liệu**
 
 Với mỗi run, ghi lại bảng:
 
@@ -1501,7 +2339,7 @@ print('residualDx n=%d mean=%.2f std=%.2f'%(len(v),st.mean(v),st.pstdev(v)) if v
 " <duong_dan>/processing_report.json
 ```
 
-- [ ] **Bước 5.4: So với tiêu chí nghiệm thu**
+- [ ] **Bước 6.4: So với tiêu chí nghiệm thu**
 
 | Metric | Trước | Mục tiêu |
 |---|---|---|
@@ -1513,24 +2351,24 @@ print('residualDx n=%d mean=%.2f std=%.2f'%(len(v),st.mean(v),st.pstdev(v)) if v
 | Tile blank | 29 | **29** (giữ nguyên — hợp lệ) |
 | Bậc đỉnh < 2 | — | chỉ trong vùng trống thật |
 
-- [ ] **Bước 5.5: Ghi kết quả vào `docs/superpowers/plans/2026-08-15-grid-pitch-calibration-results.md`**
+- [ ] **Bước 6.5: Ghi kết quả vào `docs/superpowers/plans/2026-08-15-grid-pitch-calibration-results.md`**
 
 Bảng 4 case × các metric trên, kèm nhận định. **Nếu `edgesGatedOut` tăng vọt**, ghi rõ — đó là dữ
 liệu quyết định cho hạng mục ROI/alias ở §7 spec, **không** được xử lý bằng cách nới
 `MaxEdgeResidualPixels`.
 
-- [ ] **Bước 5.6: Ghi `docs/implement_code.html`** — entry tổng kết
+- [ ] **Bước 6.6: Ghi `docs/implement_code.html`** — entry tổng kết
 
-- [ ] **Bước 5.7: Commit**
+- [ ] **Bước 6.7: Commit**
 
 ```bash
 git add docs/superpowers/plans/2026-08-15-grid-pitch-calibration-results.md docs/implement_code.html
 git commit -m "Record grid pitch calibration sweep results for four FOV configs"
 ```
 
-- [ ] **Bước 5.8: Ghi §Lịch sử thay đổi**
+- [ ] **Bước 6.8: Ghi §Lịch sử thay đổi**
 
-### Checklist bàn giao Task 5
+### Checklist bàn giao Task 6
 
 - [ ] 4 case đã chạy, số liệu đã thu
 - [ ] Bảng so sánh với tiêu chí nghiệm thu đã điền
@@ -1549,6 +2387,7 @@ git commit -m "Record grid pitch calibration sweep results for four FOV configs"
 |---|---|---|---|---|
 | 2026-08-15 | — | `633bb96` | Viết spec thiết kế | — |
 | 2026-08-15 | — | (plan này) | Viết implementation plan. Xác minh trước khi viết: `UseRejectedEdges=true` đã giữ measured transform, 142/142 cạnh có phép đo thật ⇒ Task 4 thu hẹp còn sửa báo cáo. | — |
+| 2026-08-15 | — | (plan này) | Chèn Task 5 mới (sandbox Python: tiền xử lý §8.3 + PyramidECC có UI). Task "Sweep 4 FOV" cũ dời thành Task 6, các bước đánh lại số 6.x. | — |
 | | | | | |
 
 ### Ghi chú cho người thực thi
