@@ -74,20 +74,32 @@ RDL.GerberStitch.Harness.exe --mode createsamplemem --tile 4320
 ```
 
 Tham số CLI: `--tile <px>` (mặc định = `CreateSampleMem.TileWidth`), `--tileh <px>` (mặc định = bằng
-`--tile`), `--raster <path>`, `--template <path>`, `--out <thư mục>`.
+`--tile`, dùng khi cần test lưới không vuông), `--raster <path>`, `--template <path>`,
+`--out <thư mục>`.
 
-**Đối chiếu quan trọng nhất** (xem Bước 1.9 trong plan):
+> **Cập nhật 2026-08-16 (entry 24, `docs/implement_code.html`):** `--tile`/`--tileh` giờ đổi **cả**
+> `ImageWidth`/`ImageHeight` **lẫn** `TileWidth`/`TileHeight` — mô phỏng "nếu camera AOI chụp FOV
+> vật lý lớn hơn", không chỉ nới cửa sổ crop quanh một ảnh chụp cố định 4096 như thiết kế ban đầu.
+> Hệ quả: `CaptureOverlap` (bước lưới vật lý là hằng số, không đổi) giờ **tăng dần theo `--tile`**,
+> không còn bất biến ở 63 nữa.
+
+**Đối chiếu** (đã kiểm chứng trên máy, kể cả raster BigTIFF 1.28GB — không còn OOM):
 
 ```
-StepX / StepY     = 4033.0    / 4033.0
-CaptureOverlap    = 63 / 63        ← PHẢI giữ nguyên ở cả 4 lần chạy, không đổi theo --tile
-TileOverlap       = 63 / 159 / 207 / 287   (đổi theo --tile)
-Clamped tiles     = 0              ← hiện trạng cũ (trước Task 1) là 13
+--tile 4096:  StepX/Y=4032.98  CaptureOverlap=63.02   TileOverlap=63.02   Tile size=4096x4096  Clamped=0
+--tile 4192:  StepX/Y=4032.98  CaptureOverlap=159.02  TileOverlap=159.02  Tile size=4192x4192  Clamped=17
+--tile 4240:  StepX/Y=4032.98  CaptureOverlap=207.02  TileOverlap=207.02  Tile size=4240x4240  Clamped=17
+--tile 4320:  StepX/Y=4032.98  CaptureOverlap=287.02  TileOverlap=287.02  Tile size=4320x4320  Clamped=17
 ```
+
+`CaptureOverlap` và `TileOverlap` giờ luôn bằng nhau (vì `ImageWidth == TileWidth` trong mode này).
+Từ `--tile 4192` trở lên, `Clamped tiles > 0` là **bình thường** — FOV giả định lớn hơn không còn
+vừa khít raster thật (40418×32364), khác hẳn `Clamped tiles = 0` ở `--tile 4096`.
 
 Nếu có `--out`/`--template` hợp lệ (đã có sẵn trong `global_config.json`), lệnh còn in dòng
-`Payload = ...\sample_<fov>_o<overlap>.json` — đây là file bạn dùng cho mode `alignstitchmem` ở
-dưới.
+`Payload = ...\sample_<tile>_o<overlap>.json` — đây là file bạn dùng cho mode `alignstitchmem` ở
+dưới. `--out` là **thư mục** (không phải đường dẫn file), tên file tự sinh theo đúng mẫu
+`sample_<TileWidth>_o<TileOverlap>.json`.
 
 #### `alignstitchmem` — chạy align+stitch thật với payload in-memory (Task 3, 6)
 

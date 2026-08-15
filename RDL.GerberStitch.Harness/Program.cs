@@ -413,8 +413,15 @@ namespace RDL.GerberStitch.Harness
                 return 2;
             }
 
-            int tileWidth = ParseIntArg(args, "--tile", cfg.TileWidth);
-            int tileHeight = ParseIntArg(args, "--tileh", cfg.TileHeight > 0 ? cfg.TileHeight : tileWidth);
+            // [Claude] [Change time: 2026-08-16] [Purpose: --tile mo phong "neu camera AOI thuc su
+            // chup FOV lon hon", nen ImageWidth/Height (kich thuoc anh chup that) phai doi CUNG voi
+            // TileWidth/Height (cua so crop tren raster) -- khong chi rieng crop window nhu ban dau.
+            // Buoc luoi (CapturePitch/CamRes) la hang so vat ly, KHONG doi theo --tile, nen
+            // CaptureOverlap = ImageWidth - step se lon dan theo --tile, dung tinh than cau hoi goc:
+            // FOV cang lon thi overlap khai bao cang lon (4096/63, 4192/159, 4240/207, 4320/287).
+            // --tileh cho phep ghi de rieng chieu cao (vd test khong vuong); mac dinh bang --tile.]
+            int tileWidth = ParseIntArg(args, "--tile", cfg.TileWidth > 0 ? cfg.TileWidth : cfg.ImageWidth);
+            int tileHeight = ParseIntArg(args, "--tileh", tileWidth);
 
             var spec = new CaptureGridSpec
             {
@@ -422,24 +429,28 @@ namespace RDL.GerberStitch.Harness
                 CapturePitchY = cfg.CapturePitchY,
                 CamResX = cfg.CamResX,
                 CamResY = cfg.CamResY,
-                ImageWidth = cfg.ImageWidth,
-                ImageHeight = cfg.ImageHeight,
+                ImageWidth = tileWidth,
+                ImageHeight = tileHeight,
                 Rows = cfg.Rows,
                 Columns = cfg.Columns,
                 StartOffsetX = cfg.StartOffsetX,
                 StartOffsetY = cfg.StartOffsetY,
-                TileWidth = tileWidth > 0 ? (int?)tileWidth : null,
-                TileHeight = tileHeight > 0 ? (int?)tileHeight : null,
                 Order = CaptureOrder.ColumnMajorZigzag
             };
 
             var rasterPath = GetArg(args, "--raster", cfg.RasterImagePath);
             if (!string.IsNullOrWhiteSpace(rasterPath) && File.Exists(rasterPath))
             {
-                using (var probe = System.Drawing.Image.FromFile(rasterPath))
+                int rw, rh;
+                if (TryReadImageDimensions(rasterPath, out rw, out rh))
                 {
-                    spec.RasterWidth = probe.Width;
-                    spec.RasterHeight = probe.Height;
+                    spec.RasterWidth = rw;
+                    spec.RasterHeight = rh;
+                }
+                else
+                {
+                    Console.Error.WriteLine("CANH BAO: khong doc duoc kich thuoc raster " + rasterPath +
+                                            " -- bo qua kiem tra tran luoi/kep tile.");
                 }
             }
 
@@ -523,6 +534,185 @@ namespace RDL.GerberStitch.Harness
                 if (string.Equals(a, name, StringComparison.OrdinalIgnoreCase))
                     return true;
             return false;
+        }
+
+        // [Claude] [Change time: 2026-08-16] [Purpose: System.Drawing.Image.FromFile giai ma toan bo
+        // pixel qua GDI+ de lay Width/Height. Voi raster Gerber TIFF hang GB tren dia (vd
+        // "2-2 Gerber fix black.tiff" ~1.28GB), GDI+ nem OutOfMemoryException -- day la loi codec
+        // TIFF cu cua GDI+ (bo giai ma khong scale duoc voi anh lon), khong phai thieu RAM that.
+        // Doc thang header (TIFF IFD tag 256/257, PNG IHDR, BMP DIB header) ma khong giai ma pixel
+        // nao. JPEG/dinh dang khac van roi ve GDI+ vi hiem khi dat kich thuoc gay OOM trong domain
+        // nay (luon la .tif/.tiff cho raster Gerber that).]
+        private static bool TryReadImageDimensions(string path, out int width, out int height)
+        {
+            width = 0;
+            height = 0;
+            try
+            {
+                var ext = Path.GetExtension(path).ToLowerInvariant();
+                if (ext == ".tif" || ext == ".tiff")
+                    return TryReadTiffDimensions(path, out width, out height);
+                if (ext == ".png")
+                    return TryReadPngDimensions(path, out width, out height);
+                if (ext == ".bmp")
+                    return TryReadBmpDimensions(path, out width, out height);
+
+                using (var img = System.Drawing.Image.FromFile(path))
+                {
+                    width = img.Width;
+                    height = img.Height;
+                    return true;
+                }
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+        }
+
+        // [Claude] [Change time: 2026-08-16] [Purpose: File Gerber raster hang GB thuc te tren may
+        // nay ("2-2 Gerber fix black.tiff", 1.28GB) la BigTIFF (magic=43), khong phai classic TIFF
+        // (magic=42) -- da xac nhan bang cach doc header tho: "49 49 2b 00 08 00 00 00 10 00 ...".
+        // BigTIFF doi offset IFD tu 4 byte len 8 byte, so luong entry tu 2 byte len 8 byte, va moi
+        // entry tu 12 byte len 20 byte {tag(2),type(2),count(8),value(8)}. Ho tro ca hai dang.]
+        private static bool TryReadTiffDimensions(string path, out int width, out int height)
+        {
+            width = 0;
+            height = 0;
+            using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))
+            using (var br = new BinaryReader(fs))
+            {
+                var mark = br.ReadBytes(4);
+                if (mark.Length < 4) return false;
+                bool little;
+                if (mark[0] == 'I' && mark[1] == 'I') little = true;
+                else if (mark[0] == 'M' && mark[1] == 'M') little = false;
+                else return false;
+
+                Func<int> readUInt16 = () =>
+                {
+                    var b = br.ReadBytes(2);
+                    return little ? (b[0] | (b[1] << 8)) : ((b[0] << 8) | b[1]);
+                };
+                Func<long> readUInt32 = () =>
+                {
+                    var b = br.ReadBytes(4);
+                    return little
+                               ? ((uint)b[0] | ((uint)b[1] << 8) | ((uint)b[2] << 16) | ((uint)b[3] << 24))
+                               : ((uint)b[3] | ((uint)b[2] << 8) | ((uint)b[1] << 16) | ((uint)b[0] << 24));
+                };
+                Func<long> readUInt64 = () =>
+                {
+                    var b = br.ReadBytes(8);
+                    if (!little) Array.Reverse(b);
+                    return BitConverter.ToInt64(b, 0);
+                };
+
+                int magic = little ? (mark[2] | (mark[3] << 8)) : ((mark[2] << 8) | mark[3]);
+                bool isBigTiff = magic == 43;
+                if (magic != 42 && !isBigTiff) return false;
+
+                long ifdOffset;
+                int entrySize;
+                if (isBigTiff)
+                {
+                    readUInt16(); // bytesize cua offset, luon = 8, khong can doc
+                    readUInt16(); // hang so 0
+                    ifdOffset = readUInt64();
+                    entrySize = 20;
+                }
+                else
+                {
+                    ifdOffset = readUInt32();
+                    entrySize = 12;
+                }
+                if (ifdOffset <= 0 || ifdOffset >= fs.Length) return false;
+
+                fs.Seek(ifdOffset, SeekOrigin.Begin);
+                long entryCount = isBigTiff ? readUInt64() : readUInt16();
+                for (long i = 0; i < entryCount; i++)
+                {
+                    long entryStart = fs.Position;
+                    int tag = readUInt16();
+                    int type = readUInt16();
+                    // count -- khong can gia tri, chi can bo qua dung 4 (classic) hoac 8 (BigTIFF) byte
+                    long value;
+                    if (isBigTiff)
+                    {
+                        readUInt64(); // count
+                        if (type == 3) value = readUInt16(); // SHORT
+                        else if (type == 4) value = readUInt32(); // LONG
+                        else if (type == 16 || type == 17) value = readUInt64(); // LONG8/SLONG8
+                        else
+                        {
+                            fs.Seek(entryStart + entrySize, SeekOrigin.Begin);
+                            continue;
+                        }
+                    }
+                    else
+                    {
+                        readUInt32(); // count
+                        if (type == 3) value = readUInt16(); // SHORT
+                        else if (type == 4) value = readUInt32(); // LONG
+                        else
+                        {
+                            fs.Seek(entryStart + entrySize, SeekOrigin.Begin);
+                            continue;
+                        }
+                    }
+
+                    if (tag == 256) width = (int)value;
+                    else if (tag == 257) height = (int)value;
+
+                    fs.Seek(entryStart + entrySize, SeekOrigin.Begin);
+                    if (width > 0 && height > 0) return true;
+                }
+                return width > 0 && height > 0;
+            }
+        }
+
+        private static bool TryReadPngDimensions(string path, out int width, out int height)
+        {
+            width = 0;
+            height = 0;
+            using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))
+            using (var br = new BinaryReader(fs))
+            {
+                var sig = br.ReadBytes(8);
+                byte[] pngSig = { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A };
+                if (sig.Length < 8) return false;
+                for (int i = 0; i < 8; i++)
+                    if (sig[i] != pngSig[i])
+                        return false;
+
+                br.ReadBytes(4); // length cua chunk IHDR, luon = 13, khong can doc
+                var chunkType = br.ReadBytes(4);
+                if (chunkType.Length < 4 || chunkType[0] != 'I' || chunkType[1] != 'H' ||
+                    chunkType[2] != 'D' || chunkType[3] != 'R')
+                    return false;
+
+                var w = br.ReadBytes(4); // big-endian
+                var h = br.ReadBytes(4);
+                if (w.Length < 4 || h.Length < 4) return false;
+                width = (w[0] << 24) | (w[1] << 16) | (w[2] << 8) | w[3];
+                height = (h[0] << 24) | (h[1] << 16) | (h[2] << 8) | h[3];
+                return width > 0 && height > 0;
+            }
+        }
+
+        private static bool TryReadBmpDimensions(string path, out int width, out int height)
+        {
+            width = 0;
+            height = 0;
+            using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))
+            using (var br = new BinaryReader(fs))
+            {
+                if (br.ReadByte() != 'B' || br.ReadByte() != 'M') return false;
+                fs.Seek(18, SeekOrigin.Begin); // bfSize+reserved+bfOffBits+biSize = 18 byte
+                width = br.ReadInt32();
+                height = Math.Abs(br.ReadInt32());
+                return width > 0 && height > 0;
+            }
         }
 
         // [Claude] [Change time: 2026-08-07] [Purpose: The standalone harness has no production Master/Worker deployment folder containing HALCON assemblies. Because the library references intentionally use Private=False, resolve them from HALCONROOT at runtime.]
