@@ -859,7 +859,7 @@ git commit -m "Emit sample_<fov>_o<overlap>.json from the capture grid"
 
 ---
 
-- [ ] **Bước 3.1: Thêm model vào `WorkflowModels.cs`**
+- [x] **Bước 3.1: Thêm model vào `WorkflowModels.cs`**
 
 Đặt cạnh `RecoveryEdgePurpose` (dòng 436).
 
@@ -898,7 +898,7 @@ Thêm vào class report chính (cùng chỗ khai báo `RecoveryEdges`, `PoseGrap
         public GridCalibrationReport GridCalibration { get; set; }
 ```
 
-- [ ] **Bước 3.2: Tạo `GridCalibrationProbe.cs`**
+- [x] **Bước 3.2: Tạo `GridCalibrationProbe.cs`**
 
 ```csharp
 using System;
@@ -1129,7 +1129,7 @@ namespace GerberViewer.Stitching.Alignment
 }
 ```
 
-- [ ] **Bước 3.3: Gọi probe trong `AlignStitchWorkflowService.RunAsync`**
+- [x] **Bước 3.3: Gọi probe trong `AlignStitchWorkflowService.RunAsync`**
 
 Chèn **sau** khối kiểm `ModelGeneration=Pregenerate` (kết thúc dòng 174) và **trước** vòng `for` ở dòng 176:
 
@@ -1162,7 +1162,7 @@ Chèn **sau** khối kiểm `ModelGeneration=Pregenerate` (kết thúc dòng 174
 > `WorkflowImageCache.GetMono8(string) → Mat` (`WorkflowImageCache.cs:15`). Signature của
 > `GridCalibrationProbe.Run` ở Bước 3.2 khớp chính xác — không cần điều chỉnh.
 
-- [ ] **Bước 3.4: Build**
+- [x] **Bước 3.4: Build**
 
 ```bash
 msbuild RDL.GerberStitch.sln /p:Configuration=Debug /p:Platform=x64
@@ -1194,7 +1194,7 @@ gridCalibration.medianScore   > 0.8
 Nếu ra `Warning` (|Δ| > 2), chỉnh `CapturePitchX/Y` xuống `2620.35` trong `global_config.json`,
 sinh lại payload, chạy lại. **Không nới ngưỡng `WarnPixels`.**
 
-- [ ] **Bước 3.7: Ghi `docs/implement_code.html`**
+- [x] **Bước 3.7: Ghi `docs/implement_code.html`**
 
 - [ ] **Bước 3.8: Commit**
 
@@ -1203,18 +1203,18 @@ git add GerberStitching.Core/Alignment/GridCalibrationProbe.cs GerberStitching.C
 git commit -m "Add grid calibration probe that measures the real capture step"
 ```
 
-- [ ] **Bước 3.9: Ghi §Lịch sử thay đổi** (kèm số `measuredStepX/Y` thực tế đo được)
+- [x] **Bước 3.9: Ghi §Lịch sử thay đổi** (kèm số `measuredStepX/Y` thực tế đo được)
 
 ### Checklist bàn giao Task 3
 
-- [ ] Probe chạy **trước** vòng lặp Direct Alignment
-- [ ] `Inconclusive` **không** làm fail run
-- [ ] `Mismatch` ném exception, không chạy tiếp
-- [ ] Probe dùng dải tìm kiếm rộng (`SearchMarginPx = 240`), **không** dùng ROI 96 px của Neighbor Recovery
-- [ ] Mọi `Mat` mượn từ `WorkflowImageCache` **không** bị dispose (cache sở hữu chúng); chỉ `Mat` tạo mới trong `using` mới được dispose
-- [ ] Build x64 thành công
+- [x] Probe chạy **trước** vòng lặp Direct Alignment
+- [x] `Inconclusive` **không** làm fail run
+- [x] `Mismatch` ném exception, không chạy tiếp
+- [x] Probe dùng dải tìm kiếm rộng (`SearchMarginPx = 240`), **không** dùng ROI 96 px của Neighbor Recovery
+- [x] Mọi `Mat` mượn từ `WorkflowImageCache` **không** bị dispose (cache sở hữu chúng); chỉ `Mat` tạo mới trong `using` mới được dispose
+- [x] Build x64 thành công
 - [ ] [USER] lưới cũ ⇒ `Mismatch`; payload mới ⇒ `Ok`
-- [ ] Entry `implement_code.html` + commit + §Lịch sử thay đổi
+- [x] Entry `implement_code.html` + commit + §Lịch sử thay đổi
 
 ---
 
@@ -2428,6 +2428,7 @@ git commit -m "Record grid pitch calibration sweep results for four FOV configs"
 | 2026-08-15 | 5 | (plan này) | User đã duyệt bố cục UI của `app.py`. Chốt 4 quyết định thiết kế ở Bước 5.6 — không tự đổi cấu trúc panel/tab khi cài đặt. | — |
 | 2026-08-15 | 1 | `bd3dbe6` | `CaptureGridCalculator`/`CaptureGridSpec`/`CaptureGridResult` (mới) + `GerberStitchFacade.BuildCaptureGrid` + harness mode `createsamplemem`. Build x64 PASS, 0 lỗi mới. Bước 1.9/1.10 ([USER]) đang chờ user chạy `RDL.GerberStitch.Harness.exe --mode createsamplemem` để đối chiếu `Clamped tiles = 0` và sweep `--tile`. | Không gặp lỗi build nào (đã thêm `<Compile Include>` cho 3 file mới vào `.csproj` ngay từ đầu, tránh lặp lại CS0246 đã gặp ở entry 11 trong `implement_code.html`). |
 | 2026-08-15 | 2 | `137f40d` | `CaptureGridJsonWriter` (mới, merge trên `JObject`) + gọi trong `RunCreateSampleMem` + thêm reference `Newtonsoft.Json` (`Private=True`) vào `RDL.GerberStitch.Harness.csproj` + `<Compile Include>` cho file mới vào `RDL.GerberStitch.csproj`. Build x64 PASS, 0 lỗi mới, xác nhận `Newtonsoft.Json.dll` đã copy vào `RDL.GerberStitch.Harness/bin/x64/Debug/`. Bước 2.5/2.6 ([USER]) đang chờ user chạy `--mode createsamplemem --tile <4096/4192/4240/4320>` để đối chiếu nội dung 4 file `sample_<fov>_o<overlap>.json`. | Không gặp lỗi build nào — đã chủ động thêm reference Newtonsoft.Json + `<Compile Include>` ngay từ đầu theo đúng brief nên tránh trước 2 lỗi đã biết (`FileNotFoundException` lúc chạy do thiếu Newtonsoft; `CS0246` do old-style `.csproj` không tự glob). |
+| 2026-08-15 | 3 | `PENDING_HASH` | `GridCalibrationProbe` (mới, matchTemplate dải rộng đo bước lưới thật) + `GridCalibrationReport`/`GridCalibrationStatus` trong `WorkflowModels.cs` + gọi probe trong `AlignStitchWorkflowService.RunAsync` (sau kiểm `ModelGeneration=Pregenerate`, trước vòng `for` Direct Alignment) + `<Compile Include>` vào `GerberStitching.Core.csproj`. Build x64 PASS, 0 lỗi mới. Bước 3.5/3.6 ([USER]) đang chờ user chạy Harness với payload lưới cũ (kỳ vọng `Mismatch`, Δ≈−64px) và payload mới `sample_4096_o63.json` (kỳ vọng `Ok`, measuredStepX/Y chưa có số thật — user điền vào bảng này sau khi chạy). | `CS0051 Inconsistent accessibility`: `GridCalibrationProbe.Run` (public) nhận tham số `WorkflowImageCache` (internal) — brief không lường trước. Fix: đổi `GridCalibrationProbe` thành `internal static class` (chỉ gọi nội bộ cùng assembly, không cần expose qua façade). Xem entry 21 trong `implement_code.html`. |
 | | | | | |
 
 ### Ghi chú cho người thực thi

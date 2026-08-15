@@ -889,6 +889,39 @@ else if (requireFiles &amp;&amp; !string.IsNullOrWhiteSpace(t.ExpectedPath) &amp
 </div>
 
 <!-- ============================================================ -->
+<h2 id="entry-21">21. 2026-08-15 (nhánh <code>Ver2_3</code>) — Task 3: <code>GridCalibrationProbe</code> — đo bước lưới thật để cảnh báo/fail sớm</h2>
+<div class="entry">
+  <div class="entry-meta"><span class="badge ok">Core</span> Phạm vi: <code>GerberStitching.Core/Alignment/GridCalibrationProbe.cs</code> (mới), <code>GerberStitching.Core/Models/WorkflowModels.cs</code>, <code>GerberStitching.Core/Alignment/AlignStitchWorkflowService.cs</code>, <code>GerberStitching.Core/GerberStitching.Core.csproj</code>. Task 3 của plan <code>docs/superpowers/plans/2026-08-15-grid-pitch-calibration.md</code>.</div>
+
+  <h4>Bối cảnh</h4>
+  <p>Task 1-2 sửa cách <em>sinh</em> lưới toạ độ tile theo đúng công thức Master, nhưng repo chưa có bước nào <em>đo</em> lại xem lưới khai báo (<code>ExpectedX/Y</code>) có khớp với bước chụp thật hay không — một lệch pitch hệ thống (vd. nhập overlap tay sai) chỉ lộ ra ở ảnh stitched cuối cùng, sau khi toàn bộ pipeline Align→PoseGraph→Stitch đã chạy xong (tốn nhiều phút). Task 3 thêm <code>GridCalibrationProbe</code>: chạy <code>Cv2.MatchTemplate</code> trên dải RỘNG (biên tìm ±240px) giữa các cặp tile liền kề để đo bước lưới thật, so với lưới khai báo, rồi CẢNH BÁO (Warning) hoặc FAIL SỚM (Mismatch, ném <code>InvalidOperationException</code>) — không tự sửa lưới, không đổi hành vi bất kỳ matcher nào.</p>
+
+  <h3>21.1. Vì sao dải tìm kiếm RỘNG, không dùng lại ROI của Neighbor Recovery</h3>
+  <ul>
+    <li>Đường Neighbor Recovery hiện có lấy bề rộng ROI từ hình học tile nên chỉ ~96px — trên board có hoạ tiết tuần hoàn (linh kiện lặp lại theo chu kỳ), 96px dễ bị khoá nhầm vào một chu kỳ lặp lại thay vì đúng bước lưới thật (bug alias đã biết, KHÔNG thuộc phạm vi Task 3, không đụng vào).</li>
+    <li><code>GridCalibrationProbe</code> dựng đường đo hoàn toàn độc lập: <code>SearchMarginPx = 240</code>, <code>TemplateThicknessPx = 64</code>, matchTemplate trên dải dài gần hết chiều vuông góc (chừa <code>PerpendicularMarginPx = 80</code> mỗi đầu) — đủ rộng để không alias theo chu kỳ linh kiện nhỏ.</li>
+  </ul>
+
+  <h3>21.2. Đánh đổi thiết kế</h3>
+  <ul>
+    <li><strong>Chỉ đo và cảnh báo, không ghi đè lưới</strong> — nguồn sự thật của lưới vẫn là <code>ExpectedX/Y</code> do Master truyền vào qua manifest/payload. Probe không sửa <code>AnchorRoi</code>/<code>TargetRoi</code>/<code>NeighborTransformModel</code> hay bất kỳ matcher nào.</li>
+    <li><strong>Lấy mẫu 8 cặp/trục (median), không quét cả 142 cạnh</strong> — đủ tin cậy để phát hiện lệch hệ thống (bias toàn cục), nhanh hơn nhiều so với đo toàn bộ; ngưỡng <code>MinSamplesPerAxis = 4</code> để tránh kết luận vội trên board có vùng trống lớn (không đủ mẫu ⇒ <code>Inconclusive</code>, KHÔNG coi là lỗi, không fail run).</li>
+    <li><strong>3 trạng thái ngoài <code>Ok</code>:</strong> <code>Inconclusive</code> (không đủ mẫu — không fail), <code>Warning</code> (lệch &gt; 2px — chỉ log <code>report.Warnings</code>), <code>Mismatch</code> (lệch &gt; 16px — ném <code>InvalidOperationException</code>, dừng run trước khi vào vòng lặp Direct Alignment, tiết kiệm toàn bộ thời gian pipeline phía sau).</li>
+    <li>Chèn probe <strong>ngay sau</strong> khối kiểm <code>ModelGeneration=Pregenerate</code> và <strong>trước</strong> vòng <code>for</code> xử lý từng tile trong <code>AlignStitchWorkflowService.RunAsync</code> — chạy đúng một lần cho cả batch, trước khi bất kỳ tile nào được align.</li>
+    <li><strong>Quản lý <code>Mat</code>:</strong> <code>Mat</code> lấy từ <code>WorkflowImageCache.GetMono8</code> (biến <code>anchor</code>, <code>target</code>) KHÔNG bị dispose — cache sở hữu và tái sử dụng chúng xuyên suốt run. Chỉ 3 <code>Mat</code> tự tạo trong <code>Measure</code> (<code>template</code>, <code>search</code> — cắt view bằng constructor <code>Mat(Mat, Rect)</code>, và <code>response</code> — kết quả <code>MatchTemplate</code>) được bọc trong <code>using</code> để tự dispose.</li>
+  </ul>
+
+  <h3>21.3. Lỗi build gặp phải: <code>CS0051</code> inconsistent accessibility</h3>
+  <p><span class="badge warn">Build error, đã fix</span> Bản build đầu tiên (đúng code mẫu trong brief y hệt, class <code>GridCalibrationProbe</code> khai <code>public</code>) lỗi: <code>error CS0051: Inconsistent accessibility: parameter type 'WorkflowImageCache' is less accessible than method 'GridCalibrationProbe.Run(...)'</code>. Nguyên nhân: <code>WorkflowImageCache</code> là <code>internal sealed class</code> (<code>WorkflowImageCache.cs:9</code>), nhưng <code>GridCalibrationProbe.Run</code> nhận nó làm tham số trong khi bản thân class/method lại <code>public</code> — C# không cho phép method public "rò" một type internal ra ngoài assembly qua signature. Brief không lường trước điểm này vì code mẫu copy gần đúng nhưng thiếu bước đối chiếu độ khả kiến của <code>WorkflowImageCache</code>. <strong>Fix:</strong> đổi <code>public static class GridCalibrationProbe</code> → <code>internal static class GridCalibrationProbe</code> — hợp lý vì probe chỉ được gọi nội bộ từ <code>AlignStitchWorkflowService</code> trong cùng assembly <code>GerberStitching.Core</code>, không cần expose qua façade (đúng ranh giới façade ở AGENTS.md §3.1 — <code>RDL.GerberStitch</code> vẫn không nhìn thấy type nội bộ nào của Core qua thay đổi này).</p>
+
+  <h4>Build</h4>
+  <p><span class="badge ok">PASS</span> <code>msbuild RDL.GerberStitch.sln /p:Configuration=Debug /p:Platform=x64</code> — sau khi fix <code>CS0051</code>, build sạch cả 4 project (<code>GerberEngine</code>, <code>GerberStitching.Core</code>, <code>RDL.GerberStitch</code>, <code>RDL.GerberStitch.Harness</code>), 0 error, chỉ còn các warning có sẵn từ trước (<code>CS0162</code>, <code>CS0618</code>, <code>CS0067</code> — không liên quan Task 3).</p>
+
+  <h4>Chưa xác nhận (chờ user)</h4>
+  <p>Bước 3.5/3.6 của plan (chạy Harness với payload lưới CŨ để xác nhận probe báo <code>Mismatch</code> đúng cách, và payload MỚI <code>sample_4096_o63.json</code> từ Task 2 để xác nhận <code>Ok</code>) là việc user tự chạy — xem báo cáo Task 3 tại <code>.superpowers/sdd/2026-08-15-grid-pitch-calibration/task-3-report.md</code> để biết lệnh chính xác và số liệu kỳ vọng.</p>
+</div>
+
+<!-- ============================================================ -->
 <h2 id="pitfalls">6. Bảng tổng hợp lỗi &amp; cách fix (tra nhanh)</h2>
 <table>
   <tr><th>Triệu chứng</th><th>Nguyên nhân gốc</th><th>Fix</th><th>Entry</th></tr>
@@ -905,6 +938,7 @@ else if (requireFiles &amp;&amp; !string.IsNullOrWhiteSpace(t.ExpectedPath) &amp
   <tr><td><code>System.Xml.XmlException: Encountered unexpected character 'ï'</code> khi <code>DataContractJsonSerializer</code> đọc file JSON thật</td><td>File có UTF-8 BOM; serializer đọc byte BOM như ký tự JSON đầu tiên</td><td>Đọc qua <code>File.ReadAllText(path, Encoding.UTF8)</code> trước để tự bỏ BOM, rồi mới đưa vào serializer</td><td><a href="#entry-18">18</a></td></tr>
   <tr><td><code>"...type requires a JSON string value to deserialize correctly"</code> khi Newtonsoft đọc object JSON thật, hoặc <code>effective_config.json</code> ghi ra chuỗi tóm tắt (<code>ToString()</code>) thay vì object đầy đủ tham số</td><td>Lớp Core mang <code>[TypeConverter(typeof(ExpandableObjectConverter))]</code> (cho WinForms PropertyGrid) — <code>TypeConverter.CanConvertTo(string)</code> mặc định luôn <code>true</code>, Newtonsoft hiểu nhầm type "chuyển được thành chuỗi" ở cả 2 chiều đọc/ghi</td><td><code>IgnoreTypeConverterResolver</code> (mới) ép <code>CreateObjectContract</code> cho type mang <code>TypeConverterAttribute</code>; áp dụng ở cả <code>AlignStitchSettingsReader</code> (đọc) lẫn chỗ ghi <code>effective_config.json</code> trong <code>GerberStitchFacade</code></td><td><a href="#entry-18">18</a></td></tr>
   <tr><td><code>FileNotFoundException: Could not load file or assembly 'Newtonsoft.Json'</code> lúc CHẠY (build sạch, không lỗi)</td><td><code>RDL.GerberStitch.Harness.csproj</code> chưa từng reference <code>Newtonsoft.Json</code> trực tiếp; project này copy-local (khác <code>RDL.GerberStitch</code>/<code>GerberStitching.Core</code> dùng <code>Private=False</code>) nên không tự có DLL trong thư mục output khi một project mới trong chuỗi bắt đầu dùng JSON</td><td>Thêm <code>&lt;Reference Include="Newtonsoft.Json"&gt;</code> trực tiếp vào <code>.csproj</code> của project copy-local, cùng <code>HintPath</code> với project nguồn, với <code>&lt;Private&gt;True&lt;/Private&gt;</code></td><td><a href="#entry-20">20</a></td></tr>
+  <tr><td><code>CS0051: Inconsistent accessibility</code> — tham số <code>WorkflowImageCache</code> kém khả kiến hơn method chứa nó</td><td>Class/method mới khai <code>public</code> nhưng nhận tham số kiểu <code>internal</code> (<code>WorkflowImageCache</code>) trong signature — C# không cho method public "rò" type internal ra ngoài assembly</td><td>Đổi độ khả kiến của class/method mới xuống <code>internal</code> nếu nó chỉ được gọi nội bộ cùng assembly (đối chiếu độ khả kiến của mọi type xuất hiện trong signature <strong>trước</strong> khi quyết định public/internal cho type mới)</td><td><a href="#entry-21">21</a></td></tr>
 </table>
 
 <footer>

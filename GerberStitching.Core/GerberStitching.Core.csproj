@@ -144,6 +144,7 @@
     <Compile Include="Matching\Halcon\HalconShapeModelProvider.cs" />
     <Compile Include="Matching\Halcon\HalconShapeModelMatcher.cs" />
     <Compile Include="Alignment\AlignStitchWorkflowService.cs" />
+    <Compile Include="Alignment\GridCalibrationProbe.cs" />
     <Compile Include="Alignment\GlobalPoseValidator.cs" />
     <Compile Include="Alignment\DirectPoseOutlierCorrector.cs" />
     <Compile Include="Alignment\AlignmentPoseInterpolator.cs" />

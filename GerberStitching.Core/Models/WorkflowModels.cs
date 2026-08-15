@@ -228,6 +228,8 @@ namespace GerberViewer.Stitching.Models
         public GerberViewer.Stitching.Alignment.Graph.PoseGraphReport PoseGraph { get; set; }
         public GlobalPoseValidationReport GlobalPoseValidation { get; set; }
         public StitchingExecutionReport StitchingExecution { get; set; }
+        // [Claude] [Change time: 2026-08-15] [Purpose: Kết quả đo bước lưới thật từ ảnh chụp, xem GridCalibrationProbe.]
+        public GridCalibrationReport GridCalibration { get; set; }
         // Measure every Tab 3 workflow stage for display on the Execute Time tab.
         public IList<StageTimingReport> StageTimings { get; set; } = new List<StageTimingReport>();
         public string FinalOutputPath { get; set; }
@@ -437,6 +439,33 @@ namespace GerberViewer.Stitching.Models
     {
         FailureRecovery,
         FullPoseReconciliation
+    }
+
+    // [Claude] [Change time: 2026-08-15] [Purpose: Kết quả bước đo bước lưới thật từ ảnh chụp. Chỉ để CẢNH BÁO --
+    // nguồn sự thật của lưới vẫn là ExpectedX/Y do Master truyền vào. Xem spec §4.]
+    public enum GridCalibrationStatus
+    {
+        /// <summary>Không đủ mẫu tin cậy để kết luận. KHÔNG được coi là lỗi — board có thể có vùng trống lớn.</summary>
+        Inconclusive = 0,
+        Ok = 1,
+        Warning = 2,
+        Mismatch = 3
+    }
+
+    public sealed class GridCalibrationReport
+    {
+        public GridCalibrationStatus Status { get; set; } = GridCalibrationStatus.Inconclusive;
+        public double DeclaredStepX { get; set; } = double.NaN;
+        public double DeclaredStepY { get; set; } = double.NaN;
+        public double MeasuredStepX { get; set; } = double.NaN;
+        public double MeasuredStepY { get; set; } = double.NaN;
+        public double MeasuredRotationDeg { get; set; } = double.NaN;
+        public double DeltaX { get; set; } = double.NaN;
+        public double DeltaY { get; set; } = double.NaN;
+        public int SampleCountX { get; set; }
+        public int SampleCountY { get; set; }
+        public double MedianScore { get; set; } = double.NaN;
+        public string Message { get; set; }
     }
     public sealed class ProcessingTileReport
     {

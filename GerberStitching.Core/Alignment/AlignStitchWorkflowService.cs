@@ -173,6 +173,27 @@ namespace GerberViewer.Stitching.Alignment
                         "in-memory tile source. Use ModelGeneration=OnTheFly.");
                 }
 
+                // [Claude] [Change time: 2026-08-15] [Purpose: Đo bước lưới thật trước khi Direct Alignment chạy.
+                // Một lệch pitch hệ thống làm hỏng TOÀN BỘ pipeline phía sau nhưng chỉ lộ ra ở ảnh stitched cuối
+                // cùng; bắt ở đây tốn ~2 giây. Xem spec §4.]
+                report.GridCalibration =
+                    GridCalibrationProbe.Run(ordered, tileByOrder, _imageCache, new GridCalibrationOptions());
+                var calibration = report.GridCalibration;
+                if (calibration != null && !string.IsNullOrEmpty(calibration.Message))
+                {
+                    if (calibration.Status == GridCalibrationStatus.Mismatch)
+                    {
+                        throw new InvalidOperationException(
+                            "GridMismatch: lưới khai báo lệch quá xa bước chụp thật. " + calibration.Message +
+                            " Sinh lại payload bằng CaptureGridCalculator (step = CapturePitch / CamRes) " +
+                            "thay vì nhập overlap bằng tay.");
+                    }
+                    if (calibration.Status == GridCalibrationStatus.Warning)
+                        report.Warnings.Add("GridCalibration: " + calibration.Message);
+                    else
+                        report.Messages.Add("GridCalibration: " + calibration.Message);
+                }
+
                 for (int i = 0; i < ordered.Count; i++)
                 {
                     ct.ThrowIfCancellationRequested();
