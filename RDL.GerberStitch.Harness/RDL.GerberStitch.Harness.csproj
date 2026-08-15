@@ -58,6 +58,13 @@
       <HintPath>..\packages\System.Buffers.4.6.1\lib\net462\System.Buffers.dll</HintPath>
     </Reference>
     <Reference Include="System.Drawing" />
+    <!-- [Claude] [Change time: 2026-08-15] [Purpose: CaptureGridJsonWriter (Task 2) dùng Newtonsoft.Json.Linq
+         để merge JObject. Harness copy-local (khác RDL.GerberStitch/GerberStitching.Core dùng Private=False)
+         nên cần khai reference trực tiếp ở đây, không phó mặc copy-local xuyên ProjectReference. -->
+    <Reference Include="Newtonsoft.Json">
+      <HintPath>..\..\Lib_Supporter\dll\Newtonsoft.Json.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
     <Reference Include="System.Drawing.Common, Version=10.0.0.0, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51, processorArchitecture=MSIL">
       <HintPath>..\packages\System.Drawing.Common.10.0.9\lib\net462\System.Drawing.Common.dll</HintPath>
     </Reference>

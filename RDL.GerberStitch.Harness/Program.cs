@@ -478,6 +478,25 @@ namespace RDL.GerberStitch.Harness
                 Console.WriteLine(string.Format("  {0,3} ({1},{2}) {3,7} {4,7} {5,5} {6,5}",
                                                 t.OrderIndex, t.Row, t.Column, t.X, t.Y, t.Width, t.Height));
             }
+
+            // [Claude] [Change time: 2026-08-15] [Purpose: Task 2 -- merge lưới vừa dựng vào template payload
+            // Master thật, ghi ra sample_<fov>_o<overlap>.json để Task 5/6 dùng test nhiều FOV.]
+            var templatePath = GetArg(args, "--template", cfg.TemplatePayloadPath);
+            var outputPath = GetArg(args, "--out", cfg.OutputPath);
+            if (!string.IsNullOrWhiteSpace(templatePath) && !string.IsNullOrWhiteSpace(outputPath))
+            {
+                try
+                {
+                    var written = CaptureGridJsonWriter.Write(templatePath, outputPath, rasterPath, spec, grid);
+                    Console.WriteLine();
+                    Console.WriteLine("Payload           = " + written);
+                }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine("Ghi payload that bai: " + ex.Message);
+                    return 1;
+                }
+            }
             return 0;
         }
 

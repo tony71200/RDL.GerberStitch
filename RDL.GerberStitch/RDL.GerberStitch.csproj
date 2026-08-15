@@ -98,6 +98,7 @@
     <Compile Include="Facade\AlignStitchConfig.cs" />
     <Compile Include="Facade\AlignStitchConfigIniReader.cs" />
     <Compile Include="Facade\CaptureGridCalculator.cs" />
+    <Compile Include="Facade\CaptureGridJsonWriter.cs" />
     <Compile Include="Facade\CaptureGridResult.cs" />
     <Compile Include="Facade\CaptureGridSpec.cs" />
     <Compile Include="Facade\GerberStitchFacade.cs" />
