@@ -360,6 +360,19 @@ namespace RDL.GerberStitch.Facade
             }
         }
 
+        /// <summary>
+        /// Dựng lưới chụp theo đúng công thức RDL_Master: bước lưới = CapturePitch / CamRes, overlap là đại
+        /// lượng DẪN XUẤT chứ không phải tham số vào. Trả về TileRect[] dùng được ngay cho
+        /// GenerateSampleManifestFromRects và cho overload in-memory của RunAlignStitch.
+        /// Thuần số học — không đọc ảnh, không đụng HALCON.
+        /// </summary>
+        // [Claude] [Change time: 2026-08-15] [Purpose: Thay đường sinh lưới cũ (step = tile - overlap nhập tay)
+        // bằng công thức Master. Xem docs/superpowers/specs/2026-08-15-grid-pitch-calibration-design.md.]
+        public CaptureGridResult BuildCaptureGrid(CaptureGridSpec spec)
+        {
+            return CaptureGridCalculator.Build(spec);
+        }
+
         /// <summary>Kiểm rect nằm trong ảnh và OrderIndex liên tục. Trả null nếu hợp lệ.</summary>
         private static string ValidateRects(IList<TileRect> rects, Size imageSize)
         {

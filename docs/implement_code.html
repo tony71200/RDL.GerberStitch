@@ -80,6 +80,7 @@
     <li><a href="#entry-16">2026-08-14 (nhánh <code>Ver2_0</code>) — Task 8: Nối file settings vào <code>BuildCoreConfig</code> + ghi <code>effective_config.json</code> (Worker-side wiring hoãn lại)</a></li>
     <li><a href="#entry-17">2026-08-15 (nhánh <code>Ver2_0</code>) — Harness: thêm mode <code>alignstitchmem</code> để test overload in-memory bằng dữ liệu thật</a></li>
     <li><a href="#entry-18">2026-08-15 (nhánh <code>Ver2_0</code>) — Chạy thật lần đầu qua Harness <code>alignstitchmem</code>: phát hiện + sửa 2 lỗi Newtonsoft/<code>TypeConverter</code></a></li>
+    <li><a href="#entry-19">2026-08-15 (nhánh <code>Ver2_1</code>) — Task 1: <code>CaptureGridCalculator</code> — sửa công thức bước lưới theo Master</a></li>
     <li><a href="#pitfalls">Bảng tổng hợp lỗi &amp; cách fix (tra nhanh)</a></li>
   </ol>
 </div>
@@ -827,6 +828,37 @@ else if (requireFiles &amp;&amp; !string.IsNullOrWhiteSpace(t.ExpectedPath) &amp
 
   <h4>Build</h4>
   <p><span class="badge ok">PASS</span> <code>msbuild RDL.GerberStitch.sln /p:Configuration=Debug /p:Platform=x64</code>, 0 error (1 warning <code>CS0618</code> có từ trước, không liên quan). Đã thêm <code>IgnoreTypeConverterResolver.cs</code> vào <code>.csproj</code> ngay từ đầu.</p>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="entry-19">19. 2026-08-15 (nhánh <code>Ver2_1</code>) — Task 1: <code>CaptureGridCalculator</code> — sửa công thức bước lưới theo Master</h2>
+<div class="entry">
+  <div class="entry-meta"><span class="badge ok">Facade</span> Phạm vi: <code>Facade/CaptureGridSpec.cs</code>, <code>Facade/CaptureGridResult.cs</code>, <code>Facade/CaptureGridCalculator.cs</code> (mới), <code>Facade/GerberStitchFacade.cs</code>, <code>RDL.GerberStitch.Harness/GlobalConfig.cs</code>, <code>RDL.GerberStitch.Harness/Program.cs</code>, <code>RDL.GerberStitch.Harness/global_config.json</code>. Task 1 của plan <code>docs/superpowers/plans/2026-08-15-grid-pitch-calibration.md</code>.</div>
+
+  <h4>Bối cảnh</h4>
+  <p>Cách sinh lưới toạ độ tile chụp hiện có (dùng ở harness mode <code>createsample</code>, qua <code>GerberSampleConfig</code> mặc định) tính bước lưới từ <code>TileSize - OverlapValue</code> nhập tay — overlap là số nhập tay, không khớp công thức RDL_Master (<code>MapEngine/MapCore.cs</code>) và gây lệch lưới tích luỹ (ghi nhận 580 px lệch trên 9 bước, 13 tile bị kẹp biên ở dữ liệu thật). Task 1 thêm một đường tính lưới <strong>độc lập</strong>, đúng công thức Master: <code>step = CapturePitch / CamRes</code>, và tách overlap thành đại lượng <strong>output</strong> (dẫn xuất), không phải input.</p>
+
+  <h3>19.1. Thiết kế: 3 kiểu mới trong <code>Facade/</code>, không đụng <code>GerberStitching.Core</code></h3>
+  <ul>
+    <li><code>CaptureGridSpec</code> — input thuần số học (pitch/µm, camRes/µm-px, ImageWidth/Height, Rows/Columns, StartOffset, TileWidth/Height tuỳ chọn, <code>CaptureOrder</code>). <strong>Cố ý không có trường overlap</strong> — cho nhập overlap tay chính là bug gốc.</li>
+    <li><code>CaptureGridResult</code> — output, tách rõ <code>CaptureOverlap*</code> (vật lý, = ImageWidth − StepPx, không đổi theo TileWidth, dùng cho mọi ngưỡng thật) và <code>TileOverlap*</code> (quy ước, = TileWidth − StepPx, chỉ dùng cho hậu tố tên file).</li>
+    <li><code>CaptureGridCalculator.Build(spec)</code> — thuần số học, không I/O/HALCON/OpenCV, sinh <code>TileRect[]</code> theo đúng thứ tự <code>ColumnMajorZigzag</code> (<code>idx(r,c) = c*Rows + (c chẵn ? r : Rows−1−r)</code>, khớp payload Master thật trên <code>docs/sample_prepare.json</code>) hoặc <code>RowMajorZigzag</code>.</li>
+  </ul>
+  <p><code>GerberStitchFacade.BuildCaptureGrid(spec)</code> là entry point façade duy nhất, chỉ gọi thẳng <code>CaptureGridCalculator.Build</code> — không rò rỉ kiểu nội bộ Core.</p>
+
+  <h3>19.2. Đánh đổi thiết kế đã chốt</h3>
+  <ul>
+    <li><strong>Giữ truncate <code>(int)</code>, không đổi sang <code>Math.Round</code></strong> khi tính <code>expectedX</code>/<code>expectedY</code> (= <code>(int)(column * stepX - startOffsetX)</code>) — vì công thức Master (<code>MapCore.cs:1167</code>, <code>FOV_Image.X = (int)(FOV_World.X / camResX)</code>) cũng dùng truncate C#, đã xác minh từng pixel khớp dãy trong <code>docs/sample_prepare.json</code> (<code>step=3998.4444</code> → 0, 3998, 7996, 11995).</li>
+    <li><strong>Overlap chuyển từ input thành output</strong> — <code>CaptureGridSpec</code> không có trường overlap nào; <code>CaptureGridResult</code> tính cả hai loại overlap (Capture/Tile) sau khi đã có <code>stepX</code>/<code>stepY</code> từ pitch/camRes.</li>
+    <li>Biên tìm kiếm dôi ra khi <code>TileWidth &gt; ImageWidth</code> được chia <strong>đều hai phía</strong> (<code>marginX = (tileWidth − ImageWidth) / 2</code>) — hiện trạng cũ (<code>GerberSampleConfig</code>/<code>SampleTileGenerator</code>) dồn hết về phải/dưới; không sửa code cũ đó (ngoài phạm vi Task 1), chỉ đường tính mới dùng cách chia đều.</li>
+    <li>Không sửa <code>GerberStitching.Core</code>/<code>GerberSampleConfig</code> — giữ nguyên hành vi cũ cho mode <code>createsample</code> hiện có; Task 1 chỉ thêm đường tính song song, mode harness mới <code>createsamplemem</code> dùng đường tính mới để đối chiếu, chưa thay thế đường cũ.</li>
+  </ul>
+
+  <h4>Build</h4>
+  <p><span class="badge ok">PASS</span> <code>msbuild RDL.GerberStitch.sln /p:Configuration=Debug /p:Platform=x64</code> — 0 error, 1 warning <code>CS0618</code> có sẵn từ trước (không liên quan Task 1). Không gặp lỗi build nào ở lần này (old-style <code>.csproj</code> đã được thêm <code>&lt;Compile Include&gt;</code> cho 3 file mới ngay từ đầu, tránh lặp lại <code>CS0246</code> đã gặp ở entry 11; <code>using RDL.GerberStitch.Facade;</code> đã có sẵn trong <code>Program.cs</code>, <code>System.Drawing</code> đã có reference sẵn trong Harness — không cần sửa gì thêm).</p>
+
+  <h4>Chưa xác nhận (chờ user)</h4>
+  <p>Bước 1.9/1.10 của plan (chạy <code>RDL.GerberStitch.Harness.exe --mode createsamplemem</code> đối chiếu <code>Clamped tiles = 0</code>, sweep 4 FOV đối chiếu <code>CaptureOverlap</code> không đổi) là việc user tự chạy — xem báo cáo Task 1 tại <code>.superpowers/sdd/2026-08-15-grid-pitch-calibration/task-1-report.md</code> để biết lệnh chính xác và số liệu kỳ vọng.</p>
 </div>
 
 <!-- ============================================================ -->

@@ -121,7 +121,7 @@ Ngược lại, khả năng cao alias sẽ **tự hết** với `TileWidth = Ima
 
 ---
 
-- [ ] **Bước 1.1: Tạo `CaptureGridSpec.cs`**
+- [x] **Bước 1.1: Tạo `CaptureGridSpec.cs`**
 
 ```csharp
 using System.ComponentModel;
@@ -181,7 +181,7 @@ namespace RDL.GerberStitch.Facade
 }
 ```
 
-- [ ] **Bước 1.2: Tạo `CaptureGridResult.cs`**
+- [x] **Bước 1.2: Tạo `CaptureGridResult.cs`**
 
 ```csharp
 using System.Collections.Generic;
@@ -224,7 +224,7 @@ namespace RDL.GerberStitch.Facade
 }
 ```
 
-- [ ] **Bước 1.3: Tạo `CaptureGridCalculator.cs`**
+- [x] **Bước 1.3: Tạo `CaptureGridCalculator.cs`**
 
 Công thức đã xác minh từng pixel với `docs/sample_prepare.json`: `step = 2599/0.65 = 3998.4444`,
 `(int)(0×s)=0`, `(int)(1×s)=3998`, `(int)(2×s)=7996`, `(int)(3×s)=11995` — khớp đúng dãy trong file.
@@ -392,7 +392,7 @@ namespace RDL.GerberStitch.Facade
 }
 ```
 
-- [ ] **Bước 1.4: Thêm `BuildCaptureGrid` vào `GerberStitchFacade.cs`**
+- [x] **Bước 1.4: Thêm `BuildCaptureGrid` vào `GerberStitchFacade.cs`**
 
 Chèn ngay **sau** method `GenerateSampleManifestFromRects` (kết thúc quanh dòng 362, trước
 `private static string ValidateRects`).
@@ -412,7 +412,7 @@ Chèn ngay **sau** method `GenerateSampleManifestFromRects` (kết thúc quanh d
         }
 ```
 
-- [ ] **Bước 1.5: Thêm section `CreateSampleMem` vào `GlobalConfig.cs`**
+- [x] **Bước 1.5: Thêm section `CreateSampleMem` vào `GlobalConfig.cs`**
 
 Chèn sau `AlignStitchMemTestConfig` (dòng 35), và thêm property vào `GlobalConfig`.
 
@@ -448,7 +448,7 @@ Trong `GlobalConfig` thêm:
         [DataMember] public CreateSampleMemTestConfig CreateSampleMem { get; set; }
 ```
 
-- [ ] **Bước 1.6: Thêm mode `createsamplemem` vào `Program.cs`**
+- [x] **Bước 1.6: Thêm mode `createsamplemem` vào `Program.cs`**
 
 Trong `Main`, ngay sau nhánh `alignstitchmem` (quanh dòng 32):
 
@@ -555,7 +555,7 @@ Thêm helper (đặt cạnh `GetArg`):
 
 Thêm `using RDL.GerberStitch.Facade;` ở đầu `Program.cs` nếu chưa có.
 
-- [ ] **Bước 1.7: Điền `global_config.json`**
+- [x] **Bước 1.7: Điền `global_config.json`**
 
 Thêm section (giữ nguyên các section cũ):
 
@@ -579,7 +579,7 @@ Thêm section (giữ nguyên các section cũ):
   }
 ```
 
-- [ ] **Bước 1.8: Build**
+- [x] **Bước 1.8: Build**
 
 ```bash
 msbuild RDL.GerberStitch.sln /p:Configuration=Debug /p:Platform=x64
@@ -621,7 +621,7 @@ RDL.GerberStitch.Harness.exe --mode createsamplemem --tile 4320
 `CaptureOverlap` phải **giữ nguyên 63** ở cả bốn lần (nó không phụ thuộc TileWidth).
 `TileOverlap` phải là `63 / 159 / 207 / 287`. Nếu `CaptureOverlap` đổi theo `--tile` thì code đã lẫn hai loại overlap — quay lại Bước 1.3.
 
-- [ ] **Bước 1.11: Ghi `docs/implement_code.html`**
+- [x] **Bước 1.11: Ghi `docs/implement_code.html`**
 
 Entry mới: ngày `2026-08-15`, phạm vi "Task 1 — CaptureGridCalculator", danh sách file, đánh đổi
 (giữ truncate `(int)` để khớp Master từng pixel thay vì `Math.Round`; overlap chuyển từ input thành output),
@@ -638,15 +638,15 @@ git commit -m "Add CaptureGridCalculator using the Master pitch formula"
 
 ### Checklist bàn giao Task 1
 
-- [ ] `CaptureGridSpec` **không có** trường overlap nào
-- [ ] `CaptureGridResult` tách rõ `CaptureOverlap*` và `TileOverlap*`
-- [ ] `ExpectedX` dùng truncate `(int)`, không phải `Math.Round`
-- [ ] Thứ tự tile khớp `idx(r,c) = c*Rows + (c chẵn ? r : Rows−1−r)`
-- [ ] Biên dôi chia đều hai phía (`marginX = (tileWidth − ImageWidth) / 2`)
-- [ ] Build x64 thành công
+- [x] `CaptureGridSpec` **không có** trường overlap nào
+- [x] `CaptureGridResult` tách rõ `CaptureOverlap*` và `TileOverlap*`
+- [x] `ExpectedX` dùng truncate `(int)`, không phải `Math.Round`
+- [x] Thứ tự tile khớp `idx(r,c) = c*Rows + (c chẵn ? r : Rows−1−r)`
+- [x] Biên dôi chia đều hai phía (`marginX = (tileWidth − ImageWidth) / 2`)
+- [x] Build x64 thành công
 - [ ] [USER] `Clamped tiles = 0`, `Required` < kích thước raster
 - [ ] [USER] `CaptureOverlap` không đổi khi sweep `--tile`
-- [ ] Entry `docs/implement_code.html` đã thêm
+- [x] Entry `docs/implement_code.html` đã thêm
 - [ ] Commit xong, §Lịch sử thay đổi đã cập nhật
 
 ---
@@ -2426,6 +2426,7 @@ git commit -m "Record grid pitch calibration sweep results for four FOV configs"
 | 2026-08-15 | — | (plan này) | Viết implementation plan. Xác minh trước khi viết: `UseRejectedEdges=true` đã giữ measured transform, 142/142 cạnh có phép đo thật ⇒ Task 4 thu hẹp còn sửa báo cáo. | — |
 | 2026-08-15 | — | (plan này) | Chèn Task 5 mới (sandbox Python: tiền xử lý §8.3 + PyramidECC có UI). Task "Sweep 4 FOV" cũ dời thành Task 6, các bước đánh lại số 6.x. | — |
 | 2026-08-15 | 5 | (plan này) | User đã duyệt bố cục UI của `app.py`. Chốt 4 quyết định thiết kế ở Bước 5.6 — không tự đổi cấu trúc panel/tab khi cài đặt. | — |
+| 2026-08-15 | 1 | commit sau | `CaptureGridCalculator`/`CaptureGridSpec`/`CaptureGridResult` (mới) + `GerberStitchFacade.BuildCaptureGrid` + harness mode `createsamplemem`. Build x64 PASS, 0 lỗi mới. Bước 1.9/1.10 ([USER]) đang chờ user chạy `RDL.GerberStitch.Harness.exe --mode createsamplemem` để đối chiếu `Clamped tiles = 0` và sweep `--tile`. | Không gặp lỗi build nào (đã thêm `<Compile Include>` cho 3 file mới vào `.csproj` ngay từ đầu, tránh lặp lại CS0246 đã gặp ở entry 11 trong `implement_code.html`). |
 | | | | | |
 
 ### Ghi chú cho người thực thi

@@ -7,5 +7,22 @@
   "CreateSample": {
     "RasterImagePath": "H:\\005_Project\\AOI_2026_07_imp\\20260720_Gerber_Align\\q168_Gerber2-1 to 2-4.tiff",
     "OutputPath": "H:\\005_Project\\AOI_2026_07_imp"
+  },
+  "CreateSampleMem": {
+    "RasterImagePath": "H:\\005_Project\\AOI_2026_07_imp\\20260720_Gerber_Align\\q168_Gerber2-1 to 2-4.tiff",
+    "TemplatePayloadPath": "H:\\005_Project\\AOI_2026_07_imp\\20260812_RDL\\docs\\sample_prepare.json",
+    "OutputPath": "H:\\005_Project\\AOI_2026_07_imp\\20260815_grid",
+    "CapturePitchX": 2621.44,
+    "CapturePitchY": 2621.44,
+    "CamResX": 0.65,
+    "CamResY": 0.65,
+    "ImageWidth": 4096,
+    "ImageHeight": 4096,
+    "Rows": 8,
+    "Columns": 10,
+    "StartOffsetX": 0,
+    "StartOffsetY": 0,
+    "TileWidth": 4096,
+    "TileHeight": 4096
   }
 }

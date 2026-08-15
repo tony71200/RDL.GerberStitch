@@ -32,6 +32,9 @@ namespace RDL.GerberStitch.Harness
             if (string.Equals(mode, "alignstitchmem", StringComparison.OrdinalIgnoreCase))
                 return RunAlignStitchMem(args, config);
 
+            if (string.Equals(mode, "createsamplemem", StringComparison.OrdinalIgnoreCase))
+                return RunCreateSampleMem(args, config);
+
             return RunAlignStitch(args, config);
         }
 
@@ -397,6 +400,87 @@ namespace RDL.GerberStitch.Harness
             return result.Success ? 0 : 1;
         }
 
+        // ── Mode: createsamplemem ──────────────────────────────────────────────
+        // [Claude] [Change time: 2026-08-15] [Purpose: Dựng lưới theo công thức Master và in ra để đối chiếu,
+        // không cần chạy cả pipeline. Task 2 sẽ thêm phần ghi file JSON.]
+
+        private static int RunCreateSampleMem(string[] args, GlobalConfig config)
+        {
+            var cfg = config != null ? config.CreateSampleMem : null;
+            if (cfg == null)
+            {
+                Console.Error.WriteLine("Thiếu section \"CreateSampleMem\" trong global_config.json.");
+                return 2;
+            }
+
+            int tileWidth = ParseIntArg(args, "--tile", cfg.TileWidth);
+            int tileHeight = ParseIntArg(args, "--tileh", cfg.TileHeight > 0 ? cfg.TileHeight : tileWidth);
+
+            var spec = new CaptureGridSpec
+            {
+                CapturePitchX = cfg.CapturePitchX,
+                CapturePitchY = cfg.CapturePitchY,
+                CamResX = cfg.CamResX,
+                CamResY = cfg.CamResY,
+                ImageWidth = cfg.ImageWidth,
+                ImageHeight = cfg.ImageHeight,
+                Rows = cfg.Rows,
+                Columns = cfg.Columns,
+                StartOffsetX = cfg.StartOffsetX,
+                StartOffsetY = cfg.StartOffsetY,
+                TileWidth = tileWidth > 0 ? (int?)tileWidth : null,
+                TileHeight = tileHeight > 0 ? (int?)tileHeight : null,
+                Order = CaptureOrder.ColumnMajorZigzag
+            };
+
+            var rasterPath = GetArg(args, "--raster", cfg.RasterImagePath);
+            if (!string.IsNullOrWhiteSpace(rasterPath) && File.Exists(rasterPath))
+            {
+                using (var probe = System.Drawing.Image.FromFile(rasterPath))
+                {
+                    spec.RasterWidth = probe.Width;
+                    spec.RasterHeight = probe.Height;
+                }
+            }
+
+            CaptureGridResult grid;
+            try
+            {
+                grid = new GerberStitchFacade().BuildCaptureGrid(spec);
+            }
+            catch (ArgumentException ex)
+            {
+                Console.Error.WriteLine("Spec không hợp lệ: " + ex.Message);
+                return 2;
+            }
+
+            Console.WriteLine("mode              = createsamplemem");
+            Console.WriteLine("raster            = " + rasterPath + "  (" + spec.RasterWidth + " x " +
+                              spec.RasterHeight + ")");
+            Console.WriteLine("StepX / StepY     = " + grid.StepXPx.ToString("0.####") + " / " +
+                              grid.StepYPx.ToString("0.####"));
+            Console.WriteLine("CaptureOverlap    = " + grid.CaptureOverlapXPx.ToString("0.##") + " / " +
+                              grid.CaptureOverlapYPx.ToString("0.##") + "   (vat ly, theo ban may)");
+            Console.WriteLine("TileOverlap       = " + grid.TileOverlapXPx.ToString("0.##") + " / " +
+                              grid.TileOverlapYPx.ToString("0.##") + "   (cua so crop)");
+            Console.WriteLine("Tile size         = " + grid.TileWidth + " x " + grid.TileHeight);
+            Console.WriteLine("Required          = " + grid.RequiredWidth + " x " + grid.RequiredHeight);
+            Console.WriteLine("Tiles             = " + grid.Tiles.Count);
+            Console.WriteLine("Clamped tiles     = " + grid.ClampedTileIndices.Count);
+            foreach (var w in grid.Warnings)
+                Console.WriteLine("  WARN: " + w);
+
+            Console.WriteLine();
+            Console.WriteLine("10 tile dau (OrderIndex Row Col X Y W H):");
+            for (int i = 0; i < Math.Min(10, grid.Tiles.Count); i++)
+            {
+                var t = grid.Tiles[i];
+                Console.WriteLine(string.Format("  {0,3} ({1},{2}) {3,7} {4,7} {5,5} {6,5}",
+                                                t.OrderIndex, t.Row, t.Column, t.X, t.Y, t.Width, t.Height));
+            }
+            return 0;
+        }
+
         // ── Helpers ────────────────────────────────────────────────────────────
 
         private static string GetArg(string[] args, string name, string defaultValue)
@@ -405,6 +489,13 @@ namespace RDL.GerberStitch.Harness
                 if (string.Equals(args[i], name, StringComparison.OrdinalIgnoreCase))
                     return args[i + 1];
             return defaultValue;
+        }
+
+        private static int ParseIntArg(string[] args, string name, int fallback)
+        {
+            var raw = GetArg(args, name, null);
+            int parsed;
+            return !string.IsNullOrWhiteSpace(raw) && int.TryParse(raw, out parsed) ? parsed : fallback;
         }
 
         private static bool HasFlag(string[] args, string name)
