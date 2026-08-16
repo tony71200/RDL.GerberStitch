@@ -883,10 +883,79 @@ git commit -m "Add chamfer, pitch-correction, and expanded-search config default
 
 - [ ] **Step 1: Write the failing test**
 
-Add to `tools/ecc_sandbox/tests/test_pyramid_ecc.py`, inside `MultiCandidateMatchTests` (add these
-as new test methods; the file already imports `mock`, `np`, `cv2`, `coarse_alignment`,
-`alignment_quality`, `pyramid_ecc`, `config` and defines `_cfg`, `_structure`, `_success`,
-`_failure`, `_seed`, `_metrics` — reuse them, do not redefine):
+**First, update the three pre-existing tests in `MultiCandidateMatchTests`.** Once `match()` calls
+`chamfer_alignment.find_chamfer_candidates` unconditionally (Step 3 below), every existing test
+that exercises the real `_structure()` image without mocking that function will also trigger a
+real (unmocked) chamfer search — and since `find_chamfer_candidates` internally calls
+`alignment_quality.measure_alignment` (Task 3), any test that also mocks `measure_alignment` with a
+finite `side_effect` list will hit `StopIteration` once chamfer's internal call consumes part of
+that list. Each of the three existing tests already mocks `coarse_alignment.find_translation_seeds`
+for the same reason (to keep structural bootstrap deterministic and side-effect-free) — chamfer
+bootstrap needs the identical treatment. Add `with mock.patch.object(chamfer_alignment,
+"find_chamfer_candidates", return_value=[]):` as an additional nested `with` around the existing
+`with mock.patch.object(pyramid_ecc, "_run_single_attempt", ...)` block in all three:
+
+```python
+    def test_primary_failure_does_not_abort_bootstrap_success(self):
+        image = _structure()
+        bootstrap_matrix = np.eye(3)
+        with mock.patch.object(coarse_alignment, "find_translation_seeds",
+                               return_value=[_seed(12.0)]):
+            with mock.patch.object(chamfer_alignment, "find_chamfer_candidates",
+                                   return_value=[]):
+                with mock.patch.object(
+                        pyramid_ecc, "_run_single_attempt",
+                        side_effect=[_failure(2, "primary"),
+                                     _success(bootstrap_matrix, "structural_bootstrap")]):
+                    result = pyramid_ecc.match(image, image, _cfg())
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["verification_status"], "Verified")
+        self.assertEqual(len(result["attempts"]), 2)
+        self.assertEqual(result["attempts"][0]["failure_reason"], "RuntimeFailure")
+        self.assertTrue(np.array_equal(result["matrix"], bootstrap_matrix))
+
+    def test_successful_primary_still_runs_distinct_seed_and_detects_ambiguity(self):
+        image = _structure()
+        primary = _success(np.eye(3), "primary")
+        alternate = _success(_seed(20.0)["matrix"], "structural_bootstrap")
+        with mock.patch.object(coarse_alignment, "find_translation_seeds",
+                               return_value=[_seed(20.0)]):
+            with mock.patch.object(chamfer_alignment, "find_chamfer_candidates",
+                                   return_value=[]):
+                with mock.patch.object(pyramid_ecc, "_run_single_attempt",
+                                       side_effect=[primary, alternate]):
+                    with mock.patch.object(alignment_quality, "measure_alignment",
+                                           side_effect=[_metrics(0.80), _metrics(0.79)]):
+                        result = pyramid_ecc.match(image, image, _cfg())
+
+        self.assertFalse(result["success"])
+        self.assertEqual(result["verification_status"], "Uncertain")
+        self.assertEqual(result["failure_reason"], "RepeatedPatternAmbiguous")
+        self.assertEqual(len(result["attempts"]), 2)
+
+    def test_all_failures_keep_the_most_informative_level_error(self):
+        image = _structure()
+        with mock.patch.object(coarse_alignment, "find_translation_seeds",
+                               return_value=[_seed(16.0)]):
+            with mock.patch.object(chamfer_alignment, "find_chamfer_candidates",
+                                   return_value=[]):
+                with mock.patch.object(
+                        pyramid_ecc, "_run_single_attempt",
+                        side_effect=[_failure(2, "primary"),
+                                     _failure(1, "structural_bootstrap")]):
+                    result = pyramid_ecc.match(image, image, _cfg())
+
+        self.assertFalse(result["success"])
+        self.assertEqual(result["verification_status"], "Rejected")
+        self.assertEqual(result["failure_reason"], "RuntimeFailure")
+        self.assertIn("level 2", result["message"])
+        self.assertEqual(len(result["attempts"]), 2)
+```
+
+**Then add three new test methods** (the file already imports `mock`, `np`, `cv2`,
+`coarse_alignment`, `alignment_quality`, `pyramid_ecc`, `config` and defines `_cfg`, `_structure`,
+`_success`, `_failure`, `_seed`, `_metrics` — reuse them, do not redefine):
 
 ```python
     def test_chamfer_bootstrap_runs_after_structural_bootstrap_and_can_win(self):
@@ -901,7 +970,13 @@ as new test methods; the file already imports `mock`, `np`, `cv2`, `coarse_align
                         pyramid_ecc, "_run_single_attempt",
                         side_effect=[_failure(2, "primary"),
                                      _success(chamfer_matrix, "chamfer_bootstrap")]):
-                    result = pyramid_ecc.match(image, image, _cfg())
+                    # chamfer_matrix (tx=55) doesn't correspond to a real alignment of
+                    # `image` with itself, so measure_alignment must be mocked too --
+                    # otherwise the real structural-verification score is near zero and
+                    # the case falls to Uncertain instead of exercising the "can win" path.
+                    with mock.patch.object(alignment_quality, "measure_alignment",
+                                           return_value=_metrics(0.90)):
+                        result = pyramid_ecc.match(image, image, _cfg())
 
         self.assertTrue(result["success"])
         self.assertEqual(result["verification_status"], "Verified")
