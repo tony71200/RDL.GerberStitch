@@ -163,11 +163,12 @@ class App(object):
     def _build_params(self, parent):
         pp = ttk.LabelFrame(parent, text="Tiền xử lý (§8.3)", padding=6)
         pp.pack(fill="x", pady=(8, 0))
-        self.flatten = tk.BooleanVar(value=True)
-        ttk.Checkbutton(pp, text="FlattenAndEnhance", variable=self.flatten).pack(anchor="w")
-        self.binarize = tk.BooleanVar(value=False)
-        ttk.Checkbutton(pp, text="ToBinaryTraces (chỉ để xem)",
-                        variable=self.binarize).pack(anchor="w")
+        frame = ttk.Frame(pp)
+        frame.pack(fill="x", pady=1)
+        ttk.Label(frame, text="Preprocess mode", width=22).pack(side="left")
+        self.preprocess_mode = tk.StringVar(value="FlattenAndEnhance")
+        ttk.Combobox(frame, textvariable=self.preprocess_mode, width=16, state="readonly",
+                     values=["FlattenAndEnhance", "ToBinaryTraces"]).pack(side="left")
         self._row(pp, "Contrast (%)", "contrast", self.cfg["Contrast"])
         self._row(pp, "Background sigma", "bgsigma", self.cfg["BackgroundSigma"])
         self._row(pp, "CLAHE clip limit", "clip", self.cfg["ClaheClipLimit"])
@@ -314,11 +315,16 @@ class App(object):
             reference, moving, meta = pairs_mod.neighbor_pair(payload, images, order, target, ext)
             self.say("Neighbor: anchor=%d target=%d (%s)" % (order, target, direction))
 
-        ref_v = pre.build_variants(reference, c, self.flatten.get(), self.binarize.get())
-        mov_v = pre.build_variants(moving, c, self.flatten.get(), self.binarize.get())
+        mode = self.preprocess_mode.get()
+        ref_v = pre.build_variants(reference, c, mode)
+        mov_v = pre.build_variants(moving, c, mode)
         self._draw_preprocess(ref_v, mov_v)
 
-        result = ecc.match(ref_v["final"], mov_v["final"], c)
+        # Xac minh doc lap dung anh contrast, KHONG dung lai anh flattened/binary ma ECC
+        # da toi uu hoa tren do (docs/superpowers spec "Independent Alignment Verification").
+        result = ecc.match(ref_v["final"], mov_v["final"], c,
+                           verification_reference=ref_v["contrast"],
+                           verification_moving=mov_v["contrast"])
         self._report(result)
         self._draw_match(ref_v["final"], mov_v["final"], result)
 
@@ -332,13 +338,13 @@ class App(object):
                 ax.set_title("%s · %s" % (name, key), fontsize=8)
                 ax.axis("off")
         self.fig_pre.tight_layout()
-        # Nhac lai canh bao ngay duoi luoi -- cot "binary" khong bao gio duoc dua vao ECC
-        # (Findings §8.2: anh nhi phan co gradient bang 0, ECC khong hoi tu).
+        # cot "final" la dau ra CUA CHINH MOT che do da chon (FlattenAndEnhance hoac
+        # ToBinaryTraces) -- day la anh duy nhat duoc dua vao ECC. Xac minh doc lap
+        # (structural verification) lai dung cot "contrast", KHONG dung "final".
         self.fig_pre.text(
             0.5, 0.01,
-            "Lưu ý: cột 'binary' KHÔNG bao giờ được đưa vào ECC (chỉ dùng cho "
-            "chamfer/Hausdorff/ICP/skeleton) — ECC luôn chạy trên cột 'final' "
-            "(flattened nếu bật, ngược lại contrast).",
+            "Lưu ý: ECC chạy trên cột 'final' (đầu ra của chế độ tiền xử lý đã chọn) — "
+            "xác minh cấu trúc độc lập lại dùng cột 'contrast', không dùng lại 'final'.",
             ha="center", va="bottom", fontsize=7, color="#b00000")
         self.canvas_pre.draw()
 
@@ -365,18 +371,22 @@ class App(object):
 
     def _report(self, r):
         self.say("")
-        self.say("=== PyramidECC ===")
-        for lv in r["levels"]:
-            corr = lv["correlation"]
-            self.say("  level %d  size=%sx%s  scale=%.4f  corr=%s"
-                     % (lv["level"], lv["size"][0], lv["size"][1], lv["scale"],
-                        "n/a" if corr is None else "%.5f" % corr))
+        self.say("=== Attempts (primary + structural bootstrap) ===")
+        for attempt in r.get("attempts", []):
+            self.say("  [%s] geometry_valid=%s failure_reason=%s"
+                     % (attempt.get("source"), attempt.get("geometry_valid"),
+                        attempt.get("failure_reason")))
+            for lv in attempt.get("levels", []):
+                corr = lv["correlation"]
+                self.say("      level %d  size=%sx%s  scale=%.4f  corr=%s"
+                         % (lv["level"], lv["size"][0], lv["size"][1], lv["scale"],
+                            "n/a" if corr is None else "%.5f" % corr))
         self.say("")
         if r.get("matrix") is None:
             self.say("THẤT BẠI: %s — %s" % (r["failure_reason"], r["message"]))
             return
         m = r["matrix"]
-        self.say("Ma trận MovingImage -> ReferenceImage:")
+        self.say("Ma trận MovingImage -> ReferenceImage (nguồn=%s):" % r.get("source"))
         for i in range(3):
             self.say("   [ %12.6f  %12.6f  %12.4f ]" % (m[i, 0], m[i, 1], m[i, 2]))
         self.say("")
@@ -390,12 +400,18 @@ class App(object):
         self.say("  scale       = %.8f" % r["scale"])
         self.say("  rawScore    = %.5f   (MinCorrelation %.3f)"
                  % (r["raw_score"], self.current_cfg()["EccMinCorrelation"]))
-        self.say("  confidence  = %.5f" % r["normalized_confidence"])
         self.say("")
-        if r["success"]:
-            self.say("KẾT LUẬN: ACCEPTED")
-        else:
-            self.say("KẾT LUẬN: REJECTED — %s: %s" % (r["failure_reason"], r["message"]))
+        self.say("=== Xác minh cấu trúc độc lập (không dùng lại objective ECC) ===")
+        self.say("  symmetric_edge_coverage = %s" % r.get("symmetric_edge_coverage"))
+        self.say("  symmetric_chamfer_p95   = %s" % r.get("symmetric_chamfer_p95"))
+        runner_up = r.get("runner_up")
+        if runner_up is not None:
+            self.say("  runner-up: translation=(%.3f, %.3f) coverage=%s margin=%s"
+                     % (runner_up.get("translation_x"), runner_up.get("translation_y"),
+                        runner_up.get("symmetric_edge_coverage"), r.get("coverage_margin")))
+        self.say("")
+        self.say("KẾT LUẬN: %s — %s: %s"
+                 % (r.get("verification_status"), r.get("failure_reason"), r.get("message")))
 
 
 def main():

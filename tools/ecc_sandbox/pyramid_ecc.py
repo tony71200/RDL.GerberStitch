@@ -3,6 +3,9 @@ import math
 import numpy as np
 import cv2
 
+import alignment_quality
+import coarse_alignment
+
 MOTION = {
     "Translation": cv2.MOTION_TRANSLATION,
     "Euclidean": cv2.MOTION_EUCLIDEAN,
@@ -108,14 +111,22 @@ def _normalize_ecc_result(matrix, motion_model, mode, max_abs_rotation_deg):
     return normalized, diagnostics
 
 
-def match(reference_mono8, moving_mono8, cfg, initial_moving_to_reference=None):
-    """Tra ve dict ket qua, mo phong MatchResult cua C#.
+def _run_single_attempt(reference_mono8, moving_mono8, cfg,
+                        initial_moving_to_reference=None, source="primary"):
+    """Run one pyramid-ECC candidate without aborting sibling candidates.
 
     reference = tile Gerber, moving = anh chup. Transform tra ve la MovingImage -> ReferenceImage,
     dung contract ghi o Diagnostics["TransformDirection"] (:122).
     """
     result = {"success": False, "matcher": "PyramidEccMatcher", "levels": [],
-              "failure_reason": None, "message": None}
+              "failure_reason": None, "message": None, "matrix": None,
+              "source": source, "geometry_valid": False}
+
+    if initial_moving_to_reference is None:
+        seed_matrix = np.eye(3)
+    else:
+        seed_matrix = np.asarray(initial_moving_to_reference, dtype=float)
+    result["seed_matrix"] = seed_matrix.copy()
 
     if reference_mono8.shape != moving_mono8.shape:
         result["failure_reason"] = "SizeMismatch"
@@ -131,16 +142,14 @@ def match(reference_mono8, moving_mono8, cfg, initial_moving_to_reference=None):
     motion_type = MOTION[motion_model]
     rp, mp = _build_pyramids(ref32, mov32, cfg["EccPyramidLevels"])
 
-    if initial_moving_to_reference is None:
-        full_ref_to_mov = np.eye(3)
-    else:
-        try:
-            full_ref_to_mov = np.linalg.inv(
-                np.asarray(initial_moving_to_reference, dtype=float))
-        except np.linalg.LinAlgError as ex:
-            result["failure_reason"] = "NonFiniteTransform"
-            result["message"] = "Initial transform khong kha nghich: %s" % ex
-            return result
+    try:
+        if seed_matrix.shape != (3, 3) or not np.isfinite(seed_matrix).all():
+            raise ValueError("Initial transform khong phai ma tran 3x3 huu han.")
+        full_ref_to_mov = np.linalg.inv(seed_matrix)
+    except (np.linalg.LinAlgError, ValueError) as ex:
+        result["failure_reason"] = "NonFiniteTransform"
+        result["message"] = "Initial transform khong kha nghich: %s" % ex
+        return result
     full_ref_to_mov = _restrict_motion(full_ref_to_mov, motion_model)
 
     correlation = float("nan")
@@ -200,7 +209,7 @@ def match(reference_mono8, moving_mono8, cfg, initial_moving_to_reference=None):
 
     # Giu thu tu validation cua C#, tru rotation da duoc clamp o tren thay vi reject.
     if abs(tx) > cfg["MaxTranslationPixels"] or abs(ty) > cfg["MaxTranslationPixels"]:
-        result["failure_reason"] = "NonFiniteTransform"
+        result["failure_reason"] = "GeometryRejected"
         result["message"] = "Translation vuot MaxTranslationPixels (%.1f)." % cfg["MaxTranslationPixels"]
         return result
     if math.isnan(correlation) or math.isinf(correlation) or correlation < cfg["EccMinCorrelation"]:
@@ -213,8 +222,110 @@ def match(reference_mono8, moving_mono8, cfg, initial_moving_to_reference=None):
             scale_value, cfg["MinScale"], cfg["MaxScale"])
         return result
 
+    result["geometry_valid"] = True
     result["success"] = True
     return result
+
+
+def _seed_is_duplicate(matrix, used_matrices):
+    candidate = np.asarray(matrix, dtype=float)
+    if candidate.shape != (3, 3) or not np.isfinite(candidate).all():
+        return True
+    return any(np.linalg.norm(candidate[:2, 2] - used[:2, 2]) <= 1.0
+               for used in used_matrices)
+
+
+def _failed_level(attempt):
+    levels = attempt.get("levels") or []
+    failed = [int(level["level"]) for level in levels
+              if level.get("correlation") is None]
+    return max(failed) if failed else -1
+
+
+def _most_informative_failure(attempts):
+    runtime_failures = [attempt for attempt in attempts
+                        if attempt.get("failure_reason") == "RuntimeFailure"]
+    if runtime_failures:
+        return max(runtime_failures, key=_failed_level)
+    return attempts[0] if attempts else {
+        "success": False,
+        "matcher": "PyramidEccMatcher",
+        "levels": [],
+        "matrix": None,
+        "failure_reason": "NoValidEccCandidate",
+        "message": "Khong co ECC candidate de danh gia.",
+    }
+
+
+def match(reference_mono8, moving_mono8, cfg, initial_moving_to_reference=None,
+          verification_reference=None, verification_moving=None):
+    """Run primary plus structural seeds and verify the resulting candidates."""
+    primary_seed = (np.eye(3) if initial_moving_to_reference is None
+                    else np.asarray(initial_moving_to_reference, dtype=float))
+    attempts = [_run_single_attempt(
+        reference_mono8, moving_mono8, cfg, primary_seed, "primary")]
+
+    if reference_mono8.shape == moving_mono8.shape:
+        used_matrices = []
+        if (primary_seed.shape == (3, 3) and
+                np.isfinite(primary_seed).all()):
+            used_matrices.append(primary_seed.copy())
+        try:
+            seeds = coarse_alignment.find_translation_seeds(
+                reference_mono8, moving_mono8, cfg)
+        except (ValueError, cv2.error) as ex:
+            seeds = []
+            attempts.append({
+                "success": False,
+                "matcher": "PyramidEccMatcher",
+                "source": "structural_bootstrap",
+                "seed_matrix": None,
+                "levels": [],
+                "matrix": None,
+                "geometry_valid": False,
+                "failure_reason": "CoarseBootstrapFailure",
+                "message": str(ex),
+            })
+        for seed in seeds:
+            seed_matrix = np.asarray(seed["matrix"], dtype=float)
+            if _seed_is_duplicate(seed_matrix, used_matrices):
+                continue
+            used_matrices.append(seed_matrix.copy())
+            attempt = _run_single_attempt(
+                reference_mono8, moving_mono8, cfg, seed_matrix,
+                seed.get("source", "structural_bootstrap"))
+            attempt["coarse_score"] = float(seed.get("coarse_score", float("nan")))
+            attempts.append(attempt)
+
+    quality_reference = (reference_mono8 if verification_reference is None
+                         else verification_reference)
+    quality_moving = (moving_mono8 if verification_moving is None
+                      else verification_moving)
+    candidates = []
+    for attempt in attempts:
+        if attempt.get("geometry_valid") and attempt.get("matrix") is not None:
+            metrics = alignment_quality.measure_alignment(
+                quality_reference, quality_moving, attempt["matrix"], cfg)
+            attempt.update(metrics)
+            candidates.append(attempt)
+
+    classification = alignment_quality.classify_candidates(candidates, cfg)
+    winner = classification["winner"]
+    if winner is None:
+        final = dict(_most_informative_failure(attempts))
+        final["success"] = False
+        final["verification_status"] = "Rejected"
+    else:
+        final = dict(winner)
+        final["success"] = bool(classification["success"])
+        final["verification_status"] = classification["verification_status"]
+        final["failure_reason"] = classification["failure_reason"]
+        final["message"] = classification["message"]
+
+    final["attempts"] = attempts
+    final["runner_up"] = classification["runner_up"]
+    final["coverage_margin"] = classification["coverage_margin"]
+    return final
 
 
 def warp_moving_to_reference(moving_mono8, matrix, size_wh):
