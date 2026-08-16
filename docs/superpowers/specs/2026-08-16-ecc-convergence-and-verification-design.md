@@ -69,8 +69,9 @@ limits.
 
 ### Structural bootstrap
 
-If the primary attempt raises an ECC convergence exception, produces no finite transform, falls below
-`EccMinCorrelation`, or fails independent verification, generate bounded translation seeds:
+After the primary attempt, always generate bounded translation seeds. This is required even when the
+primary attempt converges: without distinct runner-up candidates, a repeated-pattern false convergence
+cannot be detected. A successful primary therefore does not suppress the ambiguity search:
 
 1. Downsample both selected ECC inputs by `CoarseSearchDownsample=4`.
 2. Extract Canny edges using thresholds `CoarseCannyLow=30` and `CoarseCannyHigh=90`.
@@ -84,8 +85,10 @@ If the primary attempt raises an ECC convergence exception, produces no finite t
    pyramid on the selected preprocessing output. The structural field supplies initialization only; it
    never replaces the selected ECC input.
 
-Identity is always included as a candidate and duplicate seeds are removed. A failed candidate is
-recorded and does not abort the remaining candidates.
+Identity is always included as a candidate and duplicate seeds are removed. A structural seed within one
+full-resolution pixel of the primary seed or an earlier structural seed is skipped. A failed candidate is
+recorded and does not abort the remaining candidates. The configured upper bound is one primary attempt
+plus `CoarseCandidateCount=5` distinct structural attempts.
 
 ## Independent Alignment Verification
 

@@ -268,11 +268,12 @@ Do not catch one candidate's `cv2.error` outside this function.
 
 - [ ] **Step 4: Implement candidate orchestration**
 
-`match` runs identity or the supplied initial transform first. If the primary is not independently
-eligible, append structural seeds, skip seed duplicates within one pixel, and call `_run_single_attempt`
-for each. Measure valid candidates on `verification_reference/moving` when supplied, otherwise on ECC
-inputs. Pass candidates to `classify_candidates`, preserve all attempt diagnostics, and return the winning
-normalized matrix for `Verified` or `Uncertain`.
+`match` runs identity or the supplied initial transform first, then always appends structural seeds so a
+successful but wrong repeated-pattern primary can still have a distinct runner-up. Skip seed duplicates
+within one pixel and call `_run_single_attempt` for each remaining seed. Measure valid candidates on
+`verification_reference/moving` when supplied, otherwise on ECC inputs. Pass candidates to
+`classify_candidates`, preserve all attempt diagnostics, and return the winning normalized matrix for
+`Verified` or `Uncertain`.
 
 - [ ] **Step 5: Verify GREEN and full unit suite**
 
