@@ -7,10 +7,11 @@ toán `PyramidEccMatcher` (align ảnh bằng ECC pyramid) **trước khi** đ�
 nào trong `GerberStitching.Core`. Vòng lặp thử–sai ở đây mất vài giây; build + chạy lại cả lô
 80 tile trong C# mất vài phút.
 
-Các file trong `pyramid_ecc.py` là **port 1:1** (từng dòng, không viết lại thuật toán) của
-`GerberStitching.Core/Matching/OpenCv/PyramidEccMatcher.cs`. Tham số mặc định trong `config.py`
-lấy đúng từ code C# thật (`AlignStitchStageOptions.cs`, `MatcherOptions.cs`), **không phải**
-mặc định của OpenCV.
+Vòng lặp pyramid trong `pyramid_ecc.py` là port 1:1 của
+`GerberStitching.Core/Matching/OpenCv/PyramidEccMatcher.cs`. Sau khi ECC hội tụ, sandbox có thêm
+bước hậu xử lý thử nghiệm chưa tồn tại trong C#: đồng nhất scale Affine và clamp rotation. Phần lớn
+tham số trong `config.py` lấy từ code C# thật (`AlignStitchStageOptions.cs`, `MatcherOptions.cs`),
+nhưng MotionModel mặc định của sandbox là `Affine` trong khi C# hiện vẫn là `Euclidean`.
 
 ## Cài đặt
 
@@ -41,6 +42,23 @@ cuộn qua hết panel trái mới tới. Quy trình dùng:
 3. Chỉnh tham số tiền xử lý / PyramidECC (mọi ô đều là ô nhập số, không phải thanh trượt — để
    giá trị thử được có thể chép nguyên văn vào bảng kết quả).
 4. Bấm **CHẠY**.
+
+## Affine scale và rotation clamp
+
+Sandbox mặc định chọn `MotionModel = Affine`. Combobox **Affine scale** có đúng hai lựa chọn:
+
+- `min` (mặc định): dùng scale nhỏ hơn trong `scaleX` và `scaleY`.
+- `median`: với đúng hai scale, median là trung bình cộng `(scaleX + scaleY) / 2`.
+
+ECC vẫn được phép tối ưu affine đầy đủ qua tất cả pyramid level. Chỉ sau khi hội tụ, sandbox mới
+dựng lại phần 2×2 thành `uniform scale × rotation`; bước này loại shear, đồng nhất scale X/Y và
+giữ nguyên translation `(tx, ty)`. Nếu góc thô vượt `MaxAbsRotationDeg`, góc cuối được clamp về
+`+MaxAbsRotationDeg` hoặc `-MaxAbsRotationDeg` theo đúng dấu ban đầu, thay vì reject kết quả.
+Rotation clamp cũng áp dụng cho Euclidean. Translation không có rotation nên giữ nguyên hành vi.
+
+Tab **Ma trận & log** hiển thị `raw scale X/Y`, policy đã chọn, góc thô, góc cuối và nhãn
+`[CLAMPED]` khi giới hạn góc đã được áp dụng. Ma trận in trong log cũng chính là ma trận dùng để
+warp ảnh preview.
 
 ## Ý nghĩa ô "Step ghi đè"
 
@@ -76,3 +94,14 @@ phân ở tab "Tiền xử lý" (có dòng nhắc màu đỏ ngay dưới lướ
 Chạy sandbox ở Direct, tắt `FlattenAndEnhance`, `Contrast = 100`, trên một tile có sẵn
 `eccCorrelation` trong `processing_report.json`. So `rawScore` của sandbox với `eccCorrelation`.
 Lệch dưới ~0.02 nghĩa là port đúng.
+
+## Kiểm tra thủ công cho hậu xử lý Affine
+
+1. Mở UI, xác nhận mặc định là `MotionModel = Affine` và `Affine scale = min`.
+2. Chạy case có `raw scale X != Y`; với `min`, scale cuối phải bằng giá trị nhỏ hơn.
+3. Chuyển sang `median`; scale cuối phải bằng `(scaleX + scaleY) / 2`.
+4. Dùng case có góc dương và góc âm vượt giới hạn; góc cuối phải lần lượt bằng
+   `+MaxAbsRotationDeg` và `-MaxAbsRotationDeg`, đồng thời log có `[CLAMPED]`.
+5. Xác nhận ma trận in trong log là ma trận dùng cho ảnh preview sau warp.
+6. Chuyển sang Euclidean: trong giới hạn thì hành vi cũ giữ nguyên; vượt giới hạn thì góc được
+   clamp có giữ dấu. Translation giữ nguyên hành vi cũ.
