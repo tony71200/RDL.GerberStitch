@@ -216,6 +216,71 @@ Round 2 (only, capped by `ExpandedSearchMaxRounds`) reruns structural + chamfer 
 increase the risk of locking onto a repeated PCB pattern. This only triggers on total failure of
 round 1, so the default (already fast, already precise) path is unchanged when round 1 succeeds.
 
+## Part 4 — Full-grid regression run (`experiment_runner.py --all-tiles`)
+
+The existing runner only covers the 7 requested coordinates. That is not enough to judge whether
+chamfer bootstrap and pitch-corrected seeding actually help across the grid, especially at the
+far-from-origin tiles (`(4,0)`, `(4,2)`, `(4,3)`) where the translation error is largest. Add an
+opt-in flag:
+
+```
+python experiment_runner.py --payload ... --images ... --raster ... --all-tiles --output ...
+```
+
+When `--all-tiles` is set, `run_experiment` iterates every tile in the payload (80 for these
+datasets) × both preprocessing modes, instead of `REQUESTED_COORDINATES`. Without the flag,
+behavior is unchanged (still the 7-coordinate, 14-row run). `experiment_results.json` and
+`requested_cases_summary.csv` keep their existing shape — a run just has more rows.
+
+## Part 5 — Consistency diagnostics (scale & translation agreement)
+
+This is Findings.md Appendix A3 ("scale spread", "rotation spread") reimplemented against the
+sandbox's own match results instead of `processing_report.json`, so it can be checked from a
+`--all-tiles` run of these three datasets directly.
+
+`alignment_quality.summarize_consistency(results)` — placed next to `compute_tre`, since both are
+"measure something about a finished match, not part of matching itself" — takes the list of
+per-case results from a full-grid run (each with `row`, `column`, `translation_x`, `translation_y`,
+`scale`, and `matrix` when available) and reports, over every case with a non-`None` matrix
+(not only `Verified` ones — an `Uncertain` case's geometry is still informative):
+
+- `scale_spread = max(scale) - min(scale)`, plus `scale_mean`/`scale_std`. A large spread (e.g. one
+  tile's scale sitting at 0.94 while its neighbors sit at 0.98) is the signature Findings §3.2(b)
+  describes: ECC absorbing a pitch error into its scale degree of freedom instead of leaving it
+  visible in translation.
+- A simple least-squares fit of `translation_x ~ column` and `translation_y ~ row` (no `scipy`
+  dependency — closed-form 2-parameter least squares is enough), producing an independently
+  measured px/step slope. This is compared against Part 1's phase-correlation pitch measurement
+  for the same dataset; a real disagreement between the two is reported as-is, not
+  auto-explained — it would mean the two measurement methods (Direct Gerber-vs-capture alignment
+  vs. Neighbor capture-vs-capture phase correlation) disagree, which is itself worth surfacing.
+
+Runs automatically at the end of an `--all-tiles` `experiment_runner.py` invocation and is added as
+a `"consistency"` key in `experiment_results.json`. It does not gate `Verified`/`Uncertain`/
+`Rejected` classification — it is a reporting-only diagnostic, same spirit as the existing report
+fields.
+
+## Part 6 — Live per-stage logging in `app.py`
+
+Today `app.py._report` only prints results after `ecc.match()` has fully returned. Add an optional
+callback so the log fills in as each stage actually runs, instead of all at once at the end:
+
+```
+pyramid_ecc.match(..., on_stage=None)
+```
+
+`on_stage(stage, detail)` is called at: `primary_start`/`primary_done`,
+`structural_bootstrap_start` (with seed count) and one `structural_bootstrap_seed_done` per seed
+(source, `geometry_valid`, failure reason if any), the same pair of calls for
+`chamfer_bootstrap_*`, `expanded_search_start` (only if round 2 actually triggers, with the reason
+round 1 failed), and `classification_done`. Default `None` — no callback means no behavior change
+and no overhead, so `experiment_runner.py` (which does not need live progress) is unaffected.
+
+`app.py` passes `on_stage=self._on_stage`, a small method that calls `self.say(...)` for each
+event and then `self.root.update_idletasks()` to force Tk to repaint immediately — otherwise the
+log text would still only appear once `_run` returns, since Tk does not repaint mid-callback on
+its own.
+
 ## Error Handling
 
 - `crop_overlap_roi` on tiles with degenerate overlap (`w` or `h` <= 0) raises rather than
@@ -229,6 +294,12 @@ round 1, so the default (already fast, already precise) path is unchanged when r
 - Round 2 of the expanded search only runs when round 1 produced zero `geometry_valid` attempts;
   it never runs when round 1 already found at least one valid (even if `Uncertain`) candidate, so
   it cannot itself introduce a repeated-pattern false positive into an otherwise-successful case.
+- A single failed tile in an `--all-tiles` run does not abort the batch — same contract as the
+  existing 7-coordinate run today.
+- `summarize_consistency` on fewer than 2 cases with a non-`None` matrix returns `None` (spread and
+  a line fit are meaningless with 0 or 1 points) instead of raising or dividing by zero.
+- `on_stage` callback exceptions are not swallowed silently by `pyramid_ecc.match()` — a bug in
+  UI logging should surface immediately in the sandbox, not hide inside a broad except.
 
 ## Test Strategy
 
@@ -247,12 +318,23 @@ themselves:
    byte-identical to current behavior when `PitchCorrectionPxPerStepX/Y == 0.0`.
 6. Expanded search: round 2 only runs when round 1 has zero `geometry_valid` attempts; it is
    skipped entirely when round 1 already has an eligible candidate.
+7. `--all-tiles` iterates every tile in a synthetic 3×3 payload × 2 preprocessing modes and writes
+   18 rows (not the default 14 from the 7-coordinate set).
+8. `summarize_consistency` computes the correct `scale_spread`/mean/std and the correct
+   least-squares slope on a synthetic set of results with a known constant scale and a known
+   constant per-step translation increment, and returns `None` on fewer than 2 valid cases.
+9. `on_stage` fires in the expected order (`primary_start` before `primary_done`, bootstrap stages
+   only fire when their seed lists are non-empty, `expanded_search_start` fires only when round 2
+   actually triggers) against a mocked `_run_single_attempt`, mirroring how
+   `test_pyramid_ecc.py` already mocks it for the recovery-architecture tests.
 
 After unit verification, rerun the same three real datasets (4192/4240/4320) used in the evidence
-section above and compare `Verified`/`Uncertain`/`Rejected` counts and, specifically, whether
-`(4,0)`'s translation error collapses once `PitchCorrectionPxPerStepX/Y` is set to Part 1's
-measured value. This before/after comparison against a concrete case (not just "more tests pass")
-is the actual success signal for this design.
+section above with `--all-tiles`, and compare `Verified`/`Uncertain`/`Rejected` counts and,
+specifically, whether `(4,0)`'s translation error collapses once `PitchCorrectionPxPerStepX/Y` is
+set to Part 1's measured value. This before/after comparison against a concrete case (not just
+"more tests pass") is the actual success signal for this design. Read `summarize_consistency`'s
+output from that same run to see whether the scale-spread/translation-slope signature from the
+evidence section (§ above) actually shrinks once pitch-corrected seeding is applied.
 
 ## Out of Scope
 
