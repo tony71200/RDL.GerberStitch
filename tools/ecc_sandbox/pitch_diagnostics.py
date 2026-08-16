@@ -8,13 +8,13 @@ vi lam viec tren full-frame chua cat).
 """
 import argparse
 import json
-import math
 import os
 import statistics as st
 
 import cv2
 import numpy as np
 
+import config
 import pairs
 import preprocess
 
@@ -146,8 +146,7 @@ def _parse_args():
 def main():
     args = _parse_args()
     payload = pairs.load_payload(args.payload)
-    cfg = dict()
-    cfg.update({"BackgroundSigma": 51.0, "ClaheClipLimit": 3.0, "ClaheTile": 16})
+    cfg = dict(config.DEFAULTS)
     result = measure_pitch(payload, args.images, args.ext or ".bmp", cfg)
 
     os.makedirs(os.path.dirname(os.path.abspath(args.output)), exist_ok=True)
