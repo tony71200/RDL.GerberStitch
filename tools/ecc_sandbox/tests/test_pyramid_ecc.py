@@ -286,6 +286,52 @@ class MultiCandidateMatchTests(unittest.TestCase):
         rounds = [a.get("round") for a in result["attempts"]]
         self.assertNotIn(2, rounds)
 
+    def test_on_stage_fires_primary_and_bootstrap_events_in_order(self):
+        image = _structure()
+        events = []
+        with mock.patch.object(coarse_alignment, "find_translation_seeds", return_value=[]):
+            with mock.patch.object(chamfer_alignment, "find_chamfer_candidates",
+                                   return_value=[]):
+                with mock.patch.object(
+                        pyramid_ecc, "_run_single_attempt",
+                        return_value=_success(np.eye(3), "primary")):
+                    pyramid_ecc.match(image, image, _cfg(),
+                                      on_stage=lambda stage, detail: events.append(stage))
+
+        self.assertEqual(events[0], "primary_start")
+        self.assertIn("primary_done", events)
+        self.assertLess(events.index("primary_start"), events.index("primary_done"))
+        self.assertIn("structural_bootstrap_start", events)
+        self.assertIn("chamfer_bootstrap_start", events)
+        self.assertEqual(events[-1], "classification_done")
+        # round 1 already produced a valid (primary) candidate -- no expanded search
+        self.assertNotIn("expanded_search_start", events)
+
+    def test_on_stage_fires_expanded_search_event_only_when_round_two_triggers(self):
+        image = _structure()
+        events = []
+        with mock.patch.object(coarse_alignment, "find_translation_seeds", return_value=[]):
+            with mock.patch.object(chamfer_alignment, "find_chamfer_candidates",
+                                   return_value=[]):
+                with mock.patch.object(
+                        pyramid_ecc, "_run_single_attempt",
+                        return_value=_failure(2, "primary")):
+                    pyramid_ecc.match(image, image, _cfg(),
+                                      on_stage=lambda stage, detail: events.append(stage))
+
+        # round 1 fully failed (no valid candidate anywhere) -> round 2 must trigger
+        self.assertIn("expanded_search_start", events)
+
+    def test_on_stage_default_none_does_not_raise(self):
+        image = _structure()
+        with mock.patch.object(coarse_alignment, "find_translation_seeds", return_value=[]):
+            with mock.patch.object(chamfer_alignment, "find_chamfer_candidates",
+                                   return_value=[]):
+                with mock.patch.object(
+                        pyramid_ecc, "_run_single_attempt",
+                        return_value=_success(np.eye(3), "primary")):
+                    pyramid_ecc.match(image, image, _cfg())  # no on_stage -- must not raise
+
 
 if __name__ == "__main__":
     unittest.main()
