@@ -1375,19 +1375,28 @@ Add to `tools/ecc_sandbox/tests/test_pyramid_ecc.py`, inside `MultiCandidateMatc
             return []
 
         with mock.patch.object(coarse_alignment, "find_translation_seeds",
-                               side_effect=seeds_side_effect):
+                               side_effect=seeds_side_effect) as seeds_mock:
             with mock.patch.object(chamfer_alignment, "find_chamfer_candidates",
                                    return_value=[]):
                 with mock.patch.object(
                         pyramid_ecc, "_run_single_attempt",
                         side_effect=[_failure(2, "primary"),
                                      _success(round2_matrix, "structural_bootstrap")]):
-                    result = pyramid_ecc.match(image, image, _cfg())
+                    # round2_matrix (tx=90) doesn't correspond to a real alignment of
+                    # `image` with itself -- mock measure_alignment so the round-2
+                    # candidate is eligible, same reasoning as the Task 5 "can win" test.
+                    with mock.patch.object(alignment_quality, "measure_alignment",
+                                           return_value=_metrics(0.90)):
+                        result = pyramid_ecc.match(image, image, _cfg())
 
         self.assertTrue(result["success"])
         rounds = [a.get("round") for a in result["attempts"]]
         self.assertIn(2, rounds)
-        expanded_call_cfg = coarse_alignment.find_translation_seeds.call_args_list[1][0][2]
+        # capture the mock via `as seeds_mock` and inspect it AFTER the `with` block exits --
+        # by then coarse_alignment.find_translation_seeds has reverted to the real function,
+        # which has no call_args_list, so the mock object itself must be used, not the module
+        # attribute.
+        expanded_call_cfg = seeds_mock.call_args_list[1][0][2]
         self.assertAlmostEqual(expanded_call_cfg["MaxTranslationPixels"], 80.0)
 
     def test_expanded_round_skipped_when_round_one_has_valid_candidate(self):
