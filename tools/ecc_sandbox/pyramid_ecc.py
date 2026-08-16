@@ -134,7 +134,13 @@ def match(reference_mono8, moving_mono8, cfg, initial_moving_to_reference=None):
     if initial_moving_to_reference is None:
         full_ref_to_mov = np.eye(3)
     else:
-        full_ref_to_mov = np.linalg.inv(np.asarray(initial_moving_to_reference, dtype=float))
+        try:
+            full_ref_to_mov = np.linalg.inv(
+                np.asarray(initial_moving_to_reference, dtype=float))
+        except np.linalg.LinAlgError as ex:
+            result["failure_reason"] = "NonFiniteTransform"
+            result["message"] = "Initial transform khong kha nghich: %s" % ex
+            return result
     full_ref_to_mov = _restrict_motion(full_ref_to_mov, motion_model)
 
     correlation = float("nan")
@@ -160,7 +166,12 @@ def match(reference_mono8, moving_mono8, cfg, initial_moving_to_reference=None):
         result["levels"].append({"level": level, "size": rp[level].shape[::-1],
                                  "scale": scale, "correlation": float(correlation)})
 
-    moving_to_reference = np.linalg.inv(full_ref_to_mov)
+    try:
+        moving_to_reference = np.linalg.inv(full_ref_to_mov)
+    except np.linalg.LinAlgError as ex:
+        result["failure_reason"] = "NonFiniteTransform"
+        result["message"] = "ECC result khong kha nghich: %s" % ex
+        return result
     try:
         moving_to_reference, geometry_diagnostics = _normalize_ecc_result(
             moving_to_reference, motion_model, cfg["AffineNormalize"],

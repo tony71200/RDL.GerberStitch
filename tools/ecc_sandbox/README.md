@@ -105,3 +105,5 @@ Lệch dưới ~0.02 nghĩa là port đúng.
 5. Xác nhận ma trận in trong log là ma trận dùng cho ảnh preview sau warp.
 6. Chuyển sang Euclidean: trong giới hạn thì hành vi cũ giữ nguyên; vượt giới hạn thì góc được
    clamp có giữ dấu. Translation giữ nguyên hành vi cũ.
+7. Nếu truyền initial transform suy biến hoặc ECC trả ma trận không khả nghịch, kết quả phải báo
+   `NonFiniteTransform` thay vì làm UI dừng bởi exception.

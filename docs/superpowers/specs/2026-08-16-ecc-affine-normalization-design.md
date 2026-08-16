@@ -29,8 +29,8 @@ Preserve the user's unrelated, uncommitted preprocessing changes in
 `config.DEFAULTS` uses:
 
 ```python
-"EccMotionModel": "Affine"
-"AffineNormalize": "min"
+"EccMotionModel": "Affine",
+"AffineNormalize": "min",
 ```
 
 The PyramidECC UI group contains a read-only combobox for `AffineNormalize`. Its allowed values are
