@@ -4,6 +4,7 @@ import numpy as np
 import cv2
 
 import alignment_quality
+import chamfer_alignment
 import coarse_alignment
 
 MOTION = {
@@ -294,6 +295,33 @@ def match(reference_mono8, moving_mono8, cfg, initial_moving_to_reference=None,
             attempt = _run_single_attempt(
                 reference_mono8, moving_mono8, cfg, seed_matrix,
                 seed.get("source", "structural_bootstrap"))
+            attempt["coarse_score"] = float(seed.get("coarse_score", float("nan")))
+            attempts.append(attempt)
+
+        try:
+            chamfer_seeds = chamfer_alignment.find_chamfer_candidates(
+                reference_mono8, moving_mono8, cfg)
+        except (ValueError, cv2.error) as ex:
+            chamfer_seeds = []
+            attempts.append({
+                "success": False,
+                "matcher": "PyramidEccMatcher",
+                "source": "chamfer_bootstrap",
+                "seed_matrix": None,
+                "levels": [],
+                "matrix": None,
+                "geometry_valid": False,
+                "failure_reason": "ChamferBootstrapFailure",
+                "message": str(ex),
+            })
+        for seed in chamfer_seeds:
+            seed_matrix = np.asarray(seed["matrix"], dtype=float)
+            if _seed_is_duplicate(seed_matrix, used_matrices):
+                continue
+            used_matrices.append(seed_matrix.copy())
+            attempt = _run_single_attempt(
+                reference_mono8, moving_mono8, cfg, seed_matrix,
+                seed.get("source", "chamfer_bootstrap"))
             attempt["coarse_score"] = float(seed.get("coarse_score", float("nan")))
             attempts.append(attempt)
 

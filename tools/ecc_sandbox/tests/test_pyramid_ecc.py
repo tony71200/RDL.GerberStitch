@@ -12,6 +12,7 @@ if SANDBOX_DIR not in sys.path:
     sys.path.insert(0, SANDBOX_DIR)
 
 import alignment_quality
+import chamfer_alignment
 import coarse_alignment
 import config
 import pyramid_ecc
@@ -121,11 +122,13 @@ class MultiCandidateMatchTests(unittest.TestCase):
         bootstrap_matrix = np.eye(3)
         with mock.patch.object(coarse_alignment, "find_translation_seeds",
                                return_value=[_seed(12.0)]):
-            with mock.patch.object(
-                    pyramid_ecc, "_run_single_attempt",
-                    side_effect=[_failure(2, "primary"),
-                                 _success(bootstrap_matrix, "structural_bootstrap")]):
-                result = pyramid_ecc.match(image, image, _cfg())
+            with mock.patch.object(chamfer_alignment, "find_chamfer_candidates",
+                                   return_value=[]):
+                with mock.patch.object(
+                        pyramid_ecc, "_run_single_attempt",
+                        side_effect=[_failure(2, "primary"),
+                                     _success(bootstrap_matrix, "structural_bootstrap")]):
+                    result = pyramid_ecc.match(image, image, _cfg())
 
         self.assertTrue(result["success"])
         self.assertEqual(result["verification_status"], "Verified")
@@ -139,11 +142,13 @@ class MultiCandidateMatchTests(unittest.TestCase):
         alternate = _success(_seed(20.0)["matrix"], "structural_bootstrap")
         with mock.patch.object(coarse_alignment, "find_translation_seeds",
                                return_value=[_seed(20.0)]):
-            with mock.patch.object(pyramid_ecc, "_run_single_attempt",
-                                   side_effect=[primary, alternate]):
-                with mock.patch.object(alignment_quality, "measure_alignment",
-                                       side_effect=[_metrics(0.80), _metrics(0.79)]):
-                    result = pyramid_ecc.match(image, image, _cfg())
+            with mock.patch.object(chamfer_alignment, "find_chamfer_candidates",
+                                   return_value=[]):
+                with mock.patch.object(pyramid_ecc, "_run_single_attempt",
+                                       side_effect=[primary, alternate]):
+                    with mock.patch.object(alignment_quality, "measure_alignment",
+                                           side_effect=[_metrics(0.80), _metrics(0.79)]):
+                        result = pyramid_ecc.match(image, image, _cfg())
 
         self.assertFalse(result["success"])
         self.assertEqual(result["verification_status"], "Uncertain")
@@ -154,17 +159,79 @@ class MultiCandidateMatchTests(unittest.TestCase):
         image = _structure()
         with mock.patch.object(coarse_alignment, "find_translation_seeds",
                                return_value=[_seed(16.0)]):
-            with mock.patch.object(
-                    pyramid_ecc, "_run_single_attempt",
-                    side_effect=[_failure(2, "primary"),
-                                 _failure(1, "structural_bootstrap")]):
-                result = pyramid_ecc.match(image, image, _cfg())
+            with mock.patch.object(chamfer_alignment, "find_chamfer_candidates",
+                                   return_value=[]):
+                with mock.patch.object(
+                        pyramid_ecc, "_run_single_attempt",
+                        side_effect=[_failure(2, "primary"),
+                                     _failure(1, "structural_bootstrap")]):
+                    result = pyramid_ecc.match(image, image, _cfg())
 
         self.assertFalse(result["success"])
         self.assertEqual(result["verification_status"], "Rejected")
         self.assertEqual(result["failure_reason"], "RuntimeFailure")
         self.assertIn("level 2", result["message"])
         self.assertEqual(len(result["attempts"]), 2)
+
+    def test_chamfer_bootstrap_runs_after_structural_bootstrap_and_can_win(self):
+        image = _structure()
+        chamfer_matrix = np.array([[1.0, 0.0, 55.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]])
+        with mock.patch.object(coarse_alignment, "find_translation_seeds", return_value=[]):
+            with mock.patch.object(
+                    chamfer_alignment, "find_chamfer_candidates",
+                    return_value=[{"matrix": chamfer_matrix, "source": "chamfer_bootstrap",
+                                   "coarse_score": 0.5}]):
+                with mock.patch.object(
+                        pyramid_ecc, "_run_single_attempt",
+                        side_effect=[_failure(2, "primary"),
+                                     _success(chamfer_matrix, "chamfer_bootstrap")]):
+                    # chamfer_matrix (tx=55) doesn't correspond to a real alignment of
+                    # `image` with itself, so measure_alignment must be mocked too --
+                    # otherwise the real structural-verification score is near zero and
+                    # the case falls to Uncertain instead of exercising the "can win" path.
+                    with mock.patch.object(alignment_quality, "measure_alignment",
+                                           return_value=_metrics(0.90)):
+                        result = pyramid_ecc.match(image, image, _cfg())
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["verification_status"], "Verified")
+        sources = [a["source"] for a in result["attempts"]]
+        self.assertIn("chamfer_bootstrap", sources)
+
+    def test_chamfer_bootstrap_failure_does_not_abort_match(self):
+        image = _structure()
+        with mock.patch.object(coarse_alignment, "find_translation_seeds", return_value=[]):
+            with mock.patch.object(
+                    chamfer_alignment, "find_chamfer_candidates",
+                    side_effect=ValueError("chamfer khong hop le")):
+                with mock.patch.object(
+                        pyramid_ecc, "_run_single_attempt",
+                        return_value=_failure(2, "primary")):
+                    result = pyramid_ecc.match(image, image, _cfg())
+
+        self.assertFalse(result["success"])
+        self.assertEqual(result["verification_status"], "Rejected")
+        sources = [a["source"] for a in result["attempts"]]
+        self.assertIn("chamfer_bootstrap", sources)
+        chamfer_attempt = next(a for a in result["attempts"] if a["source"] == "chamfer_bootstrap")
+        self.assertEqual(chamfer_attempt["failure_reason"], "ChamferBootstrapFailure")
+
+    def test_chamfer_seed_duplicate_of_earlier_seed_is_skipped(self):
+        image = _structure()
+        duplicate_matrix = np.eye(3)  # same as the default primary seed -> duplicate
+        with mock.patch.object(coarse_alignment, "find_translation_seeds", return_value=[]):
+            with mock.patch.object(
+                    chamfer_alignment, "find_chamfer_candidates",
+                    return_value=[{"matrix": duplicate_matrix, "source": "chamfer_bootstrap",
+                                   "coarse_score": 0.9}]):
+                with mock.patch.object(
+                        pyramid_ecc, "_run_single_attempt",
+                        return_value=_failure(2, "primary")) as run_mock:
+                    pyramid_ecc.match(image, image, _cfg())
+
+        # Only the primary attempt should have called _run_single_attempt -- the chamfer seed
+        # duplicates the primary identity seed and must be skipped, not run a second time.
+        self.assertEqual(run_mock.call_count, 1)
 
 
 if __name__ == "__main__":
