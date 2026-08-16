@@ -35,6 +35,19 @@ DEFAULTS = {
     "AdaptiveC": -5.0,
     "CloseKernel": 5,
     "CloseIterations": 2,
+    # Thu hoi khi ECC khoi tao identity khong hoi tu.
+    "CoarseSearchDownsample": 4,
+    "CoarseCannyLow": 30,
+    "CoarseCannyHigh": 90,
+    "CoarseDistanceCapPixels": 48.0,
+    "CoarseCandidateCount": 5,
+    "CoarseCandidateSeparationPixels": 48.0,
+    # Xac minh doc lap tren anh contrast, khong dung lai objective cua ECC.
+    "VerificationEdgeTolerancePixels": 3.0,
+    "VerificationMinEdgeCoverage": 0.20,
+    "VerificationMaxChamferP95Pixels": 12.0,
+    "VerificationSameTransformPixels": 4.0,
+    "VerificationMinCoverageMargin": 0.03,
 }
 
 _INI_MAP = {

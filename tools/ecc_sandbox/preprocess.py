@@ -38,33 +38,37 @@ def flatten_and_enhance(mono8, bg_sigma=51.0, clip_limit=3.0, clahe_tile=16):
 
 def to_binary_traces(enhanced_mono8, block_size=51, c=-5.0,
                      close_kernel=5, close_iterations=2):
-    """Buoc 3+4. CHI dung cho chamfer / Hausdorff / ICP / skeleton.
-
-    KHONG duoc dua ket qua nay vao ECC: anh nhi phan co gradient bang 0 o moi noi
-    tru bien 1 pixel, ECC se khong hoi tu (Findings §8.2).
-    """
+    """Otsu + close, roi tron lai grayscale de giu gradient cho ECC."""
     if block_size % 2 == 0:
         block_size += 1
-    binary = cv2.adaptiveThreshold(enhanced_mono8, 255,
-                                   cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-                                   cv2.THRESH_BINARY, block_size, c)
+    # binary = cv2.adaptiveThreshold(enhanced_mono8, 255,
+    #                                cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+    #                                cv2.THRESH_BINARY, block_size, c)
+    binary = cv2.threshold(enhanced_mono8, 128, 255,
+                           cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
     if close_kernel <= 1 or close_iterations <= 0:
         return binary
     k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (close_kernel, close_kernel))
-    return cv2.morphologyEx(binary, cv2.MORPH_CLOSE, k, iterations=close_iterations)
+    morph = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, k, iterations=close_iterations)
+    return cv2.addWeighted(enhanced_mono8, 0.7, morph, 0.3, 0.0).clip(0, 255).astype(np.uint8)
 
 
-def build_variants(mono8, cfg, flatten=True, binarize=False):
-    """Tra ve dict cac buoc trung gian de UI hien tung cua so."""
+def build_variants(mono8, cfg, mode):
+    """Tra ve cac buoc cua dung MOT che do tien xu ly da chon."""
     out = {"raw": mono8}
-    stage = increase_contrast(mono8, cfg["Contrast"])
-    out["contrast"] = stage
-    if flatten:
-        stage = flatten_and_enhance(stage, cfg["BackgroundSigma"],
-                                    cfg["ClaheClipLimit"], cfg["ClaheTile"])
-        out["flattened"] = stage
-    if binarize:
-        out["binary"] = to_binary_traces(stage, cfg["AdaptiveBlockSize"], cfg["AdaptiveC"],
-                                         cfg["CloseKernel"], cfg["CloseIterations"])
-    out["final"] = stage
+    contrast = increase_contrast(mono8, cfg["Contrast"])
+    out["contrast"] = contrast
+    if mode == "FlattenAndEnhance":
+        out["flattened"] = flatten_and_enhance(
+            contrast, cfg["BackgroundSigma"],
+            cfg["ClaheClipLimit"], cfg["ClaheTile"])
+        out["final"] = out["flattened"]
+    elif mode == "ToBinaryTraces":
+        out["binary"] = to_binary_traces(
+            contrast, cfg["AdaptiveBlockSize"], cfg["AdaptiveC"],
+            cfg["CloseKernel"], cfg["CloseIterations"])
+        out["final"] = out["binary"]
+    else:
+        raise ValueError(
+            "Preprocess mode phai la FlattenAndEnhance hoac ToBinaryTraces.")
     return out
