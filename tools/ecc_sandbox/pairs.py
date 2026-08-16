@@ -59,11 +59,16 @@ def load_captured(folder, order_index, extension=".bmp"):
     return img
 
 
-def direct_pair(payload, raster, images_folder, order_index, step_override=None, extension=".bmp"):
+def direct_pair(payload, raster, images_folder, order_index, step_override=None, extension=".bmp",
+                pitch_correction_px_per_step_x=0.0, pitch_correction_px_per_step_y=0.0):
     """Reference = crop raster tai vet chan danh nghia cua anh chup, CUNG kich thuoc anh chup.
 
     step_override cho phep so sanh buoc luoi khac nhau (vd 4096 vs 4031.5) ma khong phai
     sinh lai payload -- dung de nhin tan mat anh huong cua sai buoc len ECC.
+
+    pitch_correction_px_per_step_x/y (mac dinh 0.0 = khong doi hanh vi) la THU NGHIEM sandbox:
+    cong them column*x + row*y vao goc crop, dung so do duoc tu pitch_diagnostics.measure_pitch()
+    de kiem chung gia thuyet sai luoi bang ket qua match that, KHONG phai sua Master.
     """
     tile = next(t for t in payload["tiles"] if t["OrderIndex"] == order_index)
     w, h = payload["image_width"], payload["image_height"]
@@ -73,6 +78,9 @@ def direct_pair(payload, raster, images_folder, order_index, step_override=None,
     else:
         x = int(tile["Column"] * step_override)
         y = int(tile["Row"] * step_override)
+    x += tile["Column"] * pitch_correction_px_per_step_x
+    y += tile["Row"] * pitch_correction_px_per_step_y
+    x, y = int(round(x)), int(round(y))
     reference = raster.crop_mono8(x, y, w, h)
     moving = load_captured(images_folder, order_index, extension)
     return reference, moving, {"reference_origin": (x, y), "tile": tile}

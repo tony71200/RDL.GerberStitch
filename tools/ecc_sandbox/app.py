@@ -197,6 +197,8 @@ class App(object):
         self._row(ep, "MinCorrelation", "mincorr", self.cfg["EccMinCorrelation"])
         self._row(ep, "MaxAbsRotationDeg", "maxrot", self.cfg["MaxAbsRotationDeg"])
         self._row(ep, "MaxTranslationPixels", "maxtrans", self.cfg["MaxTranslationPixels"])
+        self._row(ep, "Pitch corr. X (px/step)", "pitchx", self.cfg["PitchCorrectionPxPerStepX"])
+        self._row(ep, "Pitch corr. Y (px/step)", "pitchy", self.cfg["PitchCorrectionPxPerStepY"])
 
     def _build_run_bar(self, parent):
         # Dat rieng o dau panel phai (NGOAI khung cuon) de luon nhin thay va bam duoc ngay,
@@ -267,6 +269,8 @@ class App(object):
             "EccMinCorrelation": self._num("mincorr"),
             "MaxAbsRotationDeg": self._num("maxrot"),
             "MaxTranslationPixels": self._num("maxtrans"),
+            "PitchCorrectionPxPerStepX": self._num("pitchx"),
+            "PitchCorrectionPxPerStepY": self._num("pitchy"),
         })
         return c
 
@@ -302,7 +306,9 @@ class App(object):
                 raise ValueError("Mode Direct cần raster Gerber.")
             raster = pairs_mod.RasterSource(raster_path)
             reference, moving, meta = pairs_mod.direct_pair(
-                payload, raster, images, order, step, ext)
+                payload, raster, images, order, step, ext,
+                pitch_correction_px_per_step_x=c["PitchCorrectionPxPerStepX"],
+                pitch_correction_px_per_step_y=c["PitchCorrectionPxPerStepY"])
             self.say("Direct: tile order=%d (row=%d, col=%d), reference origin=%s"
                      % (order, row, col, meta["reference_origin"]))
         else:

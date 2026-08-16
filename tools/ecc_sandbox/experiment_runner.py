@@ -107,7 +107,9 @@ def run_experiment(payload_path, images_dir, raster_path, extension, output_dir)
         if order is None:
             raise ValueError("Khong co tile o (row=%d, col=%d)." % (row, column))
         reference_raw, moving_raw, _meta = pairs.direct_pair(
-            payload, raster, images_dir, order, None, extension)
+            payload, raster, images_dir, order, None, extension,
+            pitch_correction_px_per_step_x=base_cfg["PitchCorrectionPxPerStepX"],
+            pitch_correction_px_per_step_y=base_cfg["PitchCorrectionPxPerStepY"])
 
         for mode in PREPROCESS_MODES:
             cfg = dict(base_cfg)
