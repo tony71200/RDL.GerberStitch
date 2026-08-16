@@ -62,10 +62,16 @@ No file above needs splitting further — each new module stays under ~150 lines
 
 **Interfaces:**
 - Consumes: nothing from other new modules yet (pure geometry).
-- Produces: `crop_overlap_roi(image, anchor_tile, target_tile, direction) -> np.ndarray`, used by
-  Task 2's `phase_correlate_shift` call sites. `anchor_tile`/`target_tile` are the same tile dicts
-  `pairs.load_payload` already produces (keys: `OrderIndex`, `Row`, `Column`, `ExpectedX`,
-  `ExpectedY`, `Width`, `Height`). `direction` is one of `"right"`, `"bottom"`.
+- Produces: `crop_overlap_roi(image, anchor_tile, target_tile, direction, is_anchor_image) ->
+  np.ndarray`, used by Task 2's `measure_pitch`. `anchor_tile`/`target_tile` are the same tile
+  dicts `pairs.load_payload` already produces (keys: `OrderIndex`, `Row`, `Column`, `ExpectedX`,
+  `ExpectedY`, `Width`, `Height`). `direction` is one of `"right"`, `"bottom"` (the function also
+  accepts `"left"`/`"top"` for symmetry, but only `"right"`/`"bottom"` are ever called with real
+  data). `is_anchor_image` (`bool`) is required, not inferred: the same `direction` value produces
+  a *different* crop depending on whether `image` is the anchor's capture or the target's capture
+  (for `"right"`, the anchor crops its own rightmost columns while the target crops its own
+  leftmost columns) — there is no way to tell those two cases apart from pixel content, so the
+  caller must say which one `image` is.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -100,9 +106,9 @@ class OverlapRoiTests(unittest.TestCase):
         target_image = np.arange(80 * 100, dtype=np.uint8).reshape(80, 100) + 1
 
         anchor_roi = pitch_diagnostics.crop_overlap_roi(
-            anchor_image, anchor, target, "right")
+            anchor_image, anchor, target, "right", True)
         target_roi = pitch_diagnostics.crop_overlap_roi(
-            target_image, anchor, target, "right")
+            target_image, anchor, target, "right", False)
 
         # overlap width = min(0+100, 90+100) - max(0, 90) = 100 - 90 = 10
         self.assertEqual(anchor_roi.shape, (80, 10))
@@ -118,9 +124,9 @@ class OverlapRoiTests(unittest.TestCase):
         target_image = np.arange(80 * 100, dtype=np.uint8).reshape(80, 100) + 1
 
         anchor_roi = pitch_diagnostics.crop_overlap_roi(
-            anchor_image, anchor, target, "bottom")
+            anchor_image, anchor, target, "bottom", True)
         target_roi = pitch_diagnostics.crop_overlap_roi(
-            target_image, anchor, target, "bottom")
+            target_image, anchor, target, "bottom", False)
 
         # overlap height = min(0+80, 65+80) - max(0, 65) = 80 - 65 = 15
         self.assertEqual(anchor_roi.shape, (15, 100))
@@ -133,7 +139,7 @@ class OverlapRoiTests(unittest.TestCase):
         target = _tile(1, 0, 5, 500, 0)  # far apart, no real overlap
         image = np.zeros((80, 100), dtype=np.uint8)
         with self.assertRaises(ValueError):
-            pitch_diagnostics.crop_overlap_roi(image, anchor, target, "right")
+            pitch_diagnostics.crop_overlap_roi(image, anchor, target, "right", True)
 
 
 if __name__ == "__main__":
@@ -173,12 +179,14 @@ def _overlap_extent(anchor_tile, target_tile, axis):
     return extent
 
 
-def crop_overlap_roi(image, anchor_tile, target_tile, direction):
+def crop_overlap_roi(image, anchor_tile, target_tile, direction, is_anchor_image):
     """Cat dai overlap o mep gan nhau cua `image`, theo dung cong thuc AnchorRoi/TargetRoi.
 
-    `image` co the la anh cua anchor HOAC target -- ham nay khong biet no dang cat anh nao,
-    chi biet direction va kich thuoc anh de cat dung mep. Goi 2 lan (mot cho anchor_image,
-    mot cho target_image) de co ca hai ROI.
+    Cung mot `direction` cho ra crop KHAC NHAU tuy `image` thuoc anchor hay target -- vi du
+    "right": anchor (ben trai) crop canh PHAI cua chinh no, target (ben phai) crop canh TRAI
+    cua chinh no. Khong the tu doan duoc dieu nay tu noi dung pixel, nen `is_anchor_image` la
+    tham so BAT BUOC, khong suy luan. Goi ham nay 2 lan (mot voi is_anchor_image=True cho anh
+    anchor, mot voi is_anchor_image=False cho anh target) de co ca hai ROI.
     """
     if direction not in ("right", "left", "bottom", "top"):
         raise ValueError("direction phai la right/left/bottom/top.")
@@ -190,18 +198,20 @@ def crop_overlap_roi(image, anchor_tile, target_tile, direction):
             raise ValueError(
                 "Overlap ngang khong hop le (w=%d) giua tile %s va %s." %
                 (w, anchor_tile.get("OrderIndex"), target_tile.get("OrderIndex")))
-        if direction == "right":
-            return image[:, width - w:width]
-        return image[:, 0:w]
+        anchor_crops_right_edge = (direction == "right")
+        use_right_edge = (anchor_crops_right_edge if is_anchor_image
+                          else not anchor_crops_right_edge)
+        return image[:, width - w:width] if use_right_edge else image[:, 0:w]
 
     h = int(round(_overlap_extent(anchor_tile, target_tile, "y")))
     if h <= 0 or h > height:
         raise ValueError(
             "Overlap doc khong hop le (h=%d) giua tile %s va %s." %
             (h, anchor_tile.get("OrderIndex"), target_tile.get("OrderIndex")))
-    if direction == "bottom":
-        return image[height - h:height, :]
-    return image[0:h, :]
+    anchor_crops_bottom_edge = (direction == "bottom")
+    use_bottom_edge = (anchor_crops_bottom_edge if is_anchor_image
+                       else not anchor_crops_bottom_edge)
+    return image[height - h:height, :] if use_bottom_edge else image[0:h, :]
 ```
 
 - [ ] **Step 4: Run test to verify it passes**
@@ -406,8 +416,8 @@ def measure_pitch(payload, images_dir, extension, cfg):
                 images_dir, anchor_tile["OrderIndex"], extension)
             target_image = pairs.load_captured(
                 images_dir, target_tile["OrderIndex"], extension)
-            anchor_roi = crop_overlap_roi(anchor_image, anchor_tile, target_tile, direction)
-            target_roi = crop_overlap_roi(target_image, anchor_tile, target_tile, direction)
+            anchor_roi = crop_overlap_roi(anchor_image, anchor_tile, target_tile, direction, True)
+            target_roi = crop_overlap_roi(target_image, anchor_tile, target_tile, direction, False)
             dx, dy = phase_correlate_shift(anchor_roi, target_roi, cfg)
         except (ValueError, IOError, cv2.error):
             continue
