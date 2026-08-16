@@ -4,7 +4,7 @@
 
 **Goal:** Make Affine the Python ECC sandbox default, normalize affine X/Y scale through a UI-selectable `median` or `min` policy (default `min`), and clamp signed rotation to `MaxAbsRotationDeg`.
 
-**Architecture:** Let OpenCV optimize its full affine matrix through all pyramid levels, then normalize the final `MovingImage -> ReferenceImage` matrix once. A pure helper extracts raw scales and rotation, chooses a uniform scale, clamps rotation while preserving its sign, rebuilds the linear 2x2 block as a similarity transform, and preserves translation. The UI and log expose the normalization policy and raw/final geometry.
+**Architecture:** Let OpenCV optimize through all pyramid levels, then post-process the final `MovingImage -> ReferenceImage` matrix once. For Affine, a pure helper extracts raw scales and rotation, chooses a uniform scale, clamps rotation while preserving its sign, rebuilds the linear 2x2 block as a similarity transform, and preserves translation. For Euclidean, it rebuilds the rotation block only when clamping is required; Translation is unchanged. The UI and log expose the normalization policy and raw/final geometry.
 
 **Tech Stack:** Python 3 · NumPy · OpenCV Python · Tkinter
 
@@ -38,7 +38,7 @@
 
 **Interfaces:**
 - Consumes: configuration keys `EccMotionModel`, `AffineNormalize`, `MaxAbsRotationDeg`
-- Produces: `_normalize_affine_result(matrix, mode, max_abs_rotation_deg) -> (matrix, diagnostics)`
+- Produces: `_normalize_ecc_result(matrix, motion_model, mode, max_abs_rotation_deg) -> (matrix, diagnostics)`
 - Produces diagnostics: `raw_scale_x`, `raw_scale_y`, `raw_rotation_deg`, `affine_normalize`, `rotation_clamped`
 
 - [ ] **Step 1: Repair and finalize sandbox defaults**
@@ -57,18 +57,21 @@ Remove the incomplete `_NORMALIZE_DEFAULT_MAX_SCALE_SPREAD_NOTE` tuple fragment.
 Implement directly above `match()`:
 
 ```python
-def _normalize_affine_result(matrix, mode, max_abs_rotation_deg):
+def _normalize_ecc_result(matrix, motion_model, mode, max_abs_rotation_deg):
     m = np.asarray(matrix, dtype=float)
     scale_x = math.hypot(m[0, 0], m[1, 0])
     scale_y = math.hypot(m[0, 1], m[1, 1])
     raw_rotation_deg = math.degrees(math.atan2(m[1, 0], m[0, 0]))
 
-    if mode == "median":
-        uniform_scale = (scale_x + scale_y) / 2.0
-    elif mode == "min":
-        uniform_scale = min(scale_x, scale_y)
+    if motion_model == "Affine":
+        if mode == "median":
+            uniform_scale = (scale_x + scale_y) / 2.0
+        elif mode == "min":
+            uniform_scale = min(scale_x, scale_y)
+        else:
+            raise ValueError("AffineNormalize phai la 'median' hoac 'min'.")
     else:
-        raise ValueError("AffineNormalize phai la 'median' hoac 'min'.")
+        uniform_scale = scale_x
 
     if not all(math.isfinite(v) for v in (scale_x, scale_y, raw_rotation_deg, uniform_scale)):
         raise ValueError("Affine result chua gia tri khong huu han.")
@@ -80,11 +83,14 @@ def _normalize_affine_result(matrix, mode, max_abs_rotation_deg):
     angle = math.radians(rotation_deg)
     c = math.cos(angle) * uniform_scale
     s = math.sin(angle) * uniform_scale
+    should_rebuild = motion_model == "Affine" or abs(rotation_deg - raw_rotation_deg) > 1e-12
     normalized = np.array([
         [c, -s, m[0, 2]],
         [s,  c, m[1, 2]],
         [0.0, 0.0, 1.0],
     ])
+    if not should_rebuild:
+        normalized = m.copy()
     diagnostics = {
         "raw_scale_x": scale_x,
         "raw_scale_y": scale_y,
@@ -97,31 +103,26 @@ def _normalize_affine_result(matrix, mode, max_abs_rotation_deg):
 
 - [ ] **Step 3: Apply normalization after ECC and before result extraction**
 
-Immediately after `moving_to_reference = np.linalg.inv(full_ref_to_mov)`, call the helper only for Affine:
+Immediately after `moving_to_reference = np.linalg.inv(full_ref_to_mov)`, call the helper for every motion model. It normalizes scale only for Affine, clamps rotation for Affine and Euclidean, and leaves Translation unchanged:
 
 ```python
-geometry_diagnostics = {}
-if motion_model == "Affine":
-    try:
-        moving_to_reference, geometry_diagnostics = _normalize_affine_result(
-            moving_to_reference,
-            cfg["AffineNormalize"],
-            cfg["MaxAbsRotationDeg"])
-    except ValueError as ex:
-        result["failure_reason"] = "NonFiniteTransform"
-        result["message"] = str(ex)
-        return result
+try:
+    moving_to_reference, geometry_diagnostics = _normalize_ecc_result(
+        moving_to_reference,
+        motion_model,
+        cfg["AffineNormalize"],
+        cfg["MaxAbsRotationDeg"])
+except ValueError as ex:
+    result["failure_reason"] = "NonFiniteTransform"
+    result["message"] = str(ex)
+    return result
 ```
 
 Extract translation, rotation and scale from the resulting authoritative matrix. Merge the diagnostics into `result`.
 
 - [ ] **Step 4: Preserve validation except for obsolete affine rotation rejection**
 
-Keep correlation, translation and scale checks in their current order. Retain the rotation rejection for non-Affine modes, but do not reject normalized Affine results because their rotation was already clamped:
-
-```python
-if motion_model != "Affine" and abs(rotation_deg) > cfg["MaxAbsRotationDeg"]:
-```
+Keep correlation, translation and scale checks in their current order. Remove the rotation-rejection branch because Affine and Euclidean rotation is now clamped before validation, while Translation has zero rotation.
 
 - [ ] **Step 5: Static review gate**
 
@@ -205,7 +206,7 @@ Document these exact points:
 - `median` means `(scaleX + scaleY) / 2` for the two extracted scales.
 - `min` chooses the smaller scale.
 - Normalization removes shear, preserves translation, and clamps signed rotation to `MaxAbsRotationDeg`.
-- Euclidean and Translation modes retain their previous behavior.
+- Euclidean retains its previous transform when within the limit and is rebuilt only when rotation is clamped; Translation is unchanged.
 
 - [ ] **Step 2: Add the manual verification cases**
 
@@ -233,4 +234,3 @@ git commit -m "Document affine ECC normalization controls"
 - [ ] **Step 5: User verification gate**
 
 Ask the user to run `python tools/ecc_sandbox/app.py` and perform the six cases in the design spec. Report implementation as statically reviewed, not runtime-tested.
-

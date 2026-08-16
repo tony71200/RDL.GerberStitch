@@ -38,7 +38,8 @@ exactly `median` and `min`, with `min` initially selected. `App.current_cfg()` c
 into the configuration passed to `pyramid_ecc.match()`.
 
 The existing motion-model combobox remains available so the sandbox can still compare Affine with
-Euclidean or Translation. Affine normalization applies only when `EccMotionModel == "Affine"`.
+Euclidean or Translation. Scale normalization applies only when `EccMotionModel == "Affine"`.
+Signed rotation clamping applies to both Affine and Euclidean results; Translation has no rotation.
 
 ## Transform Post-processing
 
@@ -96,7 +97,8 @@ Diagnostics expose enough data to compare raw ECC output with the normalized tra
 - raw rotation and final rotation
 - whether rotation was clamped
 
-For Euclidean and Translation modes, the transform is not rebuilt and existing behavior is preserved.
+For Euclidean, the transform is rebuilt only when its rotation needs clamping; otherwise its existing
+matrix is preserved. Translation behavior is unchanged.
 
 ## Error Handling
 
@@ -117,4 +119,3 @@ of static review plus user-run sandbox cases:
    `+MaxAbsRotationDeg` and `-MaxAbsRotationDeg` and the result is not rejected for rotation.
 5. Confirm the preview uses the same normalized matrix printed in the log.
 6. Select Euclidean and confirm its existing transform behavior is unchanged.
-
