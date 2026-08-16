@@ -13,6 +13,7 @@ if SANDBOX_DIR not in sys.path:
     sys.path.insert(0, SANDBOX_DIR)
 
 import pitch_diagnostics
+import config
 
 
 def _tile(order, row, column, expected_x, expected_y, width=100, height=80):
@@ -150,6 +151,23 @@ class MeasurePitchTests(unittest.TestCase):
         self.assertIn("bottom", result)
         self.assertEqual(result["right"]["n"], 2)
         self.assertAlmostEqual(result["right"]["mean_dx"], residual[0], delta=0.6)
+
+
+class NewConfigDefaultsTests(unittest.TestCase):
+    def test_chamfer_pitch_and_expanded_search_defaults_exist(self):
+        expected = {
+            "ChamferAngleStepDeg": 0.02,
+            "ChamferCandidateCount": 5,
+            "ChamferSeparationPixels": 48.0,
+            "PitchCorrectionPxPerStepX": 0.0,
+            "PitchCorrectionPxPerStepY": 0.0,
+            "ExpandedSearchFactor": 2.0,
+            "ExpandedSearchMaxRounds": 1,
+            "MaxTranslationPixelsHardCap": 800.0,
+        }
+        for key, value in expected.items():
+            self.assertIn(key, config.DEFAULTS)
+            self.assertEqual(config.DEFAULTS[key], value)
 
 
 if __name__ == "__main__":

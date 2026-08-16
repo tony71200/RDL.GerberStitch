@@ -48,6 +48,19 @@ DEFAULTS = {
     "VerificationMaxChamferP95Pixels": 12.0,
     "VerificationSameTransformPixels": 4.0,
     "VerificationMinCoverageMargin": 0.03,
+    # Chamfer bootstrap (docs/superpowers/specs/2026-08-16-ecc-pitch-diagnostics-and-chamfer-
+    # recovery-design.md Part 2) -- tim (goc, tx, ty) khong phu thuoc gradient cuong do.
+    "ChamferAngleStepDeg": 0.02,
+    "ChamferCandidateCount": 5,
+    "ChamferSeparationPixels": 48.0,
+    # Pitch-corrected seeding (Part 3) -- THU NGHIEM sandbox, mac dinh 0.0 = khong doi hanh vi.
+    # Dat theo so do duoc tu pitch_diagnostics.measure_pitch(), KHONG phai fix o Master.
+    "PitchCorrectionPxPerStepX": 0.0,
+    "PitchCorrectionPxPerStepY": 0.0,
+    # Mo rong search co kiem soat (Part 3) -- chi chay vong 2 khi vong 1 that bai toan bo.
+    "ExpandedSearchFactor": 2.0,
+    "ExpandedSearchMaxRounds": 1,
+    "MaxTranslationPixelsHardCap": 800.0,
 }
 
 _INI_MAP = {
