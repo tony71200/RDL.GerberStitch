@@ -184,6 +184,12 @@ class App(object):
         self.motion = tk.StringVar(value=self.cfg["EccMotionModel"])
         ttk.Combobox(frame, textvariable=self.motion, width=12, state="readonly",
                      values=["Translation", "Euclidean", "Affine"]).pack(side="left")
+        frame = ttk.Frame(ep)
+        frame.pack(fill="x", pady=1)
+        ttk.Label(frame, text="Affine scale", width=22).pack(side="left")
+        self.affine_normalize = tk.StringVar(value=self.cfg["AffineNormalize"])
+        ttk.Combobox(frame, textvariable=self.affine_normalize, width=12, state="readonly",
+                     values=["median", "min"]).pack(side="left")
         self._row(ep, "PyramidLevels", "levels", self.cfg["EccPyramidLevels"])
         self._row(ep, "MaxIterations", "iters", self.cfg["EccMaxIterations"])
         self._row(ep, "Epsilon", "eps", self.cfg["EccEpsilon"])
@@ -253,6 +259,7 @@ class App(object):
             "AdaptiveC": self._num("cval"),
             "CloseKernel": self._num("ck", int),
             "EccMotionModel": self.motion.get(),
+            "AffineNormalize": self.affine_normalize.get(),
             "EccPyramidLevels": self._num("levels", int),
             "EccMaxIterations": self._num("iters", int),
             "EccEpsilon": self._num("eps"),
@@ -374,7 +381,12 @@ class App(object):
             self.say("   [ %12.6f  %12.6f  %12.4f ]" % (m[i, 0], m[i, 1], m[i, 2]))
         self.say("")
         self.say("  translation = (%.3f, %.3f) px" % (r["translation_x"], r["translation_y"]))
-        self.say("  rotation    = %.5f deg" % r["rotation_deg"])
+        if r.get("affine_normalize") is not None:
+            self.say("  raw scale   = (X=%.8f, Y=%.8f)  normalize=%s"
+                     % (r["raw_scale_x"], r["raw_scale_y"], r["affine_normalize"]))
+        clamp_note = "  [CLAMPED]" if r.get("rotation_clamped") else ""
+        self.say("  raw rotation= %.5f deg" % r.get("raw_rotation_deg", r["rotation_deg"]))
+        self.say("  rotation    = %.5f deg%s" % (r["rotation_deg"], clamp_note))
         self.say("  scale       = %.8f" % r["scale"])
         self.say("  rawScore    = %.5f   (MinCorrelation %.3f)"
                  % (r["raw_score"], self.current_cfg()["EccMinCorrelation"]))
