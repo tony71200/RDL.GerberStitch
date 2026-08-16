@@ -49,6 +49,65 @@ def _build_pyramids(ref32, mov32, levels):
     return rp, mp
 
 
+def _normalize_ecc_result(matrix, motion_model, mode, max_abs_rotation_deg):
+    """Chuan hoa transform cuoi cung, sau khi ECC da hoi tu.
+
+    Affine: dong nhat scale X/Y va loai shear. Affine/Euclidean: clamp rotation co giu dau.
+    Translation duoc giu nguyen. Translation cua moi ma tran luon duoc bao toan.
+    """
+    m = np.asarray(matrix, dtype=float)
+    if m.shape != (3, 3) or not np.isfinite(m).all():
+        raise ValueError("ECC result khong phai ma tran 3x3 huu han.")
+
+    scale_x = math.hypot(m[0, 0], m[1, 0])
+    scale_y = math.hypot(m[0, 1], m[1, 1])
+    raw_rotation_deg = math.degrees(math.atan2(m[1, 0], m[0, 0]))
+
+    if motion_model == "Affine":
+        if mode == "median":
+            uniform_scale = (scale_x + scale_y) / 2.0
+        elif mode == "min":
+            uniform_scale = min(scale_x, scale_y)
+        else:
+            raise ValueError("AffineNormalize phai la 'median' hoac 'min'.")
+    else:
+        uniform_scale = scale_x
+
+    if not all(math.isfinite(v) for v in
+               (scale_x, scale_y, raw_rotation_deg, uniform_scale)):
+        raise ValueError("ECC result chua gia tri hinh hoc khong huu han.")
+    if uniform_scale <= 1e-12:
+        raise ValueError("ECC result co scale suy bien.")
+
+    rotation_limit = abs(float(max_abs_rotation_deg))
+    if not math.isfinite(rotation_limit):
+        raise ValueError("MaxAbsRotationDeg phai la gia tri huu han.")
+    rotation_deg = max(-rotation_limit, min(raw_rotation_deg, rotation_limit))
+    rotation_clamped = abs(rotation_deg - raw_rotation_deg) > 1e-12
+    should_rebuild = motion_model == "Affine" or rotation_clamped
+
+    if should_rebuild:
+        angle = math.radians(rotation_deg)
+        c = math.cos(angle) * uniform_scale
+        s = math.sin(angle) * uniform_scale
+        normalized = np.array([
+            [c, -s, m[0, 2]],
+            [s, c, m[1, 2]],
+            [0.0, 0.0, 1.0],
+        ])
+    else:
+        normalized = m.copy()
+
+    diagnostics = {
+        "raw_scale_x": scale_x,
+        "raw_scale_y": scale_y,
+        "raw_rotation_deg": raw_rotation_deg,
+        "affine_normalize": mode if motion_model == "Affine" else None,
+        "rotation_clamped": rotation_clamped,
+    }
+    return normalized, diagnostics
+
+
 def match(reference_mono8, moving_mono8, cfg, initial_moving_to_reference=None):
     """Tra ve dict ket qua, mo phong MatchResult cua C#.
 
@@ -102,6 +161,15 @@ def match(reference_mono8, moving_mono8, cfg, initial_moving_to_reference=None):
                                  "scale": scale, "correlation": float(correlation)})
 
     moving_to_reference = np.linalg.inv(full_ref_to_mov)
+    try:
+        moving_to_reference, geometry_diagnostics = _normalize_ecc_result(
+            moving_to_reference, motion_model, cfg["AffineNormalize"],
+            cfg["MaxAbsRotationDeg"])
+    except ValueError as ex:
+        result["failure_reason"] = "NonFiniteTransform"
+        result["message"] = str(ex)
+        return result
+
     tx = moving_to_reference[0, 2]
     ty = moving_to_reference[1, 2]
     rotation_deg = math.degrees(math.atan2(moving_to_reference[1, 0], moving_to_reference[0, 0]))
@@ -117,8 +185,9 @@ def match(reference_mono8, moving_mono8, cfg, initial_moving_to_reference=None):
         "normalized_confidence": max(0.0, min(1.0, (correlation + 1.0) / 2.0)),
         "pyramid_levels": len(rp),
     })
+    result.update(geometry_diagnostics)
 
-    # ValidateMovingToReference (:161) -- dung thu tu kiem tra nhu C#.
+    # Giu thu tu validation cua C#, tru rotation da duoc clamp o tren thay vi reject.
     if abs(tx) > cfg["MaxTranslationPixels"] or abs(ty) > cfg["MaxTranslationPixels"]:
         result["failure_reason"] = "NonFiniteTransform"
         result["message"] = "Translation vuot MaxTranslationPixels (%.1f)." % cfg["MaxTranslationPixels"]
@@ -126,11 +195,6 @@ def match(reference_mono8, moving_mono8, cfg, initial_moving_to_reference=None):
     if math.isnan(correlation) or math.isinf(correlation) or correlation < cfg["EccMinCorrelation"]:
         result["failure_reason"] = "CorrelationBelowThreshold"
         result["message"] = "Correlation %.4f < MinCorrelation %.4f." % (correlation, cfg["EccMinCorrelation"])
-        return result
-    if abs(rotation_deg) > cfg["MaxAbsRotationDeg"]:
-        result["failure_reason"] = "GeometryRejected"
-        result["message"] = "Rotation %.4f deg vuot MaxAbsRotationDeg %.4f." % (
-            rotation_deg, cfg["MaxAbsRotationDeg"])
         return result
     if scale_value < cfg["MinScale"] or scale_value > cfg["MaxScale"]:
         result["failure_reason"] = "GeometryRejected"
