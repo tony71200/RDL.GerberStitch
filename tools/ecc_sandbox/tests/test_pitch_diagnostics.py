@@ -26,9 +26,9 @@ class OverlapRoiTests(unittest.TestCase):
         target_image = np.arange(80 * 100, dtype=np.uint8).reshape(80, 100) + 1
 
         anchor_roi = pitch_diagnostics.crop_overlap_roi(
-            anchor_image, anchor, target, "right")
+            anchor_image, anchor, target, "right", True)
         target_roi = pitch_diagnostics.crop_overlap_roi(
-            target_image, anchor, target, "right")
+            target_image, anchor, target, "right", False)
 
         # overlap width = min(0+100, 90+100) - max(0, 90) = 100 - 90 = 10
         self.assertEqual(anchor_roi.shape, (80, 10))
@@ -44,9 +44,9 @@ class OverlapRoiTests(unittest.TestCase):
         target_image = np.arange(80 * 100, dtype=np.uint8).reshape(80, 100) + 1
 
         anchor_roi = pitch_diagnostics.crop_overlap_roi(
-            anchor_image, anchor, target, "bottom")
+            anchor_image, anchor, target, "bottom", True)
         target_roi = pitch_diagnostics.crop_overlap_roi(
-            target_image, anchor, target, "bottom")
+            target_image, anchor, target, "bottom", False)
 
         # overlap height = min(0+80, 65+80) - max(0, 65) = 80 - 65 = 15
         self.assertEqual(anchor_roi.shape, (15, 100))
@@ -59,7 +59,7 @@ class OverlapRoiTests(unittest.TestCase):
         target = _tile(1, 0, 5, 500, 0)  # far apart, no real overlap
         image = np.zeros((80, 100), dtype=np.uint8)
         with self.assertRaises(ValueError):
-            pitch_diagnostics.crop_overlap_roi(image, anchor, target, "right")
+            pitch_diagnostics.crop_overlap_roi(image, anchor, target, "right", True)
 
 
 if __name__ == "__main__":

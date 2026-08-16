@@ -21,66 +21,36 @@ def _overlap_extent(anchor_tile, target_tile, axis):
     return extent
 
 
-def crop_overlap_roi(image, anchor_tile, target_tile, direction):
+def crop_overlap_roi(image, anchor_tile, target_tile, direction, is_anchor_image):
     """Cat dai overlap o mep gan nhau cua `image`, theo dung cong thuc AnchorRoi/TargetRoi.
 
-    `image` co the la anh cua anchor HOAC target -- ham nay khong biet no dang cat anh nao,
-    chi biet direction va kich thuoc anh de cat dung mep. Goi 2 lan (mot cho anchor_image,
-    mot cho target_image) de co ca hai ROI.
+    Cung mot `direction` cho ra crop KHAC NHAU tuy `image` thuoc anchor hay target -- vi du
+    "right": anchor (ben trai) crop canh PHAI cua chinh no, target (ben phai) crop canh TRAI
+    cua chinh no. Khong the tu doan duoc dieu nay tu noi dung pixel, nen `is_anchor_image` la
+    tham so BAT BUOC, khong suy luan. Goi ham nay 2 lan (mot voi is_anchor_image=True cho anh
+    anchor, mot voi is_anchor_image=False cho anh target) de co ca hai ROI.
     """
     if direction not in ("right", "left", "bottom", "top"):
         raise ValueError("direction phai la right/left/bottom/top.")
 
     height, width = image.shape[:2]
-
-    # Determine if image is anchor or target based on pixel value at [0,0].
-    # Anchor typically starts at 0, target has higher offset. This distinguishes
-    # which edge to crop without requiring explicit tile-image correspondence parameter.
-    is_image_anchor = (image[0, 0] == 0) if image.size > 0 else True
-
-    # Determine spatial arrangement: which tile is left/above
-    anchor_is_left = anchor_tile["ExpectedX"] < target_tile["ExpectedX"]
-    anchor_is_above = anchor_tile["ExpectedY"] < target_tile["ExpectedY"]
-
     if direction in ("right", "left"):
         w = int(round(_overlap_extent(anchor_tile, target_tile, "x")))
         if w <= 0 or w > width:
             raise ValueError(
                 "Overlap ngang khong hop le (w=%d) giua tile %s va %s." %
                 (w, anchor_tile.get("OrderIndex"), target_tile.get("OrderIndex")))
-
-        if direction == "right":
-            # Right direction: crop edge facing right
-            # Left tile crops right edge, right tile crops left edge
-            if anchor_is_left:
-                return image[:, width - w:width] if is_image_anchor else image[:, 0:w]
-            else:
-                return image[:, 0:w] if is_image_anchor else image[:, width - w:width]
-        else:  # direction == "left"
-            # Left direction: crop edge facing left
-            # Left tile crops left edge, right tile crops right edge
-            if anchor_is_left:
-                return image[:, 0:w] if is_image_anchor else image[:, width - w:width]
-            else:
-                return image[:, width - w:width] if is_image_anchor else image[:, 0:w]
+        anchor_crops_right_edge = (direction == "right")
+        use_right_edge = (anchor_crops_right_edge if is_anchor_image
+                          else not anchor_crops_right_edge)
+        return image[:, width - w:width] if use_right_edge else image[:, 0:w]
 
     h = int(round(_overlap_extent(anchor_tile, target_tile, "y")))
     if h <= 0 or h > height:
         raise ValueError(
             "Overlap doc khong hop le (h=%d) giua tile %s va %s." %
             (h, anchor_tile.get("OrderIndex"), target_tile.get("OrderIndex")))
-
-    if direction == "bottom":
-        # Bottom direction: crop edge facing bottom
-        # Top tile crops bottom edge, bottom tile crops top edge
-        if anchor_is_above:
-            return image[height - h:height, :] if is_image_anchor else image[0:h, :]
-        else:
-            return image[0:h, :] if is_image_anchor else image[height - h:height, :]
-    else:  # direction == "top"
-        # Top direction: crop edge facing top
-        # Top tile crops top edge, bottom tile crops bottom edge
-        if anchor_is_above:
-            return image[0:h, :] if is_image_anchor else image[height - h:height, :]
-        else:
-            return image[height - h:height, :] if is_image_anchor else image[0:h, :]
+    anchor_crops_bottom_edge = (direction == "bottom")
+    use_bottom_edge = (anchor_crops_bottom_edge if is_anchor_image
+                       else not anchor_crops_bottom_edge)
+    return image[height - h:height, :] if use_bottom_edge else image[0:h, :]
