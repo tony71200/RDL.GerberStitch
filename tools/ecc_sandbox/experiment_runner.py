@@ -13,6 +13,7 @@ import os
 import cv2
 import numpy as np
 
+import alignment_quality
 import config
 import pairs
 import preprocess
@@ -138,12 +139,15 @@ def run_experiment(payload_path, images_dir, raster_path, extension, output_dir,
             _save_overlay(output_dir, case_id, reference_raw, moving_raw,
                          result.get("matrix"))
 
+    consistency = alignment_quality.summarize_consistency(json_results) if all_tiles else None
+
     with open(os.path.join(output_dir, _JSON_NAME), "w", encoding="utf-8") as stream:
         json.dump({
             "config": _json_safe(base_cfg),
-            "requested_coordinates": REQUESTED_COORDINATES,
+            "requested_coordinates": coordinates,
             "preprocess_modes": list(PREPROCESS_MODES),
             "results": json_results,
+            "consistency": consistency,
         }, stream, indent=2)
 
     with open(os.path.join(output_dir, _CSV_NAME), "w", encoding="utf-8", newline="") as stream:

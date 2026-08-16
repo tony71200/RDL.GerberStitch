@@ -150,6 +150,53 @@ class ExperimentRunnerTests(unittest.TestCase):
                 {(row["row"], row["column"]) for row in rows_out},
                 set(coordinates))
 
+    def test_all_tiles_run_adds_consistency_summary_to_json(self):
+        rows, cols = 2, 3
+        coordinates = [(r, c) for r in range(rows) for c in range(cols)]
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            images_dir = os.path.join(temp_dir, "images")
+            output_dir = os.path.join(temp_dir, "result_test")
+            os.makedirs(images_dir)
+            raster_path = os.path.join(temp_dir, "gerber.tiff")
+            payload_path = os.path.join(temp_dir, "sample.json")
+
+            base = np.zeros((32, 32), dtype=np.uint8)
+            cv2.circle(base, (10, 9), 5, 255, 2)
+            Image.fromarray(base).save(raster_path)
+
+            tiles = []
+            for order, (row, column) in enumerate(coordinates):
+                tiles.append({
+                    "OrderIndex": order, "Row": row, "Column": column,
+                    "ExpectedX": 0, "ExpectedY": 0, "Width": 32, "Height": 32,
+                })
+                self.assertTrue(cv2.imwrite(
+                    os.path.join(images_dir, "%d.bmp" % order), base))
+            with open(payload_path, "w", encoding="utf-8") as stream:
+                json.dump({"Width_CaptureImages": 32, "Height_CaptureImages": 32,
+                          "GerberTiles": tiles}, stream)
+
+            match_result = {
+                "success": True, "verification_status": "Verified", "failure_reason": None,
+                "message": "verified", "matrix": np.eye(3), "translation_x": 2.0,
+                "translation_y": 1.0, "rotation_deg": 0.0, "scale": 0.98, "raw_score": 0.9,
+                "reference_edge_coverage": 1.0, "moving_edge_coverage": 1.0,
+                "symmetric_edge_coverage": 1.0, "symmetric_chamfer_p95": 0.0,
+                "coverage_margin": None, "attempts": [],
+            }
+            with mock.patch.object(experiment_runner.ecc, "match", return_value=match_result):
+                experiment_runner.run_experiment(
+                    payload_path, images_dir, raster_path, "", output_dir, all_tiles=True)
+
+            with open(os.path.join(output_dir, "experiment_results.json"),
+                     "r", encoding="utf-8") as stream:
+                saved_json = json.load(stream)
+
+        self.assertIn("consistency", saved_json)
+        self.assertIsNotNone(saved_json["consistency"])
+        self.assertEqual(saved_json["consistency"]["n"], rows * cols * 2)
+
 
 if __name__ == "__main__":
     unittest.main()
