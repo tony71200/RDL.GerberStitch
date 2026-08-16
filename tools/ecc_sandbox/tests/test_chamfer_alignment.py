@@ -85,6 +85,21 @@ class FindChamferCandidatesTests(unittest.TestCase):
 
         self.assertEqual(candidates, [])
 
+    def test_zero_candidate_count_returns_no_candidates(self):
+        reference = _traces_image()
+        angle, tx, ty = 0.3, 7.0, -5.0
+        h, w = reference.shape
+        center = (w / 2.0, h / 2.0)
+        rot = cv2.getRotationMatrix2D(center, -angle, 1.0)
+        rot[0, 2] += tx
+        rot[1, 2] += ty
+        moving = cv2.warpAffine(reference, rot, (w, h), flags=cv2.INTER_LINEAR)
+
+        candidates = chamfer_alignment.find_chamfer_candidates(
+            reference, moving, _cfg(ChamferCandidateCount=0))
+
+        self.assertEqual(candidates, [])
+
     def test_mismatched_shapes_raise(self):
         reference = _traces_image()
         moving = _traces_image()[:, :100]
