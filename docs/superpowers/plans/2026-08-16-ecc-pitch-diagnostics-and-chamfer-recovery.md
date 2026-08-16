@@ -1167,7 +1167,7 @@ def _payload_and_files(temp_dir, row, column, expected_x, expected_y, width=64, 
               "sample_path": None, "overlap_x": None, "overlap_y": None}
 
     raster_path = os.path.join(temp_dir, "raster.png")
-    raster_image = np.arange(400 * 400, dtype=np.uint8).reshape(400, 400) % 256
+    raster_image = (np.arange(400 * 400) % 256).astype(np.uint8).reshape(400, 400)
     Image.fromarray(raster_image).save(raster_path)
     raster = pairs.RasterSource(raster_path)
 
