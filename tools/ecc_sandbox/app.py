@@ -250,6 +250,10 @@ class App(object):
         self.log.insert("end", text + "\n")
         self.log.see("end")
 
+    def _on_stage(self, stage, detail):
+        self.say("  [stage] %s %s" % (stage, detail))
+        self.root.update_idletasks()
+
     # ---------- run ----------
     def current_cfg(self):
         c = dict(self.cfg)
@@ -330,7 +334,8 @@ class App(object):
         # da toi uu hoa tren do (docs/superpowers spec "Independent Alignment Verification").
         result = ecc.match(ref_v["final"], mov_v["final"], c,
                            verification_reference=ref_v["contrast"],
-                           verification_moving=mov_v["contrast"])
+                           verification_moving=mov_v["contrast"],
+                           on_stage=self._on_stage)
         self._report(result)
         self._draw_match(ref_v["final"], mov_v["final"], result)
 
