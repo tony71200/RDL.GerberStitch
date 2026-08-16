@@ -359,12 +359,12 @@ Append to `tools/ecc_sandbox/pitch_diagnostics.py` (after `crop_overlap_roi`, be
 ```python
 import argparse
 import json
-import math
 import os
 import statistics as st
 
 import cv2
 
+import config
 import pairs
 import preprocess
 
@@ -449,8 +449,7 @@ def _parse_args():
 def main():
     args = _parse_args()
     payload = pairs.load_payload(args.payload)
-    cfg = dict()
-    cfg.update({"BackgroundSigma": 51.0, "ClaheClipLimit": 3.0, "ClaheTile": 16})
+    cfg = dict(config.DEFAULTS)
     result = measure_pitch(payload, args.images, args.ext or ".bmp", cfg)
 
     os.makedirs(os.path.dirname(os.path.abspath(args.output)), exist_ok=True)
@@ -472,15 +471,18 @@ if __name__ == "__main__":
 ```
 
 Note: the module already has `import numpy as np` at the top from Task 1; the appended code adds
-`argparse`, `json`, `math`, `os`, `statistics as st`, `cv2`, `pairs`, `preprocess` — put these new
+`argparse`, `json`, `os`, `statistics as st`, `cv2`, `config`, `pairs`, `preprocess` — put these new
 imports at the top of the file alongside the existing `import numpy as np`, not inline, and remove
 the duplicate `if __name__ == "__main__":` guard from Task 1's version of the file (there is only
-one `main()` in the finished file, added by this task).
+one `main()` in the finished file, added by this task). `main()` builds its config from
+`config.DEFAULTS` (matching `experiment_runner.py`'s `base_cfg = dict(config.DEFAULTS)` pattern),
+not a hand-written literal dict — this keeps the CLI's defaults from silently drifting out of sync
+with `config.DEFAULTS` as the sandbox evolves.
 
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `python -m unittest tests.test_pitch_diagnostics -v` (from `tools/ecc_sandbox/`)
-Expected: PASS (7 tests total: 3 from Task 1 + 4 new)
+Expected: PASS (6 tests total: 3 from Task 1 + 3 new)
 
 - [ ] **Step 5: Commit**
 
