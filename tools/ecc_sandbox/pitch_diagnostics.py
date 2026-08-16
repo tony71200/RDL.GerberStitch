@@ -33,10 +33,14 @@ def crop_overlap_roi(image, anchor_tile, target_tile, direction):
 
     height, width = image.shape[:2]
 
-    # Determine if this image corresponds to anchor or target tile.
-    # Heuristic: anchor tile starts with pixel value 0 at [0,0],
-    # target tile starts with pixel value >= 1 (offset in test/real usage).
+    # Determine if image is anchor or target based on pixel value at [0,0].
+    # Anchor typically starts at 0, target has higher offset. This distinguishes
+    # which edge to crop without requiring explicit tile-image correspondence parameter.
     is_image_anchor = (image[0, 0] == 0) if image.size > 0 else True
+
+    # Determine spatial arrangement: which tile is left/above
+    anchor_is_left = anchor_tile["ExpectedX"] < target_tile["ExpectedX"]
+    anchor_is_above = anchor_tile["ExpectedY"] < target_tile["ExpectedY"]
 
     if direction in ("right", "left"):
         w = int(round(_overlap_extent(anchor_tile, target_tile, "x")))
@@ -45,38 +49,20 @@ def crop_overlap_roi(image, anchor_tile, target_tile, direction):
                 "Overlap ngang khong hop le (w=%d) giua tile %s va %s." %
                 (w, anchor_tile.get("OrderIndex"), target_tile.get("OrderIndex")))
 
-        # Determine which tile is to the left
-        anchor_is_left = anchor_tile["ExpectedX"] < target_tile["ExpectedX"]
-
         if direction == "right":
+            # Right direction: crop edge facing right
+            # Left tile crops right edge, right tile crops left edge
             if anchor_is_left:
-                # anchor is left, target is right
-                # left tile crops right edge, right tile crops left edge
-                if is_image_anchor:
-                    return image[:, width - w:width]
-                else:
-                    return image[:, 0:w]
+                return image[:, width - w:width] if is_image_anchor else image[:, 0:w]
             else:
-                # anchor is right, target is left
-                # right tile crops left edge, left tile crops right edge
-                if is_image_anchor:
-                    return image[:, 0:w]
-                else:
-                    return image[:, width - w:width]
+                return image[:, 0:w] if is_image_anchor else image[:, width - w:width]
         else:  # direction == "left"
+            # Left direction: crop edge facing left
+            # Left tile crops left edge, right tile crops right edge
             if anchor_is_left:
-                # anchor is left, target is right
-                # For "left" direction: left tile crops left, right tile crops right
-                if is_image_anchor:
-                    return image[:, 0:w]
-                else:
-                    return image[:, width - w:width]
+                return image[:, 0:w] if is_image_anchor else image[:, width - w:width]
             else:
-                # anchor is right, target is left
-                if is_image_anchor:
-                    return image[:, width - w:width]
-                else:
-                    return image[:, 0:w]
+                return image[:, width - w:width] if is_image_anchor else image[:, 0:w]
 
     h = int(round(_overlap_extent(anchor_tile, target_tile, "y")))
     if h <= 0 or h > height:
@@ -84,35 +70,17 @@ def crop_overlap_roi(image, anchor_tile, target_tile, direction):
             "Overlap doc khong hop le (h=%d) giua tile %s va %s." %
             (h, anchor_tile.get("OrderIndex"), target_tile.get("OrderIndex")))
 
-    # Determine which tile is above
-    anchor_is_above = anchor_tile["ExpectedY"] < target_tile["ExpectedY"]
-
     if direction == "bottom":
+        # Bottom direction: crop edge facing bottom
+        # Top tile crops bottom edge, bottom tile crops top edge
         if anchor_is_above:
-            # anchor is above, target is below
-            # above tile crops bottom, below tile crops top
-            if is_image_anchor:
-                return image[height - h:height, :]
-            else:
-                return image[0:h, :]
+            return image[height - h:height, :] if is_image_anchor else image[0:h, :]
         else:
-            # anchor is below, target is above
-            # below tile crops top, above tile crops bottom
-            if is_image_anchor:
-                return image[0:h, :]
-            else:
-                return image[height - h:height, :]
+            return image[0:h, :] if is_image_anchor else image[height - h:height, :]
     else:  # direction == "top"
+        # Top direction: crop edge facing top
+        # Top tile crops top edge, bottom tile crops bottom edge
         if anchor_is_above:
-            # anchor is above, target is below
-            # For "top" direction: above tile crops top, below tile crops bottom
-            if is_image_anchor:
-                return image[0:h, :]
-            else:
-                return image[height - h:height, :]
+            return image[0:h, :] if is_image_anchor else image[height - h:height, :]
         else:
-            # anchor is below, target is above
-            if is_image_anchor:
-                return image[height - h:height, :]
-            else:
-                return image[0:h, :]
+            return image[height - h:height, :] if is_image_anchor else image[0:h, :]
