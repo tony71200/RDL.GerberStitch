@@ -67,7 +67,13 @@ def crop_overlap_roi(image, anchor_tile, target_tile, direction, is_anchor_image
 
 
 def phase_correlate_shift(anchor_roi, moving_roi, cfg):
-    """Tra ve (dx, dy) -- shift can ap cho moving_roi de khop anchor_roi.
+    """Tra ve (dx, dy) -- do dich chuyen cua noi dung moving_roi SO VOI anchor_roi.
+
+    cv2.phaseCorrelate(anchor, moving) tra ve do lech cua moving so voi anchor: neu
+    moving(x) = anchor(x - d) thi ham tra ve +d. Noi cach khac, dx duong nghia la noi dung
+    trong moving_roi nam xa hon anchor_roi mot khoang dx theo huong +x (tuong tu cho dy/+y).
+    Day KHONG PHAI la "shift can ap cho moving_roi de khop anchor_roi" -- muon dung (dx, dy)
+    lam correction de dich moving ve khop anchor thi phai LAY AM gia tri tra ve.
 
     Tien xu ly theo Findings Sec8.2: san phang illumination (flatten_and_enhance), KHONG
     threshold, nhan Hann window truoc khi dua vao phase correlation.
@@ -105,12 +111,13 @@ def measure_pitch(payload, images_dir, extension, cfg):
 
     Mot canh loi (thieu file anh, overlap suy bien) bi bo qua va khong lam dung cac canh con lai.
 
-    Quy uoc dau (da trace qua crop_overlap_roi + phase_correlate_shift + pairs.direct_pair):
-    result["right"]["mean_dx"] va result["bottom"]["mean_dy"] dung TRUC TIEP (khong doi dau) lam
-    pairs.direct_pair(..., pitch_correction_px_per_step_x=..., pitch_correction_px_per_step_y=...)
-    -- mean_dx/mean_dy o day chinh la (buoc luoi thuc te - buoc luoi danh nghia) tinh bang pixel,
-    va direct_pair cong column*x + row*y vao goc crop raster, nen dung truc tiep se lam goc crop
-    bam theo buoc luoi thuc te, trieu tieu dung sai he thong -- KHONG duoc am gia tri nay.
+    Quy uoc dau (da trace qua crop_overlap_roi + phase_correlate_shift + pairs.direct_pair,
+    kiem chung thuc nghiem boi reviewer doi voi hanh vi that cua cv2.phaseCorrelate):
+    phase_correlate_shift(anchor_roi, target_roi) tra ve do lech cua target so voi anchor, KHONG
+    phai correction can cong vao goc crop. Vi vay phai LAY AM khi truyen vao direct_pair:
+    pairs.direct_pair(..., pitch_correction_px_per_step_x=-result["right"]["mean_dx"],
+    pitch_correction_px_per_step_y=-result["bottom"]["mean_dy"]) -- dung truc tiep (khong doi
+    dau) se lam goc crop lech xa hon buoc luoi thuc te thay vi bam theo no.
     """
     extension = extension or ".bmp"
     by_direction = {"right": {"dx": [], "dy": []}, "bottom": {"dx": [], "dy": []}}
