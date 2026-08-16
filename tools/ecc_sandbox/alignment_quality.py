@@ -230,3 +230,54 @@ def compute_tre(matrix, moving_points, reference_points):
         "max": float(np.max(errors)),
         "count": int(len(errors)),
     }
+
+
+def _fit_line(x, y):
+    """Hoi quy tuyen tinh dong-form (khong can scipy). Tra ve (slope, intercept, residual_std)."""
+    mean_x = float(np.mean(x))
+    mean_y = float(np.mean(y))
+    denominator = float(np.sum((x - mean_x) ** 2))
+    if denominator <= 1e-12:
+        return 0.0, mean_y, float(np.std(y))
+    slope = float(np.sum((x - mean_x) * (y - mean_y)) / denominator)
+    intercept = mean_y - slope * mean_x
+    residuals = y - (slope * x + intercept)
+    return slope, intercept, float(np.std(residuals))
+
+
+def summarize_consistency(results):
+    """Findings.md Phu luc A3 (scale spread / rotation spread) tren ket qua match cua sandbox.
+
+    `results`: iterable cac dict co 'row', 'column', 'translation_x', 'translation_y', 'scale',
+    'matrix'. Chi xet case co 'matrix' khac None -- hinh hoc cua case Uncertain van co thong tin,
+    khong chi Verified. Tra ve None neu it hon 2 case hop le (spread/hoi quy vo nghia voi 0-1 diem).
+    Day la bao cao THUAN TUY -- khong gate Verified/Uncertain/Rejected.
+    """
+    valid = [r for r in results if r.get("matrix") is not None
+             and r.get("scale") is not None
+             and r.get("translation_x") is not None
+             and r.get("translation_y") is not None
+             and r.get("row") is not None
+             and r.get("column") is not None]
+    if len(valid) < 2:
+        return None
+
+    scales = np.array([float(r["scale"]) for r in valid])
+    columns = np.array([float(r["column"]) for r in valid])
+    rows_arr = np.array([float(r["row"]) for r in valid])
+    tx = np.array([float(r["translation_x"]) for r in valid])
+    ty = np.array([float(r["translation_y"]) for r in valid])
+
+    slope_x, intercept_x, residual_std_x = _fit_line(columns, tx)
+    slope_y, intercept_y, residual_std_y = _fit_line(rows_arr, ty)
+
+    return {
+        "n": len(valid),
+        "scale_spread": float(np.max(scales) - np.min(scales)),
+        "scale_mean": float(np.mean(scales)),
+        "scale_std": float(np.std(scales)),
+        "translation_x_per_column": {
+            "slope": slope_x, "intercept": intercept_x, "residual_std": residual_std_x},
+        "translation_y_per_row": {
+            "slope": slope_y, "intercept": intercept_y, "residual_std": residual_std_y},
+    }

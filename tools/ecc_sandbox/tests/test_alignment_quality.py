@@ -136,5 +136,47 @@ class TargetRegistrationErrorTests(unittest.TestCase):
             alignment_quality.compute_tre(np.eye(3), [], [])
 
 
+class SummarizeConsistencyTests(unittest.TestCase):
+    def _case(self, row, column, scale, tx, ty, has_matrix=True):
+        return {
+            "row": row, "column": column, "scale": scale,
+            "translation_x": tx, "translation_y": ty,
+            "matrix": (np.eye(3).tolist() if has_matrix else None),
+        }
+
+    def test_computes_scale_spread_and_translation_slope_on_known_data(self):
+        results = []
+        for row in range(3):
+            for column in range(4):
+                tx = 5.0 * column + 100.0
+                ty = -3.0 * row + 50.0
+                scale = 0.98
+                results.append(self._case(row, column, scale, tx, ty))
+        # inject one outlier scale, matching the Findings-style signature this is meant to catch
+        results[0]["scale"] = 0.94
+
+        summary = alignment_quality.summarize_consistency(results)
+
+        self.assertIsNotNone(summary)
+        self.assertEqual(summary["n"], 12)
+        self.assertAlmostEqual(summary["scale_spread"], 0.04, places=6)
+        self.assertAlmostEqual(
+            summary["translation_x_per_column"]["slope"], 5.0, places=4)
+        self.assertAlmostEqual(
+            summary["translation_y_per_row"]["slope"], -3.0, places=4)
+        self.assertLess(summary["translation_x_per_column"]["residual_std"], 1e-6)
+
+    def test_fewer_than_two_valid_cases_returns_none(self):
+        results = [self._case(0, 0, 1.0, 0.0, 0.0),
+                  self._case(0, 1, 1.0, 5.0, 0.0, has_matrix=False)]
+
+        summary = alignment_quality.summarize_consistency(results)
+
+        self.assertIsNone(summary)
+
+    def test_empty_results_returns_none(self):
+        self.assertIsNone(alignment_quality.summarize_consistency([]))
+
+
 if __name__ == "__main__":
     unittest.main()
