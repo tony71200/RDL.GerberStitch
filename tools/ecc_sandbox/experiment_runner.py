@@ -1,9 +1,14 @@
-"""Non-GUI runner for the fixed 14-case direct-alignment regression dataset.
+"""Non-GUI runner for the direct-alignment regression dataset.
 
-Runs Direct mode for the seven requested (row, column) coordinates against both
-mutually exclusive preprocessing modes with Contrast=150 (all other values from
-config.DEFAULTS), and saves machine-readable plus visual evidence into a result
-directory. Does not modify any C# production code -- experimental sandbox only.
+Runs Direct mode against both mutually exclusive preprocessing modes with Contrast=150
+(all other values from config.DEFAULTS), and saves machine-readable plus visual evidence
+into a result directory. Does not modify any C# production code -- experimental sandbox only.
+
+Two coordinate-selection modes (see run_experiment()):
+- Default: the fixed seven requested (row, column) coordinates (REQUESTED_COORDINATES,
+  14 rows total across both preprocessing modes).
+- --all-tiles: every tile in the payload x both modes, plus a per-preprocess-mode
+  consistency summary (alignment_quality.summarize_consistency) written into the JSON output.
 """
 import argparse
 import csv

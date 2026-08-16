@@ -245,23 +245,8 @@ def _fit_line(x, y):
     return slope, intercept, float(np.std(residuals))
 
 
-def summarize_consistency(results):
-    """Findings.md Phu luc A3 (scale spread / rotation spread) tren ket qua match cua sandbox.
-
-    `results`: iterable cac dict co 'row', 'column', 'translation_x', 'translation_y', 'scale',
-    'matrix'. Chi xet case co 'matrix' khac None -- hinh hoc cua case Uncertain van co thong tin,
-    khong chi Verified. Tra ve None neu it hon 2 case hop le (spread/hoi quy vo nghia voi 0-1 diem).
-    Day la bao cao THUAN TUY -- khong gate Verified/Uncertain/Rejected.
-    """
-    valid = [r for r in results if r.get("matrix") is not None
-             and r.get("scale") is not None
-             and r.get("translation_x") is not None
-             and r.get("translation_y") is not None
-             and r.get("row") is not None
-             and r.get("column") is not None]
-    if len(valid) < 2:
-        return None
-
+def _summarize_single_group(valid):
+    """Tinh scale spread + hoi quy translation cho MOT nhom case da loc san."""
     scales = np.array([float(r["scale"]) for r in valid])
     columns = np.array([float(r["column"]) for r in valid])
     rows_arr = np.array([float(r["row"]) for r in valid])
@@ -281,3 +266,36 @@ def summarize_consistency(results):
         "translation_y_per_row": {
             "slope": slope_y, "intercept": intercept_y, "residual_std": residual_std_y},
     }
+
+
+def summarize_consistency(results):
+    """Findings.md Phu luc A3 (scale spread / rotation spread) tren ket qua match cua sandbox.
+
+    `results`: iterable cac dict co 'row', 'column', 'translation_x', 'translation_y', 'scale',
+    'matrix', 'preprocess_mode'. Chi xet case co 'matrix' khac None -- hinh hoc cua case Uncertain
+    van co thong tin, khong chi Verified. Day la bao cao THUAN TUY -- khong gate
+    Verified/Uncertain/Rejected.
+
+    Ket qua duoc GOM THEO preprocess_mode truoc khi tinh spread/hoi quy: --all-tiles chay ca hai
+    che do tien xu ly (FlattenAndEnhance, ToBinaryTraces) cho moi tile, gop chung se lam lan lon
+    "scale/translation lech vi hinh hoc luoi" voi "scale/translation lech vi hai che do tien xu ly
+    cho diem khac nhau" -- pha hong muc dich chan doan (khop voi Findings.md grid-geometry check).
+    Tra ve dict {preprocess_mode: summary_hoac_None}, moi summary tinh rieng biet, None neu mode do
+    co it hon 2 case hop le. Case thieu key 'preprocess_mode' duoc gom vao nhom None (khong loai bo,
+    de khong am tham mat du lieu neu ham nay duoc goi tu noi khac chua gan mode).
+    """
+    valid = [r for r in results if r.get("matrix") is not None
+             and r.get("scale") is not None
+             and r.get("translation_x") is not None
+             and r.get("translation_y") is not None
+             and r.get("row") is not None
+             and r.get("column") is not None]
+    if len(valid) < 2:
+        return None
+
+    groups = {}
+    for r in valid:
+        groups.setdefault(r.get("preprocess_mode"), []).append(r)
+
+    return {mode: (_summarize_single_group(group) if len(group) >= 2 else None)
+            for mode, group in groups.items()}

@@ -59,6 +59,11 @@ DEFAULTS = {
     "PitchCorrectionPxPerStepY": 0.0,
     # Mo rong search co kiem soat (Part 3) -- chi chay vong 2 khi vong 1 that bai toan bo.
     "ExpandedSearchFactor": 2.0,
+    # LUU Y: code hien tai chi kiem tra "if max_rounds >= 1" (dieu kien boolean), khong dung
+    # gia tri nay nhu bo dem so vong lap thuc su -- dat 3 cung chi chay THEM DUNG MOT vong (vong
+    # 2), khong phai 3 vong. Hanh vi hien tai chi ton tai 2 trang thai: 0 (tat) hoac >=1 (chay
+    # dung mot vong mo rong). Ten config gay hieu lam "so vong toi da co the >1" -- neu can that
+    # nhieu vong, phai sua logic trong pyramid_ecc.match() truoc.
     "ExpandedSearchMaxRounds": 1,
     "MaxTranslationPixelsHardCap": 800.0,
 }

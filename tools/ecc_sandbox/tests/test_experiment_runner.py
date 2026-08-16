@@ -195,7 +195,8 @@ class ExperimentRunnerTests(unittest.TestCase):
 
         self.assertIn("consistency", saved_json)
         self.assertIsNotNone(saved_json["consistency"])
-        self.assertEqual(saved_json["consistency"]["n"], rows * cols * 2)
+        self.assertEqual(saved_json["consistency"]["FlattenAndEnhance"]["n"], rows * cols)
+        self.assertEqual(saved_json["consistency"]["ToBinaryTraces"]["n"], rows * cols)
 
 
 if __name__ == "__main__":

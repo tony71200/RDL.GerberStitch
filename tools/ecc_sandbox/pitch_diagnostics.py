@@ -104,6 +104,13 @@ def measure_pitch(payload, images_dir, extension, cfg):
     """Chay phase_correlate_shift tren moi canh ke nhau, gom theo huong.
 
     Mot canh loi (thieu file anh, overlap suy bien) bi bo qua va khong lam dung cac canh con lai.
+
+    Quy uoc dau (da trace qua crop_overlap_roi + phase_correlate_shift + pairs.direct_pair):
+    result["right"]["mean_dx"] va result["bottom"]["mean_dy"] dung TRUC TIEP (khong doi dau) lam
+    pairs.direct_pair(..., pitch_correction_px_per_step_x=..., pitch_correction_px_per_step_y=...)
+    -- mean_dx/mean_dy o day chinh la (buoc luoi thuc te - buoc luoi danh nghia) tinh bang pixel,
+    va direct_pair cong column*x + row*y vao goc crop raster, nen dung truc tiep se lam goc crop
+    bam theo buoc luoi thuc te, trieu tieu dung sai he thong -- KHONG duoc am gia tri nay.
     """
     extension = extension or ".bmp"
     by_direction = {"right": {"dx": [], "dy": []}, "bottom": {"dx": [], "dy": []}}

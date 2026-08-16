@@ -137,11 +137,13 @@ class TargetRegistrationErrorTests(unittest.TestCase):
 
 
 class SummarizeConsistencyTests(unittest.TestCase):
-    def _case(self, row, column, scale, tx, ty, has_matrix=True):
+    def _case(self, row, column, scale, tx, ty, has_matrix=True,
+             preprocess_mode="FlattenAndEnhance"):
         return {
             "row": row, "column": column, "scale": scale,
             "translation_x": tx, "translation_y": ty,
             "matrix": (np.eye(3).tolist() if has_matrix else None),
+            "preprocess_mode": preprocess_mode,
         }
 
     def test_computes_scale_spread_and_translation_slope_on_known_data(self):
@@ -158,13 +160,54 @@ class SummarizeConsistencyTests(unittest.TestCase):
         summary = alignment_quality.summarize_consistency(results)
 
         self.assertIsNotNone(summary)
-        self.assertEqual(summary["n"], 12)
-        self.assertAlmostEqual(summary["scale_spread"], 0.04, places=6)
+        mode_summary = summary["FlattenAndEnhance"]
+        self.assertIsNotNone(mode_summary)
+        self.assertEqual(mode_summary["n"], 12)
+        self.assertAlmostEqual(mode_summary["scale_spread"], 0.04, places=6)
         self.assertAlmostEqual(
-            summary["translation_x_per_column"]["slope"], 5.0, places=4)
+            mode_summary["translation_x_per_column"]["slope"], 5.0, places=4)
         self.assertAlmostEqual(
-            summary["translation_y_per_row"]["slope"], -3.0, places=4)
-        self.assertLess(summary["translation_x_per_column"]["residual_std"], 1e-6)
+            mode_summary["translation_y_per_row"]["slope"], -3.0, places=4)
+        self.assertLess(mode_summary["translation_x_per_column"]["residual_std"], 1e-6)
+
+    def test_groups_are_kept_separate_per_preprocess_mode(self):
+        results = []
+        for row in range(3):
+            for column in range(4):
+                results.append(self._case(
+                    row, column, 0.98, 5.0 * column + 100.0, -3.0 * row + 50.0,
+                    preprocess_mode="FlattenAndEnhance"))
+                # Deliberately different geometry signature for the other mode -- pooling
+                # both modes together would corrupt both slopes/spreads.
+                results.append(self._case(
+                    row, column, 1.02, 9.0 * column + 200.0, -7.0 * row + 20.0,
+                    preprocess_mode="ToBinaryTraces"))
+
+        summary = alignment_quality.summarize_consistency(results)
+
+        self.assertIsNotNone(summary)
+        self.assertEqual(set(summary.keys()), {"FlattenAndEnhance", "ToBinaryTraces"})
+        flatten = summary["FlattenAndEnhance"]
+        binary = summary["ToBinaryTraces"]
+        self.assertEqual(flatten["n"], 12)
+        self.assertEqual(binary["n"], 12)
+        self.assertAlmostEqual(flatten["translation_x_per_column"]["slope"], 5.0, places=4)
+        self.assertAlmostEqual(binary["translation_x_per_column"]["slope"], 9.0, places=4)
+        self.assertAlmostEqual(flatten["translation_y_per_row"]["slope"], -3.0, places=4)
+        self.assertAlmostEqual(binary["translation_y_per_row"]["slope"], -7.0, places=4)
+
+    def test_mode_with_fewer_than_two_valid_cases_is_none_within_dict(self):
+        results = [
+            self._case(0, 0, 1.0, 0.0, 0.0, preprocess_mode="FlattenAndEnhance"),
+            self._case(0, 1, 1.0, 5.0, 0.0, preprocess_mode="FlattenAndEnhance"),
+            self._case(1, 0, 1.0, 0.0, 0.0, preprocess_mode="ToBinaryTraces"),
+        ]
+
+        summary = alignment_quality.summarize_consistency(results)
+
+        self.assertIsNotNone(summary)
+        self.assertIsNotNone(summary["FlattenAndEnhance"])
+        self.assertIsNone(summary["ToBinaryTraces"])
 
     def test_fewer_than_two_valid_cases_returns_none(self):
         results = [self._case(0, 0, 1.0, 0.0, 0.0),

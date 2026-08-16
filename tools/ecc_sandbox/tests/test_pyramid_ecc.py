@@ -75,6 +75,21 @@ def _failure(level, source):
     }
 
 
+def _geometry_rejected(seed_matrix, source):
+    seed_matrix = np.asarray(seed_matrix, dtype=float)
+    return {
+        "success": False,
+        "matcher": "PyramidEccMatcher",
+        "source": source,
+        "seed_matrix": seed_matrix.copy(),
+        "levels": [{"level": 0, "size": (128, 96), "scale": 1.0, "correlation": 0.85}],
+        "failure_reason": "GeometryRejected",
+        "message": "Translation vuot MaxTranslationPixels.",
+        "matrix": None,
+        "geometry_valid": False,
+    }
+
+
 def _seed(tx):
     return {
         "matrix": np.array([[1.0, 0.0, float(tx)],
@@ -266,6 +281,46 @@ class MultiCandidateMatchTests(unittest.TestCase):
         # attribute.
         expanded_call_cfg = seeds_mock.call_args_list[1][0][2]
         self.assertAlmostEqual(expanded_call_cfg["MaxTranslationPixels"], 80.0)
+
+    def test_expanded_round_retries_round_one_seed_rejected_only_for_old_translation_bound(self):
+        # Regression for the final-review finding: a round-1 seed rejected with
+        # "GeometryRejected" (translation exceeded the OLD, smaller MaxTranslationPixels) must
+        # be retried in round 2 under the relaxed bound, not silently skipped as a duplicate of
+        # itself just because the coarse-search peak (and therefore the seed) didn't move
+        # between round 1 and round 2 -- a very common case since widening the matchTemplate
+        # search window doesn't necessarily move the argmax.
+        image = _structure()
+        seed_matrix = _seed(50.0)["matrix"]  # tx=50 > round-1 bound (40), <= round-2 bound (80)
+
+        def seeds_side_effect(reference, moving, cfg):
+            # Coarse peak does not move between round 1 and round 2 -- same seed both times.
+            return [_seed(50.0)]
+
+        with mock.patch.object(coarse_alignment, "find_translation_seeds",
+                               side_effect=seeds_side_effect):
+            with mock.patch.object(chamfer_alignment, "find_chamfer_candidates",
+                                   return_value=[]):
+                with mock.patch.object(
+                        pyramid_ecc, "_run_single_attempt",
+                        side_effect=[
+                            _failure(2, "primary"),
+                            _geometry_rejected(seed_matrix, "structural_bootstrap"),
+                            _success(seed_matrix, "structural_bootstrap"),
+                        ]) as run_mock:
+                    with mock.patch.object(alignment_quality, "measure_alignment",
+                                           return_value=_metrics(0.90)):
+                        result = pyramid_ecc.match(image, image, _cfg())
+
+        self.assertTrue(result["success"])
+        # primary + round-1 seed attempt (rejected) + round-2 seed attempt (retried, succeeds).
+        self.assertEqual(run_mock.call_count, 3)
+        structural_attempts = [a for a in result["attempts"]
+                               if a.get("source") == "structural_bootstrap"]
+        self.assertEqual(len(structural_attempts), 2)
+        self.assertEqual(structural_attempts[0]["round"], 1)
+        self.assertEqual(structural_attempts[0]["failure_reason"], "GeometryRejected")
+        self.assertEqual(structural_attempts[1]["round"], 2)
+        self.assertTrue(structural_attempts[1]["geometry_valid"])
 
     def test_expanded_round_skipped_when_round_one_has_valid_candidate(self):
         image = _structure()

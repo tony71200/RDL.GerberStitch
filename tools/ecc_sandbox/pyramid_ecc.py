@@ -236,6 +236,27 @@ def _seed_is_duplicate(matrix, used_matrices):
                for used in used_matrices)
 
 
+def _used_matrices_for_expanded_round(used_matrices, attempts):
+    """Loc used_matrices truoc khi chay round 2 (bound MaxTranslationPixels da duoc noi rong).
+
+    Mot seed o round 1 bi tu choi voi failure_reason="GeometryRejected" co the CHI VI vuot
+    MaxTranslationPixels CU -- neu diem coarse-search khong doi giua 2 round (rat pho bien,
+    vi mo rong search window khong chac lam doi argmax), seed do se lai duoc tim thay y het o
+    round 2 nhung bi _seed_is_duplicate bo qua (trong pham vi 1px) truoc khi kip thu lai duoi
+    bound moi. Vi vay phai loai cac ma tran nay khoi used_matrices cho round 2 de chung duoc
+    thu lai. Chi ap dung cho GeometryRejected -- cac ly do khac (RuntimeFailure,
+    CorrelationBelowThreshold, ...) khong lien quan toi translation bound nen thu lai duoi
+    search radius rong hon se khong giup ich gi.
+    """
+    rejected = [attempt["seed_matrix"] for attempt in attempts
+                if attempt.get("failure_reason") == "GeometryRejected"
+                and attempt.get("seed_matrix") is not None]
+    if not rejected:
+        return list(used_matrices)
+    return [used for used in used_matrices
+            if not any(np.array_equal(used, matrix) for matrix in rejected)]
+
+
 def _run_bootstrap_round(seed_finder, reference_mono8, moving_mono8, cfg, used_matrices,
                          attempts, source_label, failure_reason, round_number,
                          stage_prefix, on_stage):
@@ -256,10 +277,16 @@ def _run_bootstrap_round(seed_finder, reference_mono8, moving_mono8, cfg, used_m
             "round": round_number,
         })
         if on_stage is not None:
-            on_stage(stage_prefix + "_failed", {"round": round_number, "message": str(ex)})
+            try:
+                on_stage(stage_prefix + "_failed", {"round": round_number, "message": str(ex)})
+            except Exception:
+                pass
         return
     if on_stage is not None:
-        on_stage(stage_prefix + "_start", {"round": round_number, "seed_count": len(seeds)})
+        try:
+            on_stage(stage_prefix + "_start", {"round": round_number, "seed_count": len(seeds)})
+        except Exception:
+            pass
     for index, seed in enumerate(seeds):
         seed_matrix = np.asarray(seed["matrix"], dtype=float)
         if _seed_is_duplicate(seed_matrix, used_matrices):
@@ -272,10 +299,13 @@ def _run_bootstrap_round(seed_finder, reference_mono8, moving_mono8, cfg, used_m
         attempt["round"] = round_number
         attempts.append(attempt)
         if on_stage is not None:
-            on_stage(stage_prefix + "_seed_done", {
-                "round": round_number, "index": index, "source": attempt.get("source"),
-                "geometry_valid": attempt.get("geometry_valid"),
-                "failure_reason": attempt.get("failure_reason")})
+            try:
+                on_stage(stage_prefix + "_seed_done", {
+                    "round": round_number, "index": index, "source": attempt.get("source"),
+                    "geometry_valid": attempt.get("geometry_valid"),
+                    "failure_reason": attempt.get("failure_reason")})
+            except Exception:
+                pass
 
 
 def _failed_level(attempt):
@@ -306,13 +336,19 @@ def match(reference_mono8, moving_mono8, cfg, initial_moving_to_reference=None,
     primary_seed = (np.eye(3) if initial_moving_to_reference is None
                     else np.asarray(initial_moving_to_reference, dtype=float))
     if on_stage is not None:
-        on_stage("primary_start", {})
+        try:
+            on_stage("primary_start", {})
+        except Exception:
+            pass
     attempts = [_run_single_attempt(
         reference_mono8, moving_mono8, cfg, primary_seed, "primary")]
     attempts[0]["round"] = 1
     if on_stage is not None:
-        on_stage("primary_done", {"geometry_valid": attempts[0].get("geometry_valid"),
-                                  "failure_reason": attempts[0].get("failure_reason")})
+        try:
+            on_stage("primary_done", {"geometry_valid": attempts[0].get("geometry_valid"),
+                                      "failure_reason": attempts[0].get("failure_reason")})
+        except Exception:
+            pass
 
     if reference_mono8.shape == moving_mono8.shape:
         used_matrices = []
@@ -322,12 +358,20 @@ def match(reference_mono8, moving_mono8, cfg, initial_moving_to_reference=None,
 
         _run_bootstrap_round(
             coarse_alignment.find_translation_seeds, reference_mono8, moving_mono8, cfg,
-            used_matrices, attempts, "structural_bootstrap", "CoarseBootstrapFailure", 1,
-            "structural_bootstrap", on_stage)
+            used_matrices, attempts, source_label="structural_bootstrap",
+            failure_reason="CoarseBootstrapFailure", round_number=1,
+            stage_prefix="structural_bootstrap", on_stage=on_stage)
+        # Chamfer bootstrap LUON chay o day, ke ca khi primary/structural o tren da geometry_valid
+        # -- day la thiet ke co chu dich (xem docs spec Part 2/3), khong phai thieu sot: mot primary
+        # "thanh cong" van co the la false-convergence tren pattern lap lai, va chi mot ung vien
+        # runner-up doc lap (chamfer) moi phat hien duoc RepeatedPatternAmbiguous. Chi phi nay la
+        # THAT va nhan len theo kich thuoc luoi khi chay --all-tiles -- mot pass toi uu hieu nang
+        # trong tuong lai can biet day la co chu dich, dung tu y gate lai neu chua hoi user.
         _run_bootstrap_round(
             chamfer_alignment.find_chamfer_candidates, reference_mono8, moving_mono8, cfg,
-            used_matrices, attempts, "chamfer_bootstrap", "ChamferBootstrapFailure", 1,
-            "chamfer_bootstrap", on_stage)
+            used_matrices, attempts, source_label="chamfer_bootstrap",
+            failure_reason="ChamferBootstrapFailure", round_number=1,
+            stage_prefix="chamfer_bootstrap", on_stage=on_stage)
 
         if not any(attempt.get("geometry_valid") for attempt in attempts):
             max_rounds = max(0, int(cfg.get("ExpandedSearchMaxRounds", 0)))
@@ -344,18 +388,28 @@ def match(reference_mono8, moving_mono8, cfg, initial_moving_to_reference=None,
                     cfg["ChamferSeparationPixels"] * factor)
 
                 if on_stage is not None:
-                    on_stage("expanded_search_start", {
-                        "factor": factor,
-                        "max_translation_pixels": expanded_cfg["MaxTranslationPixels"]})
+                    try:
+                        on_stage("expanded_search_start", {
+                            "factor": factor,
+                            "max_translation_pixels": expanded_cfg["MaxTranslationPixels"]})
+                    except Exception:
+                        pass
+
+                # Round 1 seed nao bi tu choi CHI VI GeometryRejected (vuot MaxTranslationPixels
+                # CU) phai duoc go khoi used_matrices truoc khi chay round 2, neu khong se bi
+                # _seed_is_duplicate bo qua nham ngay ca khi bound moi da du rong de chap nhan no.
+                round2_used_matrices = _used_matrices_for_expanded_round(used_matrices, attempts)
 
                 _run_bootstrap_round(
                     coarse_alignment.find_translation_seeds, reference_mono8, moving_mono8,
-                    expanded_cfg, used_matrices, attempts, "structural_bootstrap",
-                    "CoarseBootstrapFailure", 2, "structural_bootstrap", on_stage)
+                    expanded_cfg, round2_used_matrices, attempts,
+                    source_label="structural_bootstrap", failure_reason="CoarseBootstrapFailure",
+                    round_number=2, stage_prefix="structural_bootstrap", on_stage=on_stage)
                 _run_bootstrap_round(
                     chamfer_alignment.find_chamfer_candidates, reference_mono8, moving_mono8,
-                    expanded_cfg, used_matrices, attempts, "chamfer_bootstrap",
-                    "ChamferBootstrapFailure", 2, "chamfer_bootstrap", on_stage)
+                    expanded_cfg, round2_used_matrices, attempts,
+                    source_label="chamfer_bootstrap", failure_reason="ChamferBootstrapFailure",
+                    round_number=2, stage_prefix="chamfer_bootstrap", on_stage=on_stage)
 
     quality_reference = (reference_mono8 if verification_reference is None
                          else verification_reference)
@@ -386,8 +440,11 @@ def match(reference_mono8, moving_mono8, cfg, initial_moving_to_reference=None,
     final["runner_up"] = classification["runner_up"]
     final["coverage_margin"] = classification["coverage_margin"]
     if on_stage is not None:
-        on_stage("classification_done", {
-            "verification_status": final.get("verification_status")})
+        try:
+            on_stage("classification_done", {
+                "verification_status": final.get("verification_status")})
+        except Exception:
+            pass
     return final
 
 

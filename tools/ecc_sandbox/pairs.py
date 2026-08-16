@@ -69,6 +69,10 @@ def direct_pair(payload, raster, images_folder, order_index, step_override=None,
     pitch_correction_px_per_step_x/y (mac dinh 0.0 = khong doi hanh vi) la THU NGHIEM sandbox:
     cong them column*x + row*y vao goc crop, dung so do duoc tu pitch_diagnostics.measure_pitch()
     de kiem chung gia thuyet sai luoi bang ket qua match that, KHONG phai sua Master.
+
+    Quy uoc dau: dung TRUC TIEP measure_pitch()'s result["right"]["mean_dx"] lam
+    pitch_correction_px_per_step_x va result["bottom"]["mean_dy"] lam pitch_correction_px_per_step_y
+    (khong doi dau) -- xem ghi chu trong pitch_diagnostics.measure_pitch() cho phan trace day du.
     """
     tile = next(t for t in payload["tiles"] if t["OrderIndex"] == order_index)
     w, h = payload["image_width"], payload["image_height"]
