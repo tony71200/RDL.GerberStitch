@@ -40,14 +40,25 @@ class App(object):
 
         outer = ttk.Frame(root, padding=6)
         outer.pack(fill="both", expand=True)
-        left = ttk.Frame(outer)
-        left.pack(side="left", fill="y", padx=(0, 8))
+
+        # Panel trai: khung cuon doc, be rong co dinh (~cua so tham so). Khong ep chieu rong noi
+        # dung theo canvas -- cac hang Entry/Label da tu co chieu rong tu nhien.
+        left_container, left = self._make_scrollable(outer, stretch_width=False)
+        left_container.pack(side="left", fill="y", padx=(0, 8))
+        left_container.configure(width=300)
+        left_container.pack_propagate(False)
+
+        # Panel phai: nut CHAY dong o TREN CUNG (luon thay, khong can cuon), phia duoi la khung
+        # cuon doc chua Notebook 3 tab -- de bieu do/anh khong bao gio bi cat neu man hinh thap.
         right = ttk.Frame(outer)
         right.pack(side="left", fill="both", expand=True)
+        self._build_run_bar(right)
+        right_container, right_inner = self._make_scrollable(right, stretch_width=True)
+        right_container.pack(side="top", fill="both", expand=True)
 
         self._build_inputs(left)
         self._build_params(left)
-        self._build_tabs(right)
+        self._build_tabs(right_inner)
 
     # ---------- helpers ----------
     def _guess_ini(self):
@@ -55,6 +66,49 @@ class App(object):
         candidate = os.path.abspath(os.path.join(
             here, "..", "..", "RDL.GerberStitch.Harness", "align_stitch.ini"))
         return candidate if os.path.exists(candidate) else None
+
+    def _make_scrollable(self, parent, stretch_width):
+        """Canvas + Scrollbar doc chuan cua Tkinter (ttk.Frame khong tu ho tro cuon).
+
+        stretch_width=True: noi dung ben trong gian ra dung bang be rong canvas (dung cho panel
+        phai, noi Notebook/bieu do can chiem het chieu rong con lai). stretch_width=False: giu
+        chieu rong tu nhien cua noi dung (dung cho panel trai, cac hang Entry/Label co do rong co
+        dinh, khong can gian).
+        """
+        container = ttk.Frame(parent)
+        canvas = tk.Canvas(container, highlightthickness=0)
+        vsb = ttk.Scrollbar(container, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=vsb.set)
+        canvas.pack(side="left", fill="both", expand=True)
+        vsb.pack(side="right", fill="y")
+
+        inner = ttk.Frame(canvas)
+        inner_id = canvas.create_window((0, 0), window=inner, anchor="nw")
+
+        def on_inner_configure(_event):
+            canvas.configure(scrollregion=canvas.bbox("all"))
+
+        inner.bind("<Configure>", on_inner_configure)
+
+        if stretch_width:
+            def on_canvas_configure(event):
+                canvas.itemconfig(inner_id, width=event.width)
+
+            canvas.bind("<Configure>", on_canvas_configure)
+
+        def on_mousewheel(event):
+            canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+        def bind_wheel(_event):
+            canvas.bind_all("<MouseWheel>", on_mousewheel)
+
+        def unbind_wheel(_event):
+            canvas.unbind_all("<MouseWheel>")
+
+        canvas.bind("<Enter>", bind_wheel)
+        canvas.bind("<Leave>", unbind_wheel)
+
+        return container, inner
 
     def _row(self, parent, label, key, default, width=10):
         frame = ttk.Frame(parent)
@@ -137,16 +191,21 @@ class App(object):
         self._row(ep, "MaxAbsRotationDeg", "maxrot", self.cfg["MaxAbsRotationDeg"])
         self._row(ep, "MaxTranslationPixels", "maxtrans", self.cfg["MaxTranslationPixels"])
 
-        ttk.Button(parent, text="CHẠY", command=self.run).pack(fill="x", pady=8)
+    def _build_run_bar(self, parent):
+        # Dat rieng o dau panel phai (NGOAI khung cuon) de luon nhin thay va bam duoc ngay,
+        # khong phai cuon qua toan bo panel tham so ben trai moi toi.
+        bar = ttk.Frame(parent, padding=(0, 0, 0, 6))
+        bar.pack(side="top", fill="x")
+        ttk.Button(bar, text="CHẠY", command=self.run).pack(fill="x", ipady=4)
 
     def _build_tabs(self, parent):
         self.tabs = ttk.Notebook(parent)
         self.tabs.pack(fill="both", expand=True)
 
-        self.fig_pre = Figure(figsize=(9, 5.2), dpi=90)
+        self.fig_pre = Figure(figsize=(8, 4.6), dpi=90)
         self.canvas_pre = self._add_tab(self.fig_pre, "Tiền xử lý")
 
-        self.fig_match = Figure(figsize=(9, 5.2), dpi=90)
+        self.fig_match = Figure(figsize=(8, 4.6), dpi=90)
         self.canvas_match = self._add_tab(self.fig_match, "Kết quả match")
 
         text_tab = ttk.Frame(self.tabs)
@@ -329,7 +388,15 @@ class App(object):
 
 def main():
     root = tk.Tk()
-    root.geometry("1400x900")
+    # Co theo man hinh that thay vi hardcode 1400x900 (co the lon hon man hinh laptop/hi-DPI thu
+    # nho). Du man hinh nho hon noi dung, khung cuon o ca 2 ben (App.__init__) van dam bao khong
+    # bi cat mat noi dung -- chi can keo scrollbar.
+    sw = root.winfo_screenwidth()
+    sh = root.winfo_screenheight()
+    w = min(1400, int(sw * 0.9))
+    h = min(900, int(sh * 0.85))
+    root.geometry("%dx%d+%d+%d" % (w, h, (sw - w) // 2, max(0, (sh - h) // 3)))
+    root.minsize(860, 520)
     App(root)
     root.mainloop()
 

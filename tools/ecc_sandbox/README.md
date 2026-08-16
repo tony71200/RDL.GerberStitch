@@ -26,8 +26,11 @@ python -m pip install -r tools/ecc_sandbox/requirements.txt
 python tools/ecc_sandbox/app.py
 ```
 
-Cửa sổ mở với 3 tab bên phải (Tiền xử lý / Kết quả match / Ma trận & log) và panel tham số bên
-trái. Quy trình dùng:
+Cửa sổ tự co theo kích thước màn hình thật (tối đa 1400×900), cả panel trái (tham số) lẫn panel
+phải (3 tab: Tiền xử lý / Kết quả match / Ma trận & log) đều có **thanh cuộn dọc riêng** — di chuột
+vào panel nào rồi cuộn chuột (hoặc kéo thanh cuộn) để xem hết nội dung, kể cả trên màn hình nhỏ.
+Nút **CHẠY** nằm cố định ở **đầu panel phải** (ngoài vùng cuộn) để luôn bấm được ngay, không phải
+cuộn qua hết panel trái mới tới. Quy trình dùng:
 
 1. Chọn `Payload JSON` (`sample_<fov>_o<overlap>.json` từ Task 2), `Thư mục ảnh chụp`, và (nếu
    dùng mode Direct) `Raster Gerber`.
