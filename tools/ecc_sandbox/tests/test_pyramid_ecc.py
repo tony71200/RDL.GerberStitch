@@ -233,6 +233,59 @@ class MultiCandidateMatchTests(unittest.TestCase):
         # duplicates the primary identity seed and must be skipped, not run a second time.
         self.assertEqual(run_mock.call_count, 1)
 
+    def test_expanded_round_runs_when_round_one_totally_fails(self):
+        image = _structure()
+        round2_matrix = np.array([[1.0, 0.0, 90.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]])
+
+        def seeds_side_effect(reference, moving, cfg):
+            if cfg["MaxTranslationPixels"] > 40.0:
+                return [_seed(90.0)]
+            return []
+
+        with mock.patch.object(coarse_alignment, "find_translation_seeds",
+                               side_effect=seeds_side_effect) as seeds_mock:
+            with mock.patch.object(chamfer_alignment, "find_chamfer_candidates",
+                                   return_value=[]):
+                with mock.patch.object(
+                        pyramid_ecc, "_run_single_attempt",
+                        side_effect=[_failure(2, "primary"),
+                                     _success(round2_matrix, "structural_bootstrap")]):
+                    # round2_matrix (tx=90) doesn't correspond to a real alignment of
+                    # `image` with itself -- mock measure_alignment so the round-2
+                    # candidate is eligible, same reasoning as the Task 5 "can win" test.
+                    with mock.patch.object(alignment_quality, "measure_alignment",
+                                           return_value=_metrics(0.90)):
+                        result = pyramid_ecc.match(image, image, _cfg())
+
+        self.assertTrue(result["success"])
+        rounds = [a.get("round") for a in result["attempts"]]
+        self.assertIn(2, rounds)
+        # capture the mock via `as seeds_mock` and inspect it AFTER the `with` block exits --
+        # by then coarse_alignment.find_translation_seeds has reverted to the real function,
+        # which has no call_args_list, so the mock object itself must be used, not the module
+        # attribute.
+        expanded_call_cfg = seeds_mock.call_args_list[1][0][2]
+        self.assertAlmostEqual(expanded_call_cfg["MaxTranslationPixels"], 80.0)
+
+    def test_expanded_round_skipped_when_round_one_has_valid_candidate(self):
+        image = _structure()
+        with mock.patch.object(coarse_alignment, "find_translation_seeds",
+                               return_value=[_seed(12.0)]) as seeds_mock:
+            with mock.patch.object(chamfer_alignment, "find_chamfer_candidates",
+                                   return_value=[]) as chamfer_mock:
+                with mock.patch.object(
+                        pyramid_ecc, "_run_single_attempt",
+                        side_effect=[_failure(2, "primary"),
+                                     _success(_seed(12.0)["matrix"], "structural_bootstrap")]):
+                    result = pyramid_ecc.match(image, image, _cfg())
+
+        self.assertTrue(result["success"])
+        # exactly one call each -- round 2 must not run when round 1 already found a valid candidate
+        self.assertEqual(seeds_mock.call_count, 1)
+        self.assertEqual(chamfer_mock.call_count, 1)
+        rounds = [a.get("round") for a in result["attempts"]]
+        self.assertNotIn(2, rounds)
+
 
 if __name__ == "__main__":
     unittest.main()

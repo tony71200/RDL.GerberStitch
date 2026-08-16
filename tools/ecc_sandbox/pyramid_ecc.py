@@ -236,6 +236,38 @@ def _seed_is_duplicate(matrix, used_matrices):
                for used in used_matrices)
 
 
+def _run_bootstrap_round(seed_finder, reference_mono8, moving_mono8, cfg, used_matrices,
+                         attempts, source_label, failure_reason, round_number):
+    """Chay mot nguon seed (structural hoac chamfer), mot round. Loi khong chan cac seed con lai."""
+    try:
+        seeds = seed_finder(reference_mono8, moving_mono8, cfg)
+    except (ValueError, cv2.error) as ex:
+        attempts.append({
+            "success": False,
+            "matcher": "PyramidEccMatcher",
+            "source": source_label,
+            "seed_matrix": None,
+            "levels": [],
+            "matrix": None,
+            "geometry_valid": False,
+            "failure_reason": failure_reason,
+            "message": str(ex),
+            "round": round_number,
+        })
+        return
+    for seed in seeds:
+        seed_matrix = np.asarray(seed["matrix"], dtype=float)
+        if _seed_is_duplicate(seed_matrix, used_matrices):
+            continue
+        used_matrices.append(seed_matrix.copy())
+        attempt = _run_single_attempt(
+            reference_mono8, moving_mono8, cfg, seed_matrix,
+            seed.get("source", source_label))
+        attempt["coarse_score"] = float(seed.get("coarse_score", float("nan")))
+        attempt["round"] = round_number
+        attempts.append(attempt)
+
+
 def _failed_level(attempt):
     levels = attempt.get("levels") or []
     failed = [int(level["level"]) for level in levels
@@ -265,65 +297,43 @@ def match(reference_mono8, moving_mono8, cfg, initial_moving_to_reference=None,
                     else np.asarray(initial_moving_to_reference, dtype=float))
     attempts = [_run_single_attempt(
         reference_mono8, moving_mono8, cfg, primary_seed, "primary")]
+    attempts[0]["round"] = 1
 
     if reference_mono8.shape == moving_mono8.shape:
         used_matrices = []
         if (primary_seed.shape == (3, 3) and
                 np.isfinite(primary_seed).all()):
             used_matrices.append(primary_seed.copy())
-        try:
-            seeds = coarse_alignment.find_translation_seeds(
-                reference_mono8, moving_mono8, cfg)
-        except (ValueError, cv2.error) as ex:
-            seeds = []
-            attempts.append({
-                "success": False,
-                "matcher": "PyramidEccMatcher",
-                "source": "structural_bootstrap",
-                "seed_matrix": None,
-                "levels": [],
-                "matrix": None,
-                "geometry_valid": False,
-                "failure_reason": "CoarseBootstrapFailure",
-                "message": str(ex),
-            })
-        for seed in seeds:
-            seed_matrix = np.asarray(seed["matrix"], dtype=float)
-            if _seed_is_duplicate(seed_matrix, used_matrices):
-                continue
-            used_matrices.append(seed_matrix.copy())
-            attempt = _run_single_attempt(
-                reference_mono8, moving_mono8, cfg, seed_matrix,
-                seed.get("source", "structural_bootstrap"))
-            attempt["coarse_score"] = float(seed.get("coarse_score", float("nan")))
-            attempts.append(attempt)
 
-        try:
-            chamfer_seeds = chamfer_alignment.find_chamfer_candidates(
-                reference_mono8, moving_mono8, cfg)
-        except (ValueError, cv2.error) as ex:
-            chamfer_seeds = []
-            attempts.append({
-                "success": False,
-                "matcher": "PyramidEccMatcher",
-                "source": "chamfer_bootstrap",
-                "seed_matrix": None,
-                "levels": [],
-                "matrix": None,
-                "geometry_valid": False,
-                "failure_reason": "ChamferBootstrapFailure",
-                "message": str(ex),
-            })
-        for seed in chamfer_seeds:
-            seed_matrix = np.asarray(seed["matrix"], dtype=float)
-            if _seed_is_duplicate(seed_matrix, used_matrices):
-                continue
-            used_matrices.append(seed_matrix.copy())
-            attempt = _run_single_attempt(
-                reference_mono8, moving_mono8, cfg, seed_matrix,
-                seed.get("source", "chamfer_bootstrap"))
-            attempt["coarse_score"] = float(seed.get("coarse_score", float("nan")))
-            attempts.append(attempt)
+        _run_bootstrap_round(
+            coarse_alignment.find_translation_seeds, reference_mono8, moving_mono8, cfg,
+            used_matrices, attempts, "structural_bootstrap", "CoarseBootstrapFailure", 1)
+        _run_bootstrap_round(
+            chamfer_alignment.find_chamfer_candidates, reference_mono8, moving_mono8, cfg,
+            used_matrices, attempts, "chamfer_bootstrap", "ChamferBootstrapFailure", 1)
+
+        if not any(attempt.get("geometry_valid") for attempt in attempts):
+            max_rounds = max(0, int(cfg.get("ExpandedSearchMaxRounds", 0)))
+            if max_rounds >= 1:
+                expanded_cfg = dict(cfg)
+                factor = float(cfg.get("ExpandedSearchFactor", 1.0))
+                hard_cap = float(cfg.get(
+                    "MaxTranslationPixelsHardCap", cfg["MaxTranslationPixels"]))
+                expanded_cfg["MaxTranslationPixels"] = min(
+                    hard_cap, cfg["MaxTranslationPixels"] * factor)
+                expanded_cfg["CoarseCandidateSeparationPixels"] = (
+                    cfg["CoarseCandidateSeparationPixels"] * factor)
+                expanded_cfg["ChamferSeparationPixels"] = (
+                    cfg["ChamferSeparationPixels"] * factor)
+
+                _run_bootstrap_round(
+                    coarse_alignment.find_translation_seeds, reference_mono8, moving_mono8,
+                    expanded_cfg, used_matrices, attempts, "structural_bootstrap",
+                    "CoarseBootstrapFailure", 2)
+                _run_bootstrap_round(
+                    chamfer_alignment.find_chamfer_candidates, reference_mono8, moving_mono8,
+                    expanded_cfg, used_matrices, attempts, "chamfer_bootstrap",
+                    "ChamferBootstrapFailure", 2)
 
     quality_reference = (reference_mono8 if verification_reference is None
                          else verification_reference)
