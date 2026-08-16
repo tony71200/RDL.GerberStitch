@@ -744,6 +744,8 @@ def find_chamfer_candidates(reference_mono8, moving_mono8, cfg):
     count = max(0, int(cfg["ChamferCandidateCount"]))
     kept = []
     for _neg_coverage, _chamfer_p95, candidate in scored:
+        if len(kept) >= count:
+            break
         translation = candidate["matrix"][:2, 2]
         if any(np.linalg.norm(translation - kept_item["matrix"][:2, 2]) < separation
                for kept_item in kept):
@@ -753,8 +755,6 @@ def find_chamfer_candidates(reference_mono8, moving_mono8, cfg):
             "source": "chamfer_bootstrap",
             "coarse_score": candidate["coarse_score"],
         })
-        if len(kept) >= count:
-            break
 
     return kept
 ```
