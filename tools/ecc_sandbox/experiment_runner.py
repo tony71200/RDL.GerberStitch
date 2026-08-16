@@ -86,9 +86,13 @@ def _save_overlay(output_dir, case_id, reference, moving, matrix):
     cv2.imwrite(os.path.join(output_dir, case_id + "_after.jpg"), after)
 
 
-def run_experiment(payload_path, images_dir, raster_path, extension, output_dir):
-    """Run all 14 (coordinate x preprocessing mode) cases and save evidence.
+def run_experiment(payload_path, images_dir, raster_path, extension, output_dir,
+                   all_tiles=False):
+    """Run each (coordinate x preprocessing mode) case and save evidence.
 
+    Without all_tiles: the fixed 7 REQUESTED_COORDINATES (14 rows total) -- unchanged behavior.
+    With all_tiles=True: every tile in the payload x both modes -- for judging whether chamfer
+    bootstrap / pitch-corrected seeding actually help across the whole grid, not just 7 samples.
     Returns the list of per-case summary dicts (also written to the CSV).
     """
     extension = extension or ".bmp"
@@ -100,9 +104,14 @@ def run_experiment(payload_path, images_dir, raster_path, extension, output_dir)
     base_cfg = dict(config.DEFAULTS)
     base_cfg["Contrast"] = _EXPERIMENT_CONTRAST
 
+    if all_tiles:
+        coordinates = [(tile["Row"], tile["Column"]) for tile in payload["tiles"]]
+    else:
+        coordinates = REQUESTED_COORDINATES
+
     rows = []
     json_results = []
-    for row, column in REQUESTED_COORDINATES:
+    for row, column in coordinates:
         order = pairs.index_of(payload, row, column)
         if order is None:
             raise ValueError("Khong co tile o (row=%d, col=%d)." % (row, column))
@@ -153,12 +162,15 @@ def _parse_args():
     parser.add_argument("--raster", required=True, help="Duong dan raster Gerber.")
     parser.add_argument("--ext", default="", help="Duoi file anh chup (mac dinh .bmp).")
     parser.add_argument("--output", required=True, help="Thu muc result_test de ghi ket qua.")
+    parser.add_argument("--all-tiles", action="store_true",
+                        help="Chay toan bo tile trong payload thay vi 7 toa do mac dinh.")
     return parser.parse_args()
 
 
 def main():
     args = _parse_args()
-    rows = run_experiment(args.payload, args.images, args.raster, args.ext, args.output)
+    rows = run_experiment(args.payload, args.images, args.raster, args.ext, args.output,
+                          all_tiles=args.all_tiles)
     verified = sum(1 for row in rows if row.get("verification_status") == "Verified")
     uncertain = sum(1 for row in rows if row.get("verification_status") == "Uncertain")
     rejected = sum(1 for row in rows if row.get("verification_status") == "Rejected")

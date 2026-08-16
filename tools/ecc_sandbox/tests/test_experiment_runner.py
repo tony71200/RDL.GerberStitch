@@ -104,6 +104,52 @@ class ExperimentRunnerTests(unittest.TestCase):
                 name for name in os.listdir(output_dir)
                 if name.endswith("_after.jpg")]), 14)
 
+    def test_all_tiles_iterates_every_tile_instead_of_requested_coordinates(self):
+        rows, cols = 3, 3
+        coordinates = [(r, c) for r in range(rows) for c in range(cols)]
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            images_dir = os.path.join(temp_dir, "images")
+            output_dir = os.path.join(temp_dir, "result_test")
+            os.makedirs(images_dir)
+            raster_path = os.path.join(temp_dir, "gerber.tiff")
+            payload_path = os.path.join(temp_dir, "sample.json")
+
+            base = np.zeros((32, 32), dtype=np.uint8)
+            cv2.circle(base, (10, 9), 5, 255, 2)
+            Image.fromarray(base).save(raster_path)
+
+            tiles = []
+            for order, (row, column) in enumerate(coordinates):
+                tiles.append({
+                    "OrderIndex": order, "Row": row, "Column": column,
+                    "ExpectedX": 0, "ExpectedY": 0, "Width": 32, "Height": 32,
+                })
+                self.assertTrue(cv2.imwrite(
+                    os.path.join(images_dir, "%d.bmp" % order), base))
+            with open(payload_path, "w", encoding="utf-8") as stream:
+                json.dump({"Width_CaptureImages": 32, "Height_CaptureImages": 32,
+                          "GerberTiles": tiles}, stream)
+
+            match_result = {
+                "success": True, "verification_status": "Verified", "failure_reason": None,
+                "message": "verified", "matrix": np.eye(3), "translation_x": 0.0,
+                "translation_y": 0.0, "rotation_deg": 0.0, "scale": 1.0, "raw_score": 0.9,
+                "reference_edge_coverage": 1.0, "moving_edge_coverage": 1.0,
+                "symmetric_edge_coverage": 1.0, "symmetric_chamfer_p95": 0.0,
+                "coverage_margin": None, "attempts": [],
+            }
+            with mock.patch.object(experiment_runner.ecc, "match",
+                                   return_value=match_result) as match_call:
+                rows_out = experiment_runner.run_experiment(
+                    payload_path, images_dir, raster_path, "", output_dir, all_tiles=True)
+
+            self.assertEqual(len(rows_out), rows * cols * 2)
+            self.assertEqual(match_call.call_count, rows * cols * 2)
+            self.assertEqual(
+                {(row["row"], row["column"]) for row in rows_out},
+                set(coordinates))
+
 
 if __name__ == "__main__":
     unittest.main()
